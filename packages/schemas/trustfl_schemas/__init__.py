@@ -1,35 +1,17 @@
 """
 TrustFL Schemas Package.
 
-Common Pydantic data models for messages, round states, proof payloads, and metadata.
+Exports all shared identifiers, lifecycle states, and domain models for the TrustFL protocol.
 """
 
-from trustfl_schemas import (
+from trustfl_schemas.identifiers import (
     ArtifactId,
-    BlockchainEventType,
-    BlockchainRecord,
     ClientId,
-    ClientIdentity,
-    ClientRole,
-    ClientStatus,
-    ClientUpdate,
     EntityIdentifierPayload,
-    EvaluationMetrics,
     FederationId,
-    InvalidStateTransitionError,
-    ModelArtifact,
-    ModelMetadata,
     ModelVersionId,
-    ProofMetadata,
-    ProofType,
     RoundId,
-    RoundState,
-    StorageProtocol,
-    TrainingMetrics,
-    TrainingRound,
     UpdateId,
-    VALID_TRANSITIONS,
-    assert_valid_transition,
     validate_artifact_id,
     validate_client_id,
     validate_federation_id,
@@ -37,10 +19,31 @@ from trustfl_schemas import (
     validate_round_id,
     validate_update_id,
 )
-
-__version__ = "0.1.0"
+from trustfl_schemas.lifecycle import (
+    VALID_TRANSITIONS,
+    InvalidStateTransitionError,
+    RoundState,
+    assert_valid_transition,
+)
+from trustfl_schemas.models import (
+    BlockchainEventType,
+    BlockchainRecord,
+    ClientIdentity,
+    ClientRole,
+    ClientStatus,
+    ClientUpdate,
+    EvaluationMetrics,
+    ModelArtifact,
+    ModelMetadata,
+    ProofMetadata,
+    ProofType,
+    StorageProtocol,
+    TrainingMetrics,
+    TrainingRound,
+)
 
 __all__ = [
+    # Identifiers
     "FederationId",
     "RoundId",
     "ClientId",
@@ -54,10 +57,12 @@ __all__ = [
     "validate_model_version_id",
     "validate_update_id",
     "validate_artifact_id",
+    # Lifecycle
     "RoundState",
     "VALID_TRANSITIONS",
     "InvalidStateTransitionError",
     "assert_valid_transition",
+    # Domain Models
     "ClientIdentity",
     "ClientRole",
     "ClientStatus",
