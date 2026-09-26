@@ -51,13 +51,17 @@ format: ## Run code formatters
 test: ## Run test suites
 	@echo "==> Running test suites..."
 	@if [ -x "$(VENV)/bin/pytest" ]; then \
-		PYTHONPATH=packages/schemas:packages $(VENV)/bin/pytest tests; \
+		PYTHONPATH=packages/schemas:packages/fl_core:. $(VENV)/bin/pytest tests; \
 	elif command -v pytest >/dev/null 2>&1; then \
-		PYTHONPATH=packages/schemas:packages pytest tests; \
+		PYTHONPATH=packages/schemas:packages/fl_core:. pytest tests; \
 	else \
 		echo "Pytest not found in environment; falling back to python unittest..."; \
-		PYTHONPATH=packages/schemas:packages $(PYTHON) -m unittest discover -s tests -p "test_*.py"; \
+		PYTHONPATH=packages/schemas:packages/fl_core:. $(PYTHON) -m unittest discover -s tests -p "test_*.py"; \
 	fi
+
+simulate: ## Run minimal federated learning simulation
+	@echo "==> Running lightweight federated learning simulation..."
+	@PYTHONPATH=packages/schemas:packages/fl_core:. $(PYTHON) scripts/simulate.py
 
 audit: ## Check git repository against forbidden patterns (Zero-Git principle)
 	@echo "==> Auditing repository for unauthorized artifacts, data, or secrets..."

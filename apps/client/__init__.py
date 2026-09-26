@@ -1,6 +1,7 @@
 """
-TrustFL Client Service.
-Edge FL worker runtime responsible for local training and cryptographic/ZK proofs.
+TrustFL Client Application Package.
 """
 
-__version__ = "0.1.0"
+from apps.client.client import TrustFLClient, create_client_app
+
+__all__ = ["TrustFLClient", "create_client_app"]

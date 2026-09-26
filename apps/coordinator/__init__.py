@@ -1,6 +1,7 @@
 """
-TrustFL Coordinator Service.
-Orchestrates federated rounds, aggregation triggers, and worker coordination.
+TrustFL Coordinator Application Package.
 """
 
-__version__ = "0.1.0"
+from apps.coordinator.coordinator import create_server_app, run_simulation
+
+__all__ = ["create_server_app", "run_simulation"]
