@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# ── TrustFL Coordinator ─────────────────────────────────────────────────────
+FROM python:3.11-slim AS base
+
+LABEL org.opencontainers.image.title="TrustFL Coordinator"
+LABEL org.opencontainers.image.description="Federated learning coordinator service"
+
+WORKDIR /app
+
+# Install only stdlib — coordinator uses no third-party Python deps
+COPY packages/schemas /app/packages/schemas
+COPY packages/fl_core  /app/packages/fl_core
+COPY apps/coordinator  /app/apps/coordinator
+
+ENV PYTHONPATH="/app/packages/schemas:/app/packages/fl_core:/app"
+
+WORKDIR /app/apps/coordinator
+
+EXPOSE 8100
+
+# Health check via /health endpoint
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"
+
+CMD ["python3", "main.py"]

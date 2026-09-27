@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# ── TrustFL Client ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS base
+
+LABEL org.opencontainers.image.title="TrustFL Client"
+LABEL org.opencontainers.image.description="Federated learning client service"
+
+WORKDIR /app
+
+# Client optionally uses Pillow for image loading
+RUN pip install --no-cache-dir pillow==10.3.0
+
+COPY packages/schemas  /app/packages/schemas
+COPY packages/fl_core  /app/packages/fl_core
+COPY packages/ml_core  /app/packages/ml_core
+COPY apps/client       /app/apps/client
+
+ENV PYTHONPATH="/app/packages/schemas:/app/packages/fl_core:/app/packages/ml_core:/app"
+
+# Dataset is mounted at runtime — never baked into the image
+VOLUME ["/data"]
+
+ENV FL_IMAGES_DIR=/data/images
+ENV FL_ANNOTATIONS_DIR=/data/annotations
+
+WORKDIR /app/apps/client
+
+CMD ["python3", "main.py"]

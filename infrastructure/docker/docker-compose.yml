@@ -1,0 +1,112 @@
+version: "3.9"
+
+# ── TrustFL Development Compose ────────────────────────────────────────────
+#
+# Topology:
+#   coordinator   - orchestrates rounds (port 8100)
+#   client_001    - FL client with partition 0
+#   client_002    - FL client with partition 1
+#   client_003    - FL client with partition 2
+#
+# Usage:
+#   docker compose -f infrastructure/docker/docker-compose.yml up --build
+#
+# Dataset partitions must be present at datasets/processed/partitions/
+# They are bind-mounted read-only into each client container.
+
+services:
+  coordinator:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.coordinator
+    image: trustfl-coordinator:latest
+    container_name: trustfl-coordinator
+    ports:
+      - "8100:8100"
+    environment:
+      COORDINATOR_HOST: "0.0.0.0"
+      COORDINATOR_PORT: "8100"
+      FL_MIN_CLIENTS: "3"
+      FL_NUM_ROUNDS: "3"
+      FL_ROUND_TIMEOUT_SECONDS: "120"
+      FL_HEARTBEAT_TIMEOUT_SECONDS: "30"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - trustfl-net
+
+  client_001:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.client
+    image: trustfl-client:latest
+    container_name: trustfl-client-001
+    depends_on:
+      coordinator:
+        condition: service_healthy
+    environment:
+      FL_CLIENT_ID: "client_001"
+      FL_COORDINATOR_URL: "http://coordinator:8100"
+      FL_IMAGES_DIR: "/data/images"
+      FL_ANNOTATIONS_DIR: "/data/annotations"
+      FL_LOCAL_EPOCHS: "1"
+      FL_MAX_SAMPLES: "50"
+      FL_POLL_INTERVAL_SECONDS: "5"
+    volumes:
+      - ../../datasets/processed/partitions/client_001:/data:ro
+    networks:
+      - trustfl-net
+
+  client_002:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.client
+    image: trustfl-client:latest
+    container_name: trustfl-client-002
+    depends_on:
+      coordinator:
+        condition: service_healthy
+    environment:
+      FL_CLIENT_ID: "client_002"
+      FL_COORDINATOR_URL: "http://coordinator:8100"
+      FL_IMAGES_DIR: "/data/images"
+      FL_ANNOTATIONS_DIR: "/data/annotations"
+      FL_LOCAL_EPOCHS: "1"
+      FL_MAX_SAMPLES: "50"
+      FL_POLL_INTERVAL_SECONDS: "5"
+    volumes:
+      - ../../datasets/processed/partitions/client_002:/data:ro
+    networks:
+      - trustfl-net
+
+  client_003:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.client
+    image: trustfl-client:latest
+    container_name: trustfl-client-003
+    depends_on:
+      coordinator:
+        condition: service_healthy
+    environment:
+      FL_CLIENT_ID: "client_003"
+      FL_COORDINATOR_URL: "http://coordinator:8100"
+      FL_IMAGES_DIR: "/data/images"
+      FL_ANNOTATIONS_DIR: "/data/annotations"
+      FL_LOCAL_EPOCHS: "1"
+      FL_MAX_SAMPLES: "50"
+      FL_POLL_INTERVAL_SECONDS: "5"
+    volumes:
+      - ../../datasets/processed/partitions/client_003:/data:ro
+    networks:
+      - trustfl-net
+
+networks:
+  trustfl-net:
+    driver: bridge
+    name: trustfl-net
