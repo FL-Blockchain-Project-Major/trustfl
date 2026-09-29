@@ -118,6 +118,10 @@ class SubmitUpdateRequest:
     parameters: List[List[float]]
     num_examples: int
     metrics: Dict[str, float] = field(default_factory=dict)
+    
+    # Cryptographic fields added in Stage 07
+    metadata: Optional[Dict[str, Any]] = None
+    signature: Optional[str] = None
 
     def to_json(self) -> str:
         return _to_json(self)

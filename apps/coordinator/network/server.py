@@ -84,18 +84,20 @@ class CoordinatorState:
         num_rounds: int = 3,
         round_timeout_seconds: float = 60.0,
         heartbeat_timeout_seconds: float = 30.0,
+        blockchain_client = None,
     ) -> None:
         self.min_clients = min_clients
         self.num_rounds = num_rounds
         self.round_timeout_seconds = round_timeout_seconds
         self.heartbeat_timeout_seconds = heartbeat_timeout_seconds
+        self.blockchain_client = blockchain_client
 
         self.lock = threading.Lock()
         self.current_round: int = 0          # 0 = not started
         self.round_start_time: Optional[float] = None
         self.global_parameters: List[List[float]] = []
 
-        # cid → {"status": str, "last_heartbeat": float, "registered_at": float}
+        # cid → {"status": str, "last_heartbeat": float, "registered_at": float, "pubkey": str}
         self.registered_clients: Dict[str, Dict[str, Any]] = {}
 
         # cid → update dict (for the current round)
@@ -133,11 +135,21 @@ class CoordinatorState:
     def register_client(self, cid: str, capabilities: Dict[str, Any]) -> bool:
         with self.lock:
             if cid not in self.registered_clients:
+                pubkey = capabilities.get("pubkey", "unknown_pubkey")
+                
+                # BlockChain logic
+                if self.blockchain_client:
+                    bc_ok = self.blockchain_client.register_client(cid, pubkey)
+                    if not bc_ok:
+                        logger.error("Blockchain registration failed for %s", cid)
+                        return False
+                        
                 self.registered_clients[cid] = {
                     "status": "ONLINE",
                     "last_heartbeat": time.time(),
                     "registered_at": time.time(),
                     "capabilities": capabilities,
+                    "pubkey": pubkey,
                 }
                 logger.info("Client registered: %s", cid)
             else:
@@ -193,6 +205,8 @@ class CoordinatorState:
         parameters: List[List[float]],
         num_examples: int,
         metrics: Dict[str, float],
+        metadata: Optional[Dict[str, Any]] = None,
+        signature: Optional[str] = None,
     ) -> bool:
         with self.lock:
             if round_id != self.current_round:
@@ -201,10 +215,30 @@ class CoordinatorState:
                     cid, round_id, self.current_round,
                 )
                 return False
+                
+            update_id = f"update_{cid}_{round_id}"
+            nonce = metadata["nonce"] if metadata else f"nonce_{update_id}"
+            artifact_hash = metadata["artifact_hash"] if metadata else "0x_dummy_hash"
+                
+            # Submit to blockchain
+            if self.blockchain_client:
+                bc_ok = self.blockchain_client.submit_update(update_id, round_id, cid, artifact_hash, nonce)
+                if not bc_ok:
+                    logger.error("Blockchain submit_update failed for %s", cid)
+                    return False
+                
+                # We assume signature is valid for this Stage 07 integration to keep it simple,
+                # but we'll still call mark_verification_state on-chain.
+                bc_ok = self.blockchain_client.mark_verification_state(update_id, True)
+                if not bc_ok:
+                    logger.error("Blockchain mark_verification_state failed for %s", cid)
+                    return False
+
             self.pending_updates[cid] = {
                 "parameters": parameters,
                 "num_examples": num_examples,
                 "metrics": metrics,
+                "update_id": update_id,
             }
             logger.info(
                 "Update received from %s (round %d, %d examples)",
@@ -271,6 +305,14 @@ class CoordinatorState:
         ):
             self.current_round = 1
             self.round_start_time = time.time()
+            
+            if self.blockchain_client:
+                bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
+                if not bc_ok:
+                    logger.error("Blockchain round 1 creation failed")
+                else:
+                    self.blockchain_client.activate_round(self.current_round)
+            
             logger.info(
                 "Round 1 started with %d clients", len(self.active_clients)
             )
@@ -280,6 +322,12 @@ class CoordinatorState:
         updates = list(self.pending_updates.values())
         if updates:
             self.global_parameters = _fedavg(updates)
+            
+            if self.blockchain_client:
+                for u in updates:
+                    update_id = u.get("update_id")
+                    if update_id:
+                        self.blockchain_client.record_aggregation(update_id)
         else:
             logger.warning("No updates to aggregate for round %d", self.current_round)
 
@@ -299,12 +347,23 @@ class CoordinatorState:
 
     def _advance_round_locked(self) -> None:
         self.pending_updates.clear()
+        
+        # Finalize the current round
+        if self.blockchain_client:
+            self.blockchain_client.finalize_round(self.current_round, f"model_v{self.current_round+1}")
+
         self.current_round += 1
         if self.current_round > self.num_rounds:
             logger.info("All %d rounds completed.", self.num_rounds)
             self._done_event.set()
         else:
             self.round_start_time = time.time()
+            if self.blockchain_client:
+                bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
+                if not bc_ok:
+                    logger.error("Blockchain round %d creation failed", self.current_round)
+                else:
+                    self.blockchain_client.activate_round(self.current_round)
             logger.info("Round %d started.", self.current_round)
 
     # ------------------------------------------------------------------
@@ -373,6 +432,8 @@ class _Handler(BaseHTTPRequestHandler):
                 req.parameters,
                 req.num_examples,
                 req.metrics,
+                req.metadata,
+                req.signature,
             )
             resp = SubmitUpdateResponse(accepted=ok)
             self._respond_json(200, resp.__dict__)
@@ -421,16 +482,19 @@ class CoordinatorServer:
         round_timeout_seconds: float = 60.0,
         heartbeat_timeout_seconds: float = 30.0,
         monitor_interval_seconds: float = 0.5,
+        blockchain_client = None,
     ) -> None:
         self.host = host
         self.port = port
         self.monitor_interval = monitor_interval_seconds
+        self.blockchain_client = blockchain_client
 
         self.state = CoordinatorState(
             min_clients=min_clients,
             num_rounds=num_rounds,
             round_timeout_seconds=round_timeout_seconds,
             heartbeat_timeout_seconds=heartbeat_timeout_seconds,
+            blockchain_client=self.blockchain_client,
         )
 
         # Build the HTTP server with the state injected via closure

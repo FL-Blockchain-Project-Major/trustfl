@@ -32,6 +32,13 @@ async function main() {
   const updateRegistryAddr = await updateRegistry.getAddress();
   console.log("UpdateRegistry deployed to:", updateRegistryAddr);
 
+  // --- Grant Roles ---
+  const COORDINATOR_ROLE = ethers.id("COORDINATOR_ROLE");
+  await clientRegistry.grantRole(COORDINATOR_ROLE, deployer.address);
+  await roundRegistry.grantRole(COORDINATOR_ROLE, deployer.address);
+  await updateRegistry.grantRole(COORDINATOR_ROLE, deployer.address);
+  console.log("Granted COORDINATOR_ROLE to deployer");
+
   // --- Generate deployment artifacts ---
   const network = await ethers.provider.getNetwork();
   const networkName = network.name === "unknown" ? "localhost" : network.name;
