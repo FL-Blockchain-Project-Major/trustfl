@@ -69,3 +69,6 @@ testpaths = [
 ]
 python_files = ["test_*.py", "*_test.py"]
 asyncio_mode = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["packages", "apps"]
