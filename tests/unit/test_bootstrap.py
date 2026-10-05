@@ -44,6 +44,10 @@ class TestBootstrap(unittest.TestCase):
             ".pem",
         }
         for file in root.rglob("*"):
+            # Skip third-party and build directories
+            parts = file.parts
+            if any(p in parts for p in ("node_modules", "__pycache__", ".git")):
+                continue
             if file.is_file():
                 self.assertNotIn(
                     file.suffix,

@@ -1,7 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from apps.api.main import app
-from apps.api.api.db.session import engine, Base
+from apps.api.api.db.session import engine
+from apps.api.api.db.models import Base
 
 client = TestClient(app)
 
@@ -38,22 +39,22 @@ def test_duplicate_submission():
     }
     r3 = client.post("/updates/", json=payload2)
     assert r3.status_code == 400
-    assert "Client already submitted" in r3.json()["message"]
+    assert "Client already submitted" in r3.json()["detail"]
 
 def test_replay_attack_nonce():
     # Setup a new client
     client.post("/clients/", json={"id": "sec_client_2", "federation_id": "sec_fed_1", "public_key_b64": "key2"})
-    
+
     # Client 2 tries to reuse nonce from client 1
     payload = {
         "id": "upd_sec_3",
         "round_id": "sec_fed_1_round1",
         "client_id": "sec_client_2",
-        "nonce": "nonce_sec_1" # reused nonce
+        "nonce": "nonce_sec_1"  # reused nonce
     }
     r = client.post("/updates/", json=payload)
     assert r.status_code == 400
-    assert "Nonce already used" in r.json()["message"]
+    assert "Nonce already used" in r.json()["detail"]
 
 def test_oversized_payload():
     payload = {
