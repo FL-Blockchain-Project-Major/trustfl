@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trustfl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustfl}
+      POSTGRES_DB: ${POSTGRES_DB:-trustfl}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustfl"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "5001:5001"
+      - "8080:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/v0/id"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hardhat:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./packages/contracts:/app
+    command: >
+      sh -c "npm ci && npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8545"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
+      - IPFS_URL=http://ipfs:5001
+      - WEB3_PROVIDER_URI=http://hardhat:8545
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ipfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  coordinator:
+    build:
+      context: .
+      dockerfile: apps/coordinator/Dockerfile
+    environment:
+      - FL_MIN_CLIENTS=2
+      - FL_NUM_ROUNDS=3
+      - COORDINATOR_PORT=8100
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
+      - IPFS_URL=http://ipfs:5001
+      - WEB3_PROVIDER_URI=http://hardhat:8545
+    ports:
+      - "8100:8100"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  client-1:
+    build:
+      context: .
+      dockerfile: apps/client/Dockerfile
+    environment:
+      - FL_CLIENT_ID=client_001
+      - FL_COORDINATOR_URL=http://coordinator:8100
+    depends_on:
+      - coordinator
+
+  client-2:
+    build:
+      context: .
+      dockerfile: apps/client/Dockerfile
+    environment:
+      - FL_CLIENT_ID=client_002
+      - FL_COORDINATOR_URL=http://coordinator:8100
+    depends_on:
+      - coordinator
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+      dockerfile: Dockerfile
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  ipfs_data:
