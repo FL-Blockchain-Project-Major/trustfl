@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir . slowapi bandit pip-audit sqlalchemy alembic
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
