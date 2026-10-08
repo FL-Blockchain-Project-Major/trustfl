@@ -117,6 +117,10 @@ jobs:
           export COORDINATOR_HOST_PORT=18100
           export API_AUTH_REQUIRED=true API_READ_KEY=ci-read API_WRITE_KEY=ci-write API_ADMIN_KEY=ci-admin
           export DASHBOARD_ACCESS_KEY=ci-dashboard COORDINATOR_ENROLLMENT_TOKEN=ci-coordinator
+          # Compose's generated client keys are intentionally ephemeral.  The
+          # E2E lifecycle therefore uses the documented explicit dev-only
+          # enrollment compatibility mode; production never inherits this.
+          export COORDINATOR_INSECURE_DEV_AUTH=true
 
           cleanup() {
             local status=$?

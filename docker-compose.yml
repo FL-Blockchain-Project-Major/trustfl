@@ -99,7 +99,7 @@ services:
       - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
       # Client keys are generated into development volumes, so this disposable
       # Compose stack must opt in explicitly to legacy enrollment.
-      - COORDINATOR_INSECURE_DEV_AUTH=true
+      - COORDINATOR_INSECURE_DEV_AUTH=${COORDINATOR_INSECURE_DEV_AUTH:-true}
       - FL_MIN_CLIENTS=2
       - FL_NUM_ROUNDS=3
       - COORDINATOR_PORT=8100
