@@ -205,15 +205,24 @@ jobs:
               if not {"client_001", "client_002"} <= round_clients:
                   sys.exit(f"Round {round_number} missing verified/aggregated updates from both clients: {sorted(round_clients)}")
 
-          confirmed = [
-              t for t in transactions.get("data", []) if t.get("status") == "CONFIRMED"
-          ]
-          if not confirmed:
-              sys.exit("No CONFIRMED blockchain transaction found")
+          confirmed_finalizations = {
+              int(t["entity_id"])
+              for t in transactions.get("data", [])
+              if t.get("status") == "CONFIRMED"
+              and t.get("contract_name") == "TrainingRoundRegistry"
+              and t.get("function_name") == "finalizeRound"
+              and t.get("entity_type") == "round"
+              and str(t.get("entity_id", "")).isdigit()
+          }
+          if not {1, 2, 3} <= confirmed_finalizations:
+              sys.exit(
+                  "Expected a CONFIRMED finalizeRound transaction for each round; "
+                  f"got {sorted(confirmed_finalizations)}"
+              )
 
           print(f"Finalized rounds: {sorted(finalized)}")
           print(f"Verified/aggregated clients: {sorted(clients)}")
-          print(f"Confirmed blockchain transactions: {len(confirmed)}")
+          print(f"Confirmed round finalizations: {sorted(confirmed_finalizations)}")
           PY
           }
 
