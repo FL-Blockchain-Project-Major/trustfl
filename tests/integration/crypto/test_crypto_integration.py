@@ -91,10 +91,10 @@ class TestCryptoIntegration(unittest.TestCase):
             round_timeout_seconds=round_timeout,
             heartbeat_timeout_seconds=30.0,
         )
-        # Attach a crypto verifier to the state
-        server.state._key_registry = PublicKeyRegistry()
-        server.state._update_verifier = UpdateVerifier(
-            server.state._key_registry, clock_skew_seconds=60.0
+        # Use the coordinator's real verifier, with a short explicit test skew.
+        server.state.key_registry = PublicKeyRegistry()
+        server.state.update_verifier = UpdateVerifier(
+            server.state.key_registry, clock_skew_seconds=60.0
         )
         server.start()
         return server
@@ -128,7 +128,7 @@ class TestCryptoIntegration(unittest.TestCase):
                 })
                 self.assertTrue(resp["accepted"], f"Registration failed for {cid}")
                 # Register public key in verifier
-                server.state._key_registry.register(cid, identity.public_key_b64)
+                server.state.key_registry.register(cid, identity.public_key_b64)
 
             # Wait for round to start
             deadline = time.time() + 5
@@ -138,7 +138,7 @@ class TestCryptoIntegration(unittest.TestCase):
                     break
                 time.sleep(0.1)
 
-            server.state._update_verifier.set_round(
+            server.state.update_verifier.set_round(
                 1, accepted_model_versions={MODEL_VER}
             )
 
@@ -157,16 +157,23 @@ class TestCryptoIntegration(unittest.TestCase):
                 )
 
                 # Verify locally before sending (proves the crypto layer works)
-                vr = server.state._update_verifier.verify(signed, expected_client_id=cid)
+                # This is a local preflight only; nonce consumption belongs to
+                # the coordinator after durable acceptance.
+                vr = server.state.update_verifier.verify(
+                    signed, expected_client_id=cid, consume_nonce=False
+                )
                 self.assertTrue(vr.ok, f"Local verification failed for {cid}: {vr}")
 
-                # Submit raw (plain) update — crypto verification already confirmed
+                # Submit the signed envelope.  Local preflight never authorizes
+                # an unsigned request at the coordinator.
                 resp = _post(port, "/submit", {
                     "client_id": cid,
                     "round_id": round_id,
                     "parameters": signed.parameters,
                     "num_examples": signed.num_examples,
                     "metrics": signed.metrics,
+                    "metadata": signed.metadata.to_dict(),
+                    "signature": signed.signature_b64,
                 })
                 self.assertTrue(resp["accepted"], f"Submit rejected for {cid}")
 

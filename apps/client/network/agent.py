@@ -79,9 +79,19 @@ class DistributedClientAgent:
         self.training_timeout = training_timeout_seconds
         self.connection_timeout = connection_timeout_seconds
         self.federation_id = federation_id
+        # Identity is durable by default.  Deployments should override this with
+        # FL_IDENTITY_PATH (the Compose services mount a per-client key volume).
+        # Keeping the client ID in the path prevents accidental key sharing.
+        default_identity_path = (
+            Path(os.getenv("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
+            / "trustfl"
+            / "keys"
+            / client_id
+            / "private.pem"
+        )
         self.identity = identity or ClientIdentity.load_or_generate(
             client_id,
-            Path(identity_path) if identity_path else None,
+            Path(identity_path) if identity_path else default_identity_path,
         )
         self.signer = UpdateSigner(self.identity, federation_id)
 
