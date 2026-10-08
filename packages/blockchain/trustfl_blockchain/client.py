@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -32,6 +33,8 @@ class BlockchainClient:
         self.w3.eth.default_account = self.account.address
         self.max_retries = max_retries
         self.transaction_recorder = transaction_recorder
+        self._nonce_lock = threading.Lock()
+        self._next_nonce: int | None = None
 
         with open(contracts_json_path) as f:
             data = json.load(f)
@@ -57,15 +60,20 @@ class BlockchainClient:
         entity_id: str | None = None, entity_type: str | None = None,
     ) -> bool:
         """Helper to send a transaction with retry logic and receipt handling."""
+        with self._nonce_lock:
+            if self._next_nonce is None:
+                self._next_nonce = self.w3.eth.get_transaction_count(
+                    self.account.address, "pending"
+                )
+            nonce = self._next_nonce
+            self._next_nonce += 1
         for attempt in range(self.max_retries):
             try:
-                # We fetch the current nonce per attempt in case of stuck transactions
-                nonce = self.w3.eth.get_transaction_count(self.account.address, 'pending')
 
                 # Build transaction
                 tx = contract_func.build_transaction({
                     'from': self.account.address,
-                    'nonce': nonce,
+                    "nonce": nonce,
                 })
 
                 signed_tx = self.account.sign_transaction(tx)
@@ -119,6 +127,9 @@ class BlockchainClient:
 
     def register_client(self, client_id: str, pubkey: str) -> bool:
         """Register a new client."""
+        existing = self.client_registry.functions.getClient(client_id).call()
+        if existing[1]:
+            return True
         logger.info(f"Registering client {client_id} on-chain...")
         return self._send_tx_with_retry(
             self.client_registry.functions.registerClient(client_id, pubkey),
@@ -128,6 +139,9 @@ class BlockchainClient:
 
     def create_round(self, round_id: int, global_model_version: str) -> bool:
         """Create a new training round."""
+        existing = self.round_registry.functions.getRound(round_id).call()
+        if existing[0] != 0:
+            return True
         logger.info(f"Creating round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.createRound(round_id, global_model_version),
@@ -155,6 +169,9 @@ class BlockchainClient:
 
     def submit_update(self, update_id: str, round_id: int, client_id: str, artifact_hash: str, nonce: str) -> bool:
         """Submit a signed update metadata to the registry."""
+        existing = self.update_registry.functions.getUpdate(update_id).call()
+        if existing[4] != 0:
+            return True
         logger.info(f"Submitting update {update_id} from {client_id} for round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.update_registry.functions.submitUpdate(update_id, round_id, client_id, artifact_hash, nonce),
@@ -164,6 +181,9 @@ class BlockchainClient:
 
     def mark_verification_state(self, update_id: str, is_valid: bool) -> bool:
         """Mark an update as verified or rejected."""
+        existing = self.update_registry.functions.getUpdate(update_id).call()
+        if existing[4] in (2, 4):
+            return existing[4] == 2 if is_valid else existing[4] == 4
         state_str = "Verified" if is_valid else "Rejected"
         logger.info(f"Marking update {update_id} as {state_str} on-chain...")
         return self._send_tx_with_retry(
@@ -174,6 +194,9 @@ class BlockchainClient:
 
     def record_aggregation(self, update_id: str) -> bool:
         """Record that an update was included in the final aggregation."""
+        existing = self.update_registry.functions.getUpdate(update_id).call()
+        if existing[4] == 3:
+            return True
         logger.info(f"Recording aggregation for update {update_id} on-chain...")
         return self._send_tx_with_retry(
             self.update_registry.functions.recordAggregation(update_id),

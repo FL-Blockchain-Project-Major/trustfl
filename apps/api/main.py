@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 
@@ -38,13 +39,32 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
-    """Require the configured API key for non-public production endpoints."""
+    """Require a role-scoped API key for non-public production endpoints."""
     is_public = request.url.path == "/health/" or request.method == "OPTIONS"
     if os.getenv("ENVIRONMENT", "development").lower() == "production" and not is_public:
-        expected = os.getenv("API_SECRET_KEY", "")
         authorization = request.headers.get("Authorization", "")
         supplied = authorization.removeprefix("Bearer ").strip()
-        if not supplied or supplied != expected:
+        role = "admin" if request.method == "DELETE" else (
+            "read" if request.method in {"GET", "HEAD"} else "write"
+        )
+        keys = {
+            "read": os.getenv("API_READ_KEY", ""),
+            "write": os.getenv("API_WRITE_KEY", ""),
+            "admin": os.getenv("API_ADMIN_KEY", ""),
+        }
+        valid = any(
+            expected
+            and hmac.compare_digest(supplied, expected)
+            and (key_role == role or key_role == "admin")
+            for key_role, expected in keys.items()
+        )
+        if not valid and (
+            os.getenv("API_LEGACY_AUTH_COMPAT", "false").lower() == "true"
+            or not any(keys.values())
+        ):
+            legacy = os.getenv("API_SECRET_KEY", "")
+            valid = bool(legacy and hmac.compare_digest(supplied, legacy))
+        if not valid:
             return JSONResponse(
                 status_code=401,
                 content={"success": False, "message": "Authentication required.", "data": None},

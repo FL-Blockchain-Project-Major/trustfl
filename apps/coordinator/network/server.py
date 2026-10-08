@@ -111,6 +111,7 @@ class CoordinatorState:
         blockchain_client = None,
         require_signatures: bool | None = None,
         storage_client=None,
+        persistence=None,
     ) -> None:
         self.min_clients = min_clients
         self.num_rounds = num_rounds
@@ -118,6 +119,7 @@ class CoordinatorState:
         self.heartbeat_timeout_seconds = heartbeat_timeout_seconds
         self.blockchain_client = blockchain_client
         self.storage_client = storage_client
+        self.persistence = persistence
         self.require_signatures = (
             require_signatures
             if require_signatures is not None
@@ -176,6 +178,12 @@ class CoordinatorState:
                 if self.require_signatures and not pubkey:
                     logger.warning("Rejecting client %s without a public key", cid)
                     return False
+                if pubkey:
+                    try:
+                        self.key_registry.register(cid, pubkey)
+                    except (TypeError, ValueError):
+                        logger.warning("Rejecting client %s with an invalid public key", cid)
+                        return False
 
                 # BlockChain logic
                 if self.blockchain_client:
@@ -191,18 +199,15 @@ class CoordinatorState:
                     "capabilities": capabilities,
                     "pubkey": pubkey,
                 }
-                if pubkey:
-                    try:
-                        self.key_registry.register(cid, pubkey)
-                    except (TypeError, ValueError):
-                        logger.warning("Rejecting client %s with an invalid public key", cid)
-                        del self.registered_clients[cid]
-                        return False
+                if self.persistence:
+                    self.persistence.register_client(cid, pubkey or "", capabilities)
                 logger.info("Client registered: %s", cid)
             else:
                 # Re-registration after disconnect
                 self.registered_clients[cid]["status"] = "ONLINE"
                 self.registered_clients[cid]["last_heartbeat"] = time.time()
+                if self.persistence:
+                    self.persistence.heartbeat(cid)
                 logger.info("Client re-registered: %s", cid)
             self._start_next_round_if_ready_locked()
             return True
@@ -337,6 +342,17 @@ class CoordinatorState:
                 "artifact_uri": stored_artifact.uri if stored_artifact else None,
                 "artifact_hash": artifact_hash,
             }
+            if self.persistence:
+                self.persistence.record_update(
+                    update_id,
+                    cid,
+                    round_id,
+                    stored_artifact.uri if stored_artifact else None,
+                    artifact_hash,
+                    num_examples,
+                    metrics,
+                    nonce,
+                )
             logger.info(
                 "Update received from %s (round %d, %d examples)",
                 cid, round_id, num_examples,
@@ -414,6 +430,8 @@ class CoordinatorState:
                     logger.error("Blockchain round 1 creation failed")
                 else:
                     self.blockchain_client.activate_round(self.current_round)
+            if self.persistence:
+                self.persistence.start_round(self.current_round, f"model_v{self.current_round}")
 
             logger.info(
                 "Round 1 started with %d clients", len(self.active_clients)
@@ -453,6 +471,8 @@ class CoordinatorState:
         # Finalize the current round
         if self.blockchain_client:
             self.blockchain_client.finalize_round(self.current_round, f"model_v{self.current_round+1}")
+        if self.persistence:
+            self.persistence.finalize_round(self.current_round)
 
         self.current_round += 1
         if self.current_round > self.num_rounds:
@@ -605,6 +625,7 @@ class CoordinatorServer:
         blockchain_client = None,
         require_signatures: bool | None = None,
         storage_client = None,
+        persistence=None,
     ) -> None:
         self.host = host
         self.port = port
@@ -619,6 +640,7 @@ class CoordinatorServer:
             blockchain_client=self.blockchain_client,
             require_signatures=require_signatures,
             storage_client=storage_client,
+            persistence=persistence,
         )
 
         # Build the HTTP server with the state injected via closure

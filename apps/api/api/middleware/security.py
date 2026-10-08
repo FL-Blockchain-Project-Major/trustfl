@@ -45,6 +45,13 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                     status_code=413,
                     content={"detail": "Request body too large. Maximum allowed: 1 MB."},
                 )
+            if not content_length:
+                body = await request.body()
+                if len(body) > MAX_BODY_BYTES:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"detail": "Request body too large. Maximum allowed: 1 MB."},
+                    )
         return await call_next(request)
 
 

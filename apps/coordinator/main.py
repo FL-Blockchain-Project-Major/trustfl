@@ -95,6 +95,9 @@ def main() -> None:
         if os.getenv("STORAGE_BACKEND", "local").lower() == "ipfs"
         else LocalStorageClient(os.getenv("STORAGE_LOCAL_DIR", "/tmp/trustfl-artifacts"))
     )
+    from apps.coordinator.persistence import CoordinatorPersistence
+    persistence = CoordinatorPersistence()
+    persistence.ensure_federation(args.min_clients, args.num_rounds)
 
     server = CoordinatorServer(
         host=args.host,
@@ -109,6 +112,7 @@ def main() -> None:
         ).lower() == "true",
         blockchain_client=blockchain_client,
         storage_client=storage_client,
+        persistence=persistence,
     )
 
     def _shutdown(signum, _frame):  # noqa: ANN001

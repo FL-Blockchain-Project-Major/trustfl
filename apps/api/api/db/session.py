@@ -72,12 +72,11 @@ def check_config(_app: FastAPI) -> None:
     elif not db_url.startswith("postgresql"):
         errors.append("DATABASE_URL must use sqlite or postgresql")
 
-    # Check API_SECRET_KEY
-    api_key = os.getenv("API_SECRET_KEY", "")
-    if ENVIRONMENT == "production" and (
-        not api_key or api_key in ("CHANGE_ME_IN_PRODUCTION", "changeme_in_production")
-    ):
-        errors.append("API_SECRET_KEY is not configured. Set it in .env file.")
+    if ENVIRONMENT == "production":
+        for name in ("API_READ_KEY", "API_WRITE_KEY", "API_ADMIN_KEY"):
+            value = os.getenv(name, "")
+            if not value or value in ("CHANGE_ME_IN_PRODUCTION", "changeme_in_production"):
+                errors.append(f"{name} is not configured. Set it through a secret manager.")
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")

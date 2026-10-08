@@ -90,7 +90,7 @@ services:
       context: .
       dockerfile: apps/coordinator/Dockerfile
     environment:
-      - COORDINATOR_REQUIRE_SIGNATURES=false
+      - COORDINATOR_REQUIRE_SIGNATURES=true
       - FL_MIN_CLIENTS=2
       - FL_NUM_ROUNDS=3
       - COORDINATOR_PORT=8100
