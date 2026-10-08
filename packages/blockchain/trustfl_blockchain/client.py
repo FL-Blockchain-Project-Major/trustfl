@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from hashlib import sha256
 from typing import Any
 
 from web3 import Web3
@@ -60,14 +61,13 @@ class BlockchainClient:
         entity_id: str | None = None, entity_type: str | None = None,
     ) -> bool:
         """Helper to send a transaction with retry logic and receipt handling."""
-        with self._nonce_lock:
-            if self._next_nonce is None:
-                self._next_nonce = self.w3.eth.get_transaction_count(
-                    self.account.address, "pending"
-                )
-            nonce = self._next_nonce
-            self._next_nonce += 1
         for attempt in range(self.max_retries):
+            with self._nonce_lock:
+                if self._next_nonce is None:
+                    self._next_nonce = self.w3.eth.get_transaction_count(
+                        self.account.address, "pending"
+                    )
+                nonce = self._next_nonce
             try:
 
                 # Build transaction
@@ -78,6 +78,8 @@ class BlockchainClient:
 
                 signed_tx = self.account.sign_transaction(tx)
                 tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+                with self._nonce_lock:
+                    self._next_nonce = nonce + 1
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
 
                 if receipt.status == 1:
@@ -105,6 +107,15 @@ class BlockchainClient:
                 return False
             except Exception as e:
                 logger.warning(f"{error_context} exception on attempt {attempt+1}: {e}")
+                if "tx_hash" in locals():
+                    self._record_transaction(
+                        contract_name, function_name, entity_id, entity_type,
+                        tx_hash.hex(), "PENDING", f"Receipt unavailable: {e}",
+                    )
+                    logger.error("%s broadcast succeeded but confirmation is uncertain", error_context)
+                    return False
+                with self._nonce_lock:
+                    self._next_nonce = None
                 time.sleep(1)
 
         logger.error(f"{error_context} failed after {self.max_retries} attempts")
@@ -120,6 +131,9 @@ class BlockchainClient:
     ) -> None:
         if self.transaction_recorder:
             self.transaction_recorder({
+                "id": sha256(
+                    f"{contract_name}:{function_name}:{entity_type}:{entity_id}".encode()
+                ).hexdigest(),
                 "contract_name": contract_name, "function_name": function_name,
                 "entity_id": entity_id, "entity_type": entity_type,
                 "tx_hash": tx_hash, "status": status, "error": error,

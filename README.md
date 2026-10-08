@@ -63,7 +63,7 @@ and production boundaries, consult [docs/OPERATIONS.md](docs/OPERATIONS.md) and
 
 ```bash
 # Clone the repository
-git clone https://github.com/trustfl/trustfl.git
+git clone https://github.com/sayam-1705/trustfl.git
 cd TrustFL
 
 # Copy example environment configuration

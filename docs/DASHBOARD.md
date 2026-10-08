@@ -46,6 +46,8 @@ The dashboard requires the following read endpoints:
 - `GET /rounds/federation/{federation_id}`
 - `GET /updates/federation/{federation_id}`
 - `GET /artifacts/federation/{federation_id}`
+- `GET /artifacts/{id}`
+- `GET /proofs/{id}`
 - `GET /blockchain/transactions`
 
 The last endpoint is the read API for the blockchain transaction table. It is

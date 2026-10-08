@@ -21,3 +21,7 @@ def record_artifact(payload: ArtifactCreate, service: ArtifactService = Depends(
 def list_artifacts(federation_id: str, service: ArtifactService = Depends(get_service)):  # noqa: B008
     a = service.list_by_federation(federation_id)
     return APIResponse(data=a)
+
+@router.get("/{artifact_id}", response_model=APIResponse[ArtifactOut])
+def get_artifact(artifact_id: str, service: ArtifactService = Depends(get_service)):  # noqa: B008
+    return APIResponse(data=service.get_or_404(artifact_id))

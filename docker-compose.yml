@@ -90,6 +90,7 @@ services:
       context: .
       dockerfile: apps/coordinator/Dockerfile
     environment:
+      - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
       - COORDINATOR_REQUIRE_SIGNATURES=true
       - FL_MIN_CLIENTS=2
       - FL_NUM_ROUNDS=3
@@ -105,7 +106,13 @@ services:
     volumes:
       - contract_deployments:/contracts-deployments
     ports:
-      - "8100:8100"
+      - "${COORDINATOR_HOST_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     depends_on:
       db:
         condition: service_healthy
@@ -124,9 +131,11 @@ services:
       dockerfile: apps/client/Dockerfile
     environment:
       - FL_CLIENT_ID=client_001
+      - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
       - FL_COORDINATOR_URL=http://coordinator:8100
     depends_on:
-      - coordinator
+      coordinator:
+        condition: service_healthy
 
   client-2:
     build:
@@ -134,9 +143,11 @@ services:
       dockerfile: apps/client/Dockerfile
     environment:
       - FL_CLIENT_ID=client_002
+      - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
       - FL_COORDINATOR_URL=http://coordinator:8100
     depends_on:
-      - coordinator
+      coordinator:
+        condition: service_healthy
 
   dashboard:
     build:

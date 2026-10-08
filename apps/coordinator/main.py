@@ -17,7 +17,6 @@ import logging
 import os
 import signal
 import sys
-import uuid
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,18 +66,16 @@ def main() -> None:
 
                 with SessionLocal() as db:
                     service = BlockchainTxService(db)
-                    tx = service.record(
-                        id=str(uuid.uuid4()),
+                    service.record(
+                        id=event["id"],
                         contract_name=event["contract_name"],
                         function_name=event["function_name"],
                         entity_id=event["entity_id"],
                         entity_type=event["entity_type"],
                         tx_hash=event["tx_hash"],
                         status=event["status"],
+                        error=event["error"],
                     )
-                    if event["error"]:
-                        tx.error_message = event["error"]
-                        db.commit()
             except Exception:
                 logger.exception("Unable to persist blockchain transaction audit event")
 

@@ -65,4 +65,8 @@ The following remain deployment responsibilities or deferred capabilities:
 - If updates are rejected, inspect coordinator logs for signature, round,
   nonce, model-version, or artifact-hash validation failures.
 - If Compose cannot bind port 8100, stop the unrelated process or change the
-  host-side port mapping; do not weaken coordinator request handling.
+  host-side port mapping with `COORDINATOR_HOST_PORT=18100`; clients continue
+  to use the internal `coordinator:8100` address.
+- Compose uses `FL_FEDERATION_ID=fed-default` for the coordinator, clients,
+  PostgreSQL records, API queries, and dashboard. Set the same value for every
+  service when running another federation.

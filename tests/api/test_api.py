@@ -81,6 +81,27 @@ def test_federation_lifecycle():
     }
     response = client.post("/proofs/", json=proof_payload)
     assert response.status_code == 200
+    proof_id = response.json()["data"]["id"]
+    response = client.get(f"/proofs/{proof_id}")
+    assert response.status_code == 200
+    assert response.json()["data"]["update_id"] == "update_1"
+    assert client.get("/proofs/missing-proof").status_code == 404
+
+    artifact_payload = {
+        "id": "artifact_1",
+        "federation_id": "fed_test_1",
+        "round_number": 1,
+        "client_id": "client_1",
+        "uri": "ipfs://artifact-1",
+        "sha256_hash": "sha256:" + "a" * 64,
+        "model_version": "v1.0",
+    }
+    response = client.post("/artifacts/", json=artifact_payload)
+    assert response.status_code == 200
+    response = client.get("/artifacts/artifact_1")
+    assert response.status_code == 200
+    assert response.json()["data"]["uri"] == "ipfs://artifact-1"
+    assert client.get("/artifacts/missing-artifact").status_code == 404
 
     # 7. Record Blockchain Tx
     tx_payload = {
@@ -90,4 +111,10 @@ def test_federation_lifecycle():
     }
     response = client.post("/blockchain/transactions", json=tx_payload)
     assert response.status_code == 200
-
+    response = client.post(
+        "/blockchain/transactions",
+        json={**tx_payload, "tx_hash": "0x" + "1" * 64, "status": "CONFIRMED"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["id"] == "tx_1"
+    assert response.json()["data"]["status"] == "CONFIRMED"

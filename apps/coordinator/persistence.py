@@ -39,7 +39,7 @@ class CoordinatorPersistence:
         self.FederationStatus = FederationStatus
         self.RoundStatus = RoundStatus
         self.UpdateStatus = UpdateStatus
-        self.federation_id = os.getenv("FL_FEDERATION_ID", "default")
+        self.federation_id = os.getenv("FL_FEDERATION_ID", "fed-default")
 
     def _session(self):
         return self.SessionLocal()
@@ -149,4 +149,3 @@ class CoordinatorPersistence:
                 row.status = self.RoundStatus.FINALIZED
                 row.finalized_at = datetime.now(UTC)
                 db.commit()
-

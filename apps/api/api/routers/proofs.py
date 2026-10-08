@@ -21,3 +21,7 @@ def submit_proof(payload: ProofSubmit, service: ProofService = Depends(get_servi
 def list_proofs(update_id: str, service: ProofService = Depends(get_service)):  # noqa: B008
     p = service.list_by_update(update_id)
     return APIResponse(data=p)
+
+@router.get("/{proof_id}", response_model=APIResponse[ProofOut])
+def get_proof(proof_id: str, service: ProofService = Depends(get_service)):  # noqa: B008
+    return APIResponse(data=service.get_or_404(proof_id))
