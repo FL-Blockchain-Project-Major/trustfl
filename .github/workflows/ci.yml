@@ -538,7 +538,7 @@ jobs:
               "http://localhost:8000/blockchain/transactions?limit=100"
           )"
 
-          python \
+          python - \
             "$final_rounds" \
             "$final_updates" \
             "$final_transactions" <<'PY'
