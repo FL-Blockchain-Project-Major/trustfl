@@ -194,6 +194,7 @@ jobs:
                 --max-time 10 \
                 --retry 3 \
                 --retry-all-errors \
+                --retry-delay 1 \
                 "$url" >/dev/null 2>&1; then
                 echo "Ready: $url"
                 return 0
@@ -214,7 +215,9 @@ jobs:
               local container_id
               local state
 
-              container_id="$(docker compose ps -q coordinator 2>/dev/null || true)"
+              container_id="$(
+                docker compose ps -q coordinator 2>/dev/null || true
+              )"
 
               if [[ -n "$container_id" ]]; then
                 state="$(
@@ -228,10 +231,12 @@ jobs:
                   --fail \
                   --silent \
                   --show-error \
+                  --location \
                   --connect-timeout 2 \
                   --max-time 10 \
                   --retry 3 \
                   --retry-all-errors \
+                  --retry-delay 1 \
                   "http://localhost:${COORDINATOR_HOST_PORT}/health" \
                   >/dev/null 2>&1; then
                   echo "Coordinator is ready."
@@ -329,27 +334,39 @@ jobs:
           lifecycle_timeout_seconds=600
           lifecycle_deadline=$((SECONDS + lifecycle_timeout_seconds))
           lifecycle_passed=false
+          attempt=0
 
           while (( SECONDS < lifecycle_deadline )); do
-            echo "Checking FL lifecycle..."
+            attempt=$((attempt + 1))
 
-            rounds="$(fetch_json \
-              "http://localhost:8000/rounds/federation/fed-default")" || {
-                sleep 3
-                continue
-              }
+            echo "Checking FL lifecycle... attempt=${attempt}"
 
-            updates="$(fetch_json \
-              "http://localhost:8000/updates/federation/fed-default")" || {
-                sleep 3
-                continue
-              }
+            rounds="$(
+              fetch_json \
+                "http://localhost:8000/rounds/federation/fed-default"
+            )" || {
+              echo "Unable to fetch rounds; retrying..."
+              sleep 3
+              continue
+            }
 
-            transactions="$(fetch_json \
-              "http://localhost:8000/blockchain/transactions?limit=100")" || {
-                sleep 3
-                continue
-              }
+            updates="$(
+              fetch_json \
+                "http://localhost:8000/updates/federation/fed-default"
+            )" || {
+              echo "Unable to fetch updates; retrying..."
+              sleep 3
+              continue
+            }
+
+            transactions="$(
+              fetch_json \
+                "http://localhost:8000/blockchain/transactions?limit=100"
+            )" || {
+              echo "Unable to fetch blockchain transactions; retrying..."
+              sleep 3
+              continue
+            }
 
             if python - "$rounds" "$updates" "$transactions" <<'PY'
           import json
@@ -398,8 +415,13 @@ jobs:
               "No CONFIRMED blockchain transaction found"
           )
 
-          print(f"Finalized rounds: {sorted(finalized_rounds)}")
-          print(f"Verified/aggregated clients: {sorted(verified_clients)}")
+          print(
+              f"Finalized rounds: {sorted(finalized_rounds)}"
+          )
+          print(
+              f"Verified/aggregated clients: "
+              f"{sorted(verified_clients)}"
+          )
           print(
               "Confirmed blockchain transactions: "
               f"{len(confirmed_transactions)}"
@@ -412,17 +434,31 @@ jobs:
             fi
 
             if (( attempt % 10 == 0 )); then
-              echo "=== FL lifecycle diagnostic ==="
+              echo "=================================================="
+              echo "FL lifecycle diagnostic at attempt ${attempt}"
+              echo "=================================================="
+
+              echo "=== Compose status ==="
               docker compose ps --all || true
 
               echo "--- Coordinator logs ---"
-              docker compose logs --no-color --tail=100 coordinator || true
+              docker compose logs \
+                --no-color \
+                --tail=100 \
+                coordinator || true
 
               echo "--- Client logs ---"
-              docker compose logs --no-color --tail=100 client-1 client-2 || true
+              docker compose logs \
+                --no-color \
+                --tail=100 \
+                client-1 \
+                client-2 || true
 
               echo "--- API logs ---"
-              docker compose logs --no-color --tail=100 api || true
+              docker compose logs \
+                --no-color \
+                --tail=100 \
+                api || true
             fi
 
             sleep 5
@@ -435,7 +471,9 @@ jobs:
 
             docker compose ps --all
 
-            docker compose logs --no-color --tail=500 \
+            docker compose logs \
+              --no-color \
+              --tail=500 \
               coordinator \
               client-1 \
               client-2 \
@@ -474,7 +512,8 @@ jobs:
               for item in data
               if isinstance(item, dict)
           ), (
-              f"fed-default federation not visible in dashboard data: {data!r}"
+              "fed-default federation not visible in dashboard data: "
+              f"{data!r}"
           )
 
           print("Dashboard federation visibility verified.")
@@ -517,7 +556,7 @@ jobs:
           expected_rounds = {1, 2, 3}
 
           assert expected_rounds.issubset(finalized_rounds), (
-              f"Final state missing rounds: "
+              "Final state missing rounds: "
               f"{expected_rounds - finalized_rounds}"
           )
 
