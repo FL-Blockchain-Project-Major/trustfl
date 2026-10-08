@@ -73,6 +73,17 @@ class UpdateService:
 
     def update_status(self, update_id: str, payload: UpdateStatusChange) -> Update:
         upd = self.get_or_404(update_id)
+        allowed = {
+            UpdateStatus.SUBMITTED: {UpdateStatus.VERIFIED, UpdateStatus.REJECTED},
+            UpdateStatus.VERIFIED: {UpdateStatus.AGGREGATED, UpdateStatus.REJECTED},
+            UpdateStatus.AGGREGATED: set(),
+            UpdateStatus.REJECTED: set(),
+        }
+        if payload.status not in allowed[upd.status]:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Invalid update status transition {upd.status} -> {payload.status}",
+            )
         upd.status = payload.status
         if payload.verified_at:
             upd.verified_at = payload.verified_at

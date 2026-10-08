@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   python-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +31,7 @@ jobs:
         run: pytest tests/
 
   frontend-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/dashboard
@@ -49,7 +49,7 @@ jobs:
       - run: npm run build
 
   contract-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: packages/contracts
@@ -67,7 +67,7 @@ jobs:
       - run: npx hardhat test
 
   zk-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: packages/zkp
@@ -85,7 +85,7 @@ jobs:
 
   docker-build:
     needs: [python-tests, frontend-tests, contract-tests, zk-tests]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -101,7 +101,7 @@ jobs:
 
   compose-e2e:
     needs: docker-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -113,6 +113,8 @@ jobs:
 
           export COMPOSE_PROJECT_NAME="trustfl-ci-${GITHUB_RUN_ID}"
           export COORDINATOR_HOST_PORT=18100
+          export API_AUTH_REQUIRED=true API_READ_KEY=ci-read API_WRITE_KEY=ci-write API_ADMIN_KEY=ci-admin
+          export DASHBOARD_ACCESS_KEY=ci-dashboard COORDINATOR_ENROLLMENT_TOKEN=ci-coordinator
 
           cleanup() {
             local status=$?
@@ -127,6 +129,7 @@ jobs:
 
           http_get() {
             curl --fail --silent --show-error --location \
+              -H "Authorization: Bearer ${API_READ_KEY}" \
               --connect-timeout 2 --max-time 10 \
               --retry 3 --retry-all-errors --retry-delay 1 "$1"
           }
@@ -195,8 +198,12 @@ jobs:
               for u in updates.get("data", [])
               if u.get("status") in {"VERIFIED", "AGGREGATED"} and "client_id" in u
           }
-          if not {"client_001", "client_002"} <= clients:
-              sys.exit(f"Expected client_001 and client_002 updates, got {sorted(clients)}")
+          for round_number in (1, 2, 3):
+              round_clients = {u["client_id"] for u in updates.get("data", [])
+                               if u.get("status") in {"VERIFIED", "AGGREGATED"}
+                               and u.get("round_id") == f"fed-default_round{round_number}"}
+              if not {"client_001", "client_002"} <= round_clients:
+                  sys.exit(f"Round {round_number} missing verified/aggregated updates from both clients: {sorted(round_clients)}")
 
           confirmed = [
               t for t in transactions.get("data", []) if t.get("status") == "CONFIRMED"
@@ -245,7 +252,10 @@ jobs:
           done
 
           echo "Verifying dashboard..."
-          dashboard="$(http_get "http://localhost:3000/api/dashboard/federations/")"
+          dashboard="$(curl --fail --silent --show-error --location -H "Authorization: Bearer ${DASHBOARD_ACCESS_KEY}" "http://localhost:3000/api/dashboard/federations/")"
+
+          unauthenticated="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' http://localhost:8000/federations/)"
+          [[ "$unauthenticated" == "401" ]] || { echo "Expected unauthenticated API request to return 401, got $unauthenticated"; exit 1; }
 
           python - "$dashboard" <<'PY'
           import json
@@ -263,5 +273,7 @@ jobs:
 
           print("Dashboard federation visibility verified.")
           PY
+
+          check_lifecycle
 
           echo "TrustFL Compose E2E PASSED"

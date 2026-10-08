@@ -15,13 +15,14 @@ A background monitor thread fires every 0.5 s to:
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import math
 import os
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from packages.crypto.trustfl_crypto.canonical import (
@@ -42,6 +43,12 @@ from .protocol import (
 )
 
 logger = logging.getLogger(__name__)
+
+MAX_NUM_EXAMPLES = int(os.getenv("FL_MAX_NUM_EXAMPLES_PER_UPDATE", "1000000"))
+INITIAL_MODEL_VERSION = "initial"
+INITIAL_MODEL_VERSIONS = frozenset(
+    value.strip() for value in os.getenv("FL_INITIAL_MODEL_VERSIONS", "initial,model-v1").split(",") if value.strip()
+)
 
 
 # ---------------------------------------------------------------------------
@@ -123,10 +130,7 @@ class CoordinatorState:
         self.require_signatures = (
             require_signatures
             if require_signatures is not None
-            else os.getenv(
-                "COORDINATOR_REQUIRE_SIGNATURES",
-                "true" if os.getenv("ENVIRONMENT", "development").lower() == "production" else "false",
-            ).lower() == "true"
+            else os.getenv("COORDINATOR_REQUIRE_SIGNATURES", "true").lower() == "true"
         )
         self.key_registry = PublicKeyRegistry()
         self.update_verifier = UpdateVerifier(self.key_registry)
@@ -146,6 +150,21 @@ class CoordinatorState:
         self.round_history: list[dict[str, Any]] = []
 
         self._done_event = threading.Event()
+        if self.persistence:
+            try:
+                restored = self.persistence.restore_state()
+                self.current_round = int(restored.get("current_round", 0))
+                self.registered_clients = restored.get("registered_clients", {})
+                for cid, info in self.registered_clients.items():
+                    if info.get("pubkey"):
+                        self.key_registry.register(cid, info["pubkey"])
+                if 0 < self.current_round <= self.num_rounds and self.require_signatures:
+                    self.update_verifier.set_round(self.current_round, set(INITIAL_MODEL_VERSIONS))
+                if self.current_round > self.num_rounds:
+                    self._done_event.set()
+                logger.info("Restored coordinator state at round %d (%d clients)", self.current_round, len(self.registered_clients))
+            except Exception:
+                logger.exception("Coordinator state recovery failed; refusing to infer lifecycle state")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -266,14 +285,44 @@ class CoordinatorState:
         signature: str | None = None,
     ) -> bool:
         with self.lock:
+            if cid not in self.registered_clients:
+                logger.warning("Rejecting update from unknown client %s", cid)
+                return False
             if round_id != self.current_round:
                 logger.warning(
                     "Stale update from %s: round %d (current %d)",
                     cid, round_id, self.current_round,
                 )
                 return False
+            if cid in self.pending_updates:
+                logger.warning("Rejecting duplicate update from %s for round %d", cid, round_id)
+                return False
+            if not self._valid_update_parameters(parameters, num_examples, metrics):
+                logger.warning("Rejecting malformed update from %s", cid)
+                return False
 
             update_id = f"update_{cid}_{round_id}"
+            nonce = metadata.get("nonce") if metadata else f"nonce_{update_id}"
+            verified = False
+            signed_update = None
+            if self.require_signatures:
+                if not metadata or not signature:
+                    logger.warning("Rejecting unsigned update from %s", cid)
+                    return False
+                try:
+                    signed_update = SignedUpdate.from_dict({
+                        "metadata": metadata, "signature": signature,
+                        "parameters": parameters, "num_examples": num_examples, "metrics": metrics,
+                    })
+                except (KeyError, TypeError, ValueError):
+                    logger.warning("Rejecting malformed signed update from %s", cid)
+                    return False
+                # Do not consume the nonce until all later durable operations succeed.
+                verification = self.update_verifier.verify(signed_update, cid, consume_nonce=False)
+                if not verification.ok:
+                    logger.warning("Rejected update from %s: %s", cid, verification.status.value)
+                    return False
+                verified = True
             try:
                 artifact_data = canonical_artifact_bytes(parameters, num_examples, metrics)
                 stored_artifact = (
@@ -285,39 +334,12 @@ class CoordinatorState:
             except (TypeError, ValueError, OSError) as exc:
                 logger.warning("Rejecting update %s: artifact storage failed: %s", update_id, exc)
                 return False
-            nonce = metadata["nonce"] if metadata else f"nonce_{update_id}"
             artifact_hash = stored_artifact.sha256_hash if stored_artifact else (
                 metadata["artifact_hash"] if metadata else "0x_dummy_hash"
             )
             if metadata and metadata.get("artifact_hash") and stored_artifact:
                 if metadata["artifact_hash"] != stored_artifact.sha256_hash:
                     logger.warning("Rejecting update %s: artifact hash mismatch", update_id)
-                    return False
-
-            if self.require_signatures:
-                if not metadata or not signature:
-                    logger.warning("Rejecting unsigned update from %s", cid)
-                    return False
-                try:
-                    signed_update = SignedUpdate.from_dict(
-                        {
-                            "metadata": metadata,
-                            "signature": signature,
-                            "parameters": parameters,
-                            "num_examples": num_examples,
-                            "metrics": metrics,
-                        }
-                    )
-                except (KeyError, TypeError, ValueError):
-                    logger.warning("Rejecting malformed signed update from %s", cid)
-                    return False
-                verification = self.update_verifier.verify(signed_update, cid)
-                if not verification.ok:
-                    logger.warning(
-                        "Rejected update from %s: %s",
-                        cid,
-                        verification.status.value,
-                    )
                     return False
 
             # Submit to blockchain
@@ -327,12 +349,16 @@ class CoordinatorState:
                     logger.error("Blockchain submit_update failed for %s", cid)
                     return False
 
-                # We assume signature is valid for this Stage 07 integration to keep it simple,
-                # but we'll still call mark_verification_state on-chain.
-                bc_ok = self.blockchain_client.mark_verification_state(update_id, True)
-                if not bc_ok:
-                    logger.error("Blockchain mark_verification_state failed for %s", cid)
-                    return False
+                # Never assert a verification that did not happen.  Unsigned deployments
+                # intentionally leave the on-chain update in its submitted state.
+                if verified:
+                    bc_ok = self.blockchain_client.mark_verification_state(update_id, True)
+                    if not bc_ok:
+                        logger.error("Blockchain mark_verification_state failed for %s", cid)
+                        return False
+            if signed_update and not self.update_verifier.consume_nonce(signed_update):
+                logger.warning("Rejecting raced/replayed nonce for %s", cid)
+                return False
 
             self.pending_updates[cid] = {
                 "parameters": parameters,
@@ -352,6 +378,7 @@ class CoordinatorState:
                     num_examples,
                     metrics,
                     nonce,
+                    verified,
                 )
             logger.info(
                 "Update received from %s (round %d, %d examples)",
@@ -361,6 +388,27 @@ class CoordinatorState:
             if set(self.pending_updates.keys()) >= set(self.active_clients):
                 self._aggregate_round_locked(timed_out=False)
             return True
+
+    def _valid_update_parameters(
+        self, parameters: Any, num_examples: Any, metrics: Any
+    ) -> bool:
+        """Validate untrusted numerical data before storage, chain, or aggregation I/O."""
+        if not isinstance(num_examples, int) or isinstance(num_examples, bool) or not 0 < num_examples <= MAX_NUM_EXAMPLES:
+            return False
+        if not isinstance(parameters, list) or not parameters or any(not isinstance(layer, list) for layer in parameters):
+            return False
+        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value)
+               for layer in parameters for value in layer):
+            return False
+        if not isinstance(metrics, dict) or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in metrics.values()):
+            return False
+        # Once a global model exists every submitted layer must match it exactly.
+        if self.global_parameters and (
+            len(parameters) != len(self.global_parameters)
+            or any(len(layer) != len(expected) for layer, expected in zip(parameters, self.global_parameters, strict=True))
+        ):
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Status
@@ -419,10 +467,7 @@ class CoordinatorState:
             self.current_round = 1
             self.round_start_time = time.time()
             if self.require_signatures:
-                self.update_verifier.set_round(
-                    self.current_round,
-                    accepted_model_versions=set(),
-                )
+                self.update_verifier.set_round(self.current_round, set(INITIAL_MODEL_VERSIONS))
 
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
@@ -441,8 +486,25 @@ class CoordinatorState:
     def _aggregate_round_locked(self, timed_out: bool = False) -> None:
         """Run FedAvg over pending_updates and advance the round counter."""
         updates = list(self.pending_updates.values())
-        if updates:
+        quorum_met = len(updates) >= self.min_clients
+        if not quorum_met:
+            logger.error("Round %d failed quorum: %d < %d", self.current_round, len(updates), self.min_clients)
+            self.round_history.append({"round": self.current_round, "num_successful_clients": len(updates), "timed_out": timed_out, "status": "FAILED", "metrics": _avg_metrics([u["metrics"] for u in updates])})
+            if self.persistence:
+                self.persistence.fail_round(self.current_round)
+            self._advance_round_locked(finalize=False)
+            return
+        try:
             self.global_parameters = _fedavg(updates)
+        except (TypeError, ValueError, OverflowError) as exc:
+            # Defense in depth: malformed in-memory data can never wedge monitor_tick.
+            logger.exception("Round %d aggregation rejected: %s", self.current_round, exc)
+            self.round_history.append({"round": self.current_round, "num_successful_clients": 0, "timed_out": timed_out, "status": "FAILED", "metrics": {}})
+            if self.persistence:
+                self.persistence.fail_round(self.current_round)
+            self._advance_round_locked(finalize=False)
+            return
+        if updates:
 
             if self.blockchain_client:
                 for u in updates:
@@ -466,14 +528,18 @@ class CoordinatorState:
 
         self._advance_round_locked()
 
-    def _advance_round_locked(self) -> None:
+    def _advance_round_locked(self, finalize: bool = True) -> None:
         self.pending_updates.clear()
 
         # Finalize the current round
-        if self.blockchain_client:
-            self.blockchain_client.finalize_round(self.current_round, f"model_v{self.current_round+1}")
-        if self.persistence:
+        chain_finalized = True
+        if finalize and self.blockchain_client:
+            chain_finalized = self.blockchain_client.finalize_round(self.current_round, f"model_v{self.current_round+1}")
+        if finalize and chain_finalized and self.persistence:
             self.persistence.finalize_round(self.current_round)
+        elif finalize and not chain_finalized:
+            logger.error("Round %d remains unfinalized because blockchain finalization failed", self.current_round)
+            return
 
         self.current_round += 1
         if self.current_round > self.num_rounds:
@@ -486,7 +552,7 @@ class CoordinatorState:
                     self.current_round,
                     accepted_model_versions={hash_parameters(self.global_parameters)}
                     if self.global_parameters
-                    else set(),
+                    else {INITIAL_MODEL_VERSION},
                 )
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
@@ -545,7 +611,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond_json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
-        data = self._read_body()
+        try:
+            data = self._read_body()
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            return
+        if not self._authorized(data):
+            self._respond_json(401, {"error": "invalid enrollment credential"})
+            return
+        try:
+            self._do_post(data)
+        except (KeyError, TypeError, ValueError) as exc:
+            self._respond_json(400, {"error": f"invalid request: {exc}"})
+
+    def _do_post(self, data: dict[str, Any]) -> None:
         if self.path == "/register":
             req = RegisterRequest.from_dict(data)
             ok = self.state.register_client(req.client_id, req.capabilities)
@@ -593,7 +671,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._respond_json(413, {"error": "request body too large"})
             raise ValueError("request body too large")
         raw = self.rfile.read(length) if length else b"{}"
-        return json.loads(raw)
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            self._respond_json(400, {"error": "JSON body must be an object"})
+            raise ValueError("JSON body must be an object")
+        return data
+
+    def _authorized(self, data: dict[str, Any]) -> bool:
+        expected = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
+        # A configured credential is always enforced; production additionally requires one.
+        if not expected:
+            return os.getenv("ENVIRONMENT", "development").lower() == "development"
+        supplied = self.headers.get("Authorization", "").removeprefix("Bearer ").strip() or str(data.get("credential", ""))
+        return hmac.compare_digest(supplied, expected)
 
     def _respond_json(self, code: int, body: dict[str, Any]) -> None:
         payload = json.dumps(body).encode()
@@ -657,7 +747,14 @@ class CoordinatorServer:
             pass
 
         BoundHandler.state = state
-        self._httpd = HTTPServer((host, port), BoundHandler)
+        class TimeoutThreadingHTTPServer(ThreadingHTTPServer):
+            daemon_threads = True
+            def get_request(self):  # type: ignore[no-untyped-def]
+                sock, address = super().get_request()
+                sock.settimeout(float(os.getenv("COORDINATOR_CONNECTION_TIMEOUT_SECONDS", "10")))
+                return sock, address
+
+        self._httpd = TimeoutThreadingHTTPServer((host, port), BoundHandler)
         self._httpd.timeout = 0.5   # so serve_forever can be interrupted quickly
 
         self._http_thread: threading.Thread | None = None

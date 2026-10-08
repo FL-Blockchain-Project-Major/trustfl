@@ -70,3 +70,26 @@ The following remain deployment responsibilities or deferred capabilities:
 - Compose uses `FL_FEDERATION_ID=fed-default` for the coordinator, clients,
   PostgreSQL records, API queries, and dashboard. Set the same value for every
   service when running another federation.
+# Operations security notes
+
+The coordinator requires Ed25519 signatures by default. In a deployed stack set
+`COORDINATOR_ENROLLMENT_TOKEN` to a high-entropy secret; clients send it as a
+Bearer credential for registration, heartbeats, and update submission. A token
+is deliberately optional only in explicit `ENVIRONMENT=development` to keep the
+local in-process examples usable.
+
+Set `API_AUTH_REQUIRED=true` with distinct `API_READ_KEY`, `API_WRITE_KEY`, and
+`API_ADMIN_KEY`. The dashboard server proxy uses the read key internally and
+only exposes read-only API prefixes. Set `DASHBOARD_ACCESS_KEY` to protect that
+proxy when it is published.
+
+`FL_MAX_NUM_EXAMPLES_PER_UPDATE` (default 1,000,000) caps client-reported
+sample counts before FedAvg, limiting a single client’s influence. A round with
+fewer than `FL_MIN_CLIENTS` accepted updates is recorded as `FAILED`, never
+finalized. Persist client private keys on the per-client Compose volumes; key
+rotation must be an authenticated re-registration and should retain an
+old-key signature audit trail.
+
+ZKP artifacts are standalone and are not used as coordinator admission proofs.
+Do not treat a stored proof’s validity field as verification; only a dedicated
+verifier may set it.

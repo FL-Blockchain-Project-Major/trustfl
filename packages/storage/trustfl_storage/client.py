@@ -72,6 +72,10 @@ class IPFSStorageClient(StorageClient):
     """IPFS-compatible storage for model artifacts."""
     def __init__(self, api_url: str = "http://127.0.0.1:5001"):
         self.api_url = api_url.rstrip("/")
+        self.timeout = (
+            float(os.getenv("IPFS_CONNECT_TIMEOUT_SECONDS", "5")),
+            float(os.getenv("IPFS_READ_TIMEOUT_SECONDS", "30")),
+        )
 
     def save_artifact(self, data: bytes, model_version: str, round_id: int, client_id: str | None = None, update_id: str | None = None) -> ArtifactMetadata:
         sha256_hash = compute_sha256(data)
@@ -81,7 +85,7 @@ class IPFSStorageClient(StorageClient):
         files = {
             'file': ('artifact.bin', data, 'application/octet-stream')
         }
-        resp = requests.post(f"{self.api_url}/api/v0/add", files=files, timeout=(5, 30))
+        resp = requests.post(f"{self.api_url}/api/v0/add", files=files, timeout=self.timeout)
         resp.raise_for_status()
 
         result = resp.json()
@@ -104,7 +108,7 @@ class IPFSStorageClient(StorageClient):
         cid = uri[len("ipfs://"):]
 
         # IPFS HTTP API: POST /api/v0/cat?arg=<cid>
-        resp = requests.post(f"{self.api_url}/api/v0/cat?arg={cid}", timeout=(5, 30))
+        resp = requests.post(f"{self.api_url}/api/v0/cat?arg={cid}", timeout=self.timeout)
         resp.raise_for_status()
 
         data = resp.content

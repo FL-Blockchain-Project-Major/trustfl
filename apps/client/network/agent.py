@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import urllib.error
@@ -266,6 +267,9 @@ class DistributedClientAgent:
         url = self.coordinator_url + path
         data = json.dumps(payload).encode() if payload is not None else None
         headers = {"Content-Type": "application/json"}
+        token = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         for attempt in range(self.max_retries):
             try:

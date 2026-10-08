@@ -153,6 +153,8 @@ class UpdateVerifier:
         self,
         signed_update: SignedUpdate,
         expected_client_id: str,
+        *,
+        consume_nonce: bool = True,
     ) -> VerificationResult:
         """
         Run all verification checks.  Returns VerificationResult.
@@ -243,13 +245,18 @@ class UpdateVerifier:
             )
 
         # 9. Nonce freshness (atomic — after sig is valid to avoid oracle)
-        if not self.nonce_store.check_and_add(meta.nonce, meta.round_id):
+        if consume_nonce and not self.nonce_store.check_and_add(meta.nonce, meta.round_id):
             return VerificationResult(
                 VerificationStatus.REUSED_NONCE,
                 f"nonce={meta.nonce!r} already used in round {meta.round_id}",
             )
 
         return _OK
+
+    def consume_nonce(self, signed_update: SignedUpdate) -> bool:
+        """Commit a previously verified nonce after durable submission succeeds."""
+        meta = signed_update.metadata
+        return self.nonce_store.check_and_add(meta.nonce, meta.round_id)
 
 
 # ---------------------------------------------------------------------------

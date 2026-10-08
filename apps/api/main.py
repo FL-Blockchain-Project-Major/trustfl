@@ -1,6 +1,7 @@
 import hmac
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,23 +26,60 @@ from apps.api.api.routers import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+def rate_limit_key(request: Request) -> str:
+    """Honor X-Forwarded-For only when the immediate proxy is trusted."""
+    trusted = {x.strip() for x in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if x.strip()}
+    peer = request.client.host if request.client else "unknown"
+    if peer in trusted:
+        forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if forwarded:
+            return forwarded
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=rate_limit_key, default_limits=[os.getenv("API_RATE_LIMIT", "100/minute")])
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from apps.api.api.db.session import check_config
+    check_config(app)
+    if os.getenv("ENVIRONMENT", "development").lower() == "development":
+        create_all_tables()
+    yield
 
 app = FastAPI(
     title="TrustFL Control Plane API",
     description="API for managing TrustFL federations, rounds, clients, and verification metadata.",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.middleware("http")
+async def enforce_rate_limit(request: Request, call_next):
+    """Apply SlowAPI's global limit, including routes without decorators."""
+    if request.method != "OPTIONS":
+        try:
+            limiter._check_request_limit(request, None, in_middleware=True)
+        except RateLimitExceeded as exc:
+            return _rate_limit_exceeded_handler(request, exc)
+    return await call_next(request)
 
 
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
     """Require a role-scoped API key for non-public production endpoints."""
     is_public = request.url.path == "/health/" or request.method == "OPTIONS"
-    if os.getenv("ENVIRONMENT", "development").lower() == "production" and not is_public:
+    configured = os.getenv("API_AUTH_REQUIRED")
+    auth_required = (
+        configured.lower() == "true"
+        if configured is not None
+        else os.getenv("ENVIRONMENT", "development").lower() != "development"
+    )
+    if auth_required and not is_public:
         authorization = request.headers.get("Authorization", "")
         supplied = authorization.removeprefix("Bearer ").strip()
         role = "admin" if request.method == "DELETE" else (
@@ -93,14 +131,6 @@ app.add_middleware(
 )
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
-
-# Startup event for dev only
-@app.on_event("startup")
-def startup_event():
-    from apps.api.api.db.session import check_config
-    check_config(app)
-    if os.getenv("ENVIRONMENT", "development").lower() != "production":
-        create_all_tables()
 
 # Include routers
 app.include_router(health.router)

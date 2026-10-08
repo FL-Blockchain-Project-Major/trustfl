@@ -14,6 +14,7 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "artifacts", label: "Artifacts" },
   { id: "blockchain", label: "Blockchain" },
 ];
+const refreshIntervalMs = Math.max(1, Number(process.env.NEXT_PUBLIC_REFRESH_INTERVAL_SECONDS || "15")) * 1000;
 
 function text(value: unknown, fallback = "—") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
@@ -111,7 +112,7 @@ export default function OperationsConsole() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    const interval = window.setInterval(() => void load(true), 15000);
+    const interval = window.setInterval(() => void load(true), refreshIntervalMs);
     return () => window.clearInterval(interval);
   }, [load]);
   useEffect(() => { setPage(1); }, [query, status, tab, selectedFederation]);

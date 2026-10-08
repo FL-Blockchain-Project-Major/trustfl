@@ -108,6 +108,7 @@ class CoordinatorPersistence:
         num_examples: int,
         metrics: dict[str, float],
         nonce: str,
+        verified: bool = False,
     ) -> None:
         with self._session() as db:
             round_id = f"{self.federation_id}_round{round_number}"
@@ -119,13 +120,13 @@ class CoordinatorPersistence:
                     client_id=client_id,
                 )
                 db.add(row)
-            row.status = self.UpdateStatus.VERIFIED
+            row.status = self.UpdateStatus.VERIFIED if verified else self.UpdateStatus.SUBMITTED
             row.artifact_hash = artifact_hash
             row.artifact_id = update_id
             row.num_examples = num_examples
             row.loss = metrics.get("loss")
             row.nonce = nonce
-            row.verified_at = datetime.now(UTC)
+            row.verified_at = datetime.now(UTC) if verified else None
             if artifact_uri:
                 artifact = db.get(self.ModelArtifact, update_id)
                 if artifact is None:
@@ -149,3 +150,33 @@ class CoordinatorPersistence:
                 row.status = self.RoundStatus.FINALIZED
                 row.finalized_at = datetime.now(UTC)
                 db.commit()
+
+    def fail_round(self, round_number: int) -> None:
+        """Persist a quorum/aggregation failure without falsely finalizing it."""
+        with self._session() as db:
+            row = db.get(self.Round, f"{self.federation_id}_round{round_number}")
+            if row is not None:
+                row.status = self.RoundStatus.FAILED
+                row.finalized_at = datetime.now(UTC)
+                db.commit()
+
+    def restore_state(self) -> dict:
+        """Read durable coordinator state so restart does not recreate lifecycle rows."""
+        with self._session() as db:
+            rounds = (
+                db.query(self.Round)
+                .filter(self.Round.federation_id == self.federation_id)
+                .order_by(self.Round.round_number.desc())
+                .all()
+            )
+            clients = db.query(self.Client).filter(self.Client.federation_id == self.federation_id).all()
+            active = next((r for r in rounds if r.status == self.RoundStatus.ACTIVE), None)
+            latest = rounds[0] if rounds else None
+            return {
+                "current_round": active.round_number if active else ((latest.round_number + 1) if latest else 0),
+                "registered_clients": {
+                    c.id: {"status": "ONLINE" if c.is_active else "OFFLINE", "last_heartbeat": (c.last_seen_at or c.registered_at).timestamp(), "registered_at": c.registered_at.timestamp(), "capabilities": json.loads(c.capabilities or "{}"), "pubkey": c.public_key_b64}
+                    for c in clients
+                },
+                "model_version": active.model_version if active else (latest.model_version if latest else None),
+            }
