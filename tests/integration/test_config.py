@@ -2,8 +2,8 @@
 Integration test asserting environment and configuration sanity.
 """
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 
 class TestConfig(unittest.TestCase):

@@ -1,12 +1,13 @@
 import sys
-import os
+
 sys.path.insert(0, '/home/sayam/Desktop/TrustFL')
 sys.path.insert(0, '/home/sayam/Desktop/TrustFL/apps')
 
 from fastapi.testclient import TestClient
-from apps.api.main import app
-from apps.api.api.db.session import engine
+
 from apps.api.api.db.models import Base
+from apps.api.api.db.session import engine
+from apps.api.main import app
 
 client = TestClient(app)
 Base.metadata.create_all(bind=engine)

@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel
+
 
 class ProofSubmit(BaseModel):
     id: str
@@ -9,7 +11,7 @@ class ProofSubmit(BaseModel):
     client_id: str
     federation_id: str
     round_id: str
-    model_version: Optional[str] = None
+    model_version: str | None = None
     public_commitment: str
     protocol: str = "poseidon_commitment_v1"
 
@@ -19,9 +21,9 @@ class ProofOut(BaseModel):
     client_id: str
     federation_id: str
     round_id: str
-    model_version: Optional[str]
+    model_version: str | None
     public_commitment: str
     protocol: str
-    is_valid: Optional[bool]
+    is_valid: bool | None
     created_at: datetime
     model_config = {"from_attributes": True}

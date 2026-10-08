@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
+
 from apps.api.api.db.models import UpdateStatus
 
 
@@ -9,16 +11,16 @@ class UpdateSubmit(BaseModel):
     id: str = Field(..., min_length=1, max_length=128)
     round_id: str = Field(..., min_length=1, max_length=128)
     client_id: str = Field(..., min_length=1, max_length=64)
-    artifact_hash: Optional[str] = Field(default=None, max_length=128)
-    artifact_id: Optional[str] = Field(default=None, max_length=128)
-    nonce: Optional[str] = Field(default=None, max_length=128)
-    num_examples: Optional[int] = Field(default=None, ge=1)
-    loss: Optional[float] = None
+    artifact_hash: str | None = Field(default=None, max_length=128)
+    artifact_id: str | None = Field(default=None, max_length=128)
+    nonce: str | None = Field(default=None, max_length=128)
+    num_examples: int | None = Field(default=None, ge=1)
+    loss: float | None = None
 
 
 class UpdateStatusChange(BaseModel):
     status: UpdateStatus
-    verified_at: Optional[datetime] = None
+    verified_at: datetime | None = None
 
 
 class UpdateOut(BaseModel):
@@ -26,11 +28,11 @@ class UpdateOut(BaseModel):
     round_id: str
     client_id: str
     status: UpdateStatus
-    artifact_id: Optional[str]
-    artifact_hash: Optional[str]
-    nonce: Optional[str]
-    num_examples: Optional[int]
-    loss: Optional[float]
+    artifact_id: str | None
+    artifact_hash: str | None
+    nonce: str | None
+    num_examples: int | None
+    loss: float | None
     submitted_at: datetime
-    verified_at: Optional[datetime]
+    verified_at: datetime | None
     model_config = {"from_attributes": True}

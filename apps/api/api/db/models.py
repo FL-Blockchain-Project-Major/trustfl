@@ -3,34 +3,46 @@ SQLAlchemy ORM models for TrustFL API control plane.
 All tables store system metadata only — no weights, no private data.
 """
 from __future__ import annotations
+
 import enum
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, Enum as SAEnum,
-    ForeignKey, Integer, String, Text, Float, Index
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, relationship
+
 
 class Base(DeclarativeBase):
     pass
 
 def _utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
-class FederationStatus(str, enum.Enum):
+class FederationStatus(enum.StrEnum):
     ACTIVE = "ACTIVE"
     PAUSED = "PAUSED"
     COMPLETED = "COMPLETED"
     ARCHIVED = "ARCHIVED"
 
-class RoundStatus(str, enum.Enum):
+class RoundStatus(enum.StrEnum):
     CREATED = "CREATED"
     ACTIVE = "ACTIVE"
     AGGREGATING = "AGGREGATING"
     FINALIZED = "FINALIZED"
     FAILED = "FAILED"
 
-class UpdateStatus(str, enum.Enum):
+class UpdateStatus(enum.StrEnum):
     SUBMITTED = "SUBMITTED"
     VERIFIED = "VERIFIED"
     AGGREGATED = "AGGREGATED"

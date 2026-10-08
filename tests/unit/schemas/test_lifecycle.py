@@ -3,10 +3,10 @@ Unit tests for TrustFL training round lifecycle transitions.
 """
 
 import unittest
+
 from trustfl_schemas.lifecycle import (
     InvalidStateTransitionError,
     RoundState,
-    assert_valid_transition,
 )
 from trustfl_schemas.models import TrainingRound
 

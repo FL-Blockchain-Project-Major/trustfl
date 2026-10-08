@@ -10,9 +10,10 @@ Proves:
 """
 
 import unittest
-from apps.coordinator.coordinator import run_simulation
+
 from trustfl_core.flower_app import FedAvg, FitRes
-from trustfl_core.model import TinyLinearModel, generate_synthetic_data
+
+from apps.coordinator.coordinator import run_simulation
 
 
 class TestFederatedLearningCore(unittest.TestCase):
@@ -64,7 +65,7 @@ class TestFederatedLearningCore(unittest.TestCase):
         self.assertNotEqual(initial_w, final_w)
 
         # Verify difference is non-zero
-        delta = sum(abs(a - b) for a, b in zip(initial_w, final_w))
+        delta = sum(abs(a - b) for a, b in zip(initial_w, final_w, strict=False))
         self.assertGreater(delta, 1e-4)
 
         # Verify loss improves or stays reasonable

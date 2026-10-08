@@ -9,17 +9,17 @@ Provides:
 """
 
 from __future__ import annotations
-import math
+
 import random
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 from PIL import Image
 
 from trustfl_ml.config import TrainingConfig
 from trustfl_ml.dataset import VisDroneParser
 
 try:
-    from ultralytics import YOLO as _UltralyticsYOLO
     HAVE_ULTRALYTICS = True
 except ImportError:
     HAVE_ULTRALYTICS = False
@@ -45,17 +45,17 @@ class YOLOModelWrapper:
 
         # Parameter tensors: [detection_heads_weights, backbone_weights, biases]
         # Dimension: [10 classes x 4 coordinates, 16 features, 1 bias]
-        self.weights: List[List[float]] = [
+        self.weights: list[list[float]] = [
             [self.rng.uniform(-0.05, 0.05) for _ in range(num_classes * 4)],
             [self.rng.uniform(-0.05, 0.05) for _ in range(16)],
             [0.0],
         ]
 
-    def get_parameters(self) -> List[List[float]]:
+    def get_parameters(self) -> list[list[float]]:
         """Extracts parameters as list of float arrays."""
         return [list(layer) for layer in self.weights]
 
-    def set_parameters(self, parameters: List[List[float]]) -> None:
+    def set_parameters(self, parameters: list[list[float]]) -> None:
         """Sets model parameters."""
         if len(parameters) != len(self.weights):
             raise ValueError(
@@ -69,7 +69,7 @@ class YOLOModelWrapper:
         annotations_dir: Path | str,
         config: TrainingConfig,
         max_samples: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Executes local training on client VisDrone data.
         Returns training metrics: loss, samples_trained, duration, etc.
@@ -86,7 +86,7 @@ class YOLOModelWrapper:
         total_boxes = 0
 
         # Training loop over client's images
-        for epoch in range(config.epochs):
+        for _epoch in range(config.epochs):
             epoch_loss = 0.0
             for img_path in image_files:
                 ann_path = ann_dir / f"{img_path.stem}.txt"
@@ -139,7 +139,7 @@ class YOLOModelWrapper:
         images_dir: Path | str,
         annotations_dir: Path | str,
         max_samples: int = 15,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Evaluates current parameters against validation partition.
         Returns mAP50, mAP50_95, precision, recall, and loss.

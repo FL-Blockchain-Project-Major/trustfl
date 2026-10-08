@@ -12,23 +12,22 @@ from trustfl_crypto.canonical import (
     hash_parameters,
 )
 
-
 PARAMS = [[0.1, 0.2, 0.3], [0.9]]
 
 
 class TestUpdateMetadata(unittest.TestCase):
 
     def _make(self, **overrides) -> UpdateMetadata:
-        defaults = dict(
-            federation_id="fed-001",
-            round_id=1,
-            client_id="c1",
-            model_version="sha256:aabbcc",
-            update_id="update-001",
-            artifact_hash=hash_parameters(PARAMS),
-            timestamp=int(time.time()),
-            nonce=generate_nonce("c1", 1),
-        )
+        defaults = {
+            "federation_id": "fed-001",
+            "round_id": 1,
+            "client_id": "c1",
+            "model_version": "sha256:aabbcc",
+            "update_id": "update-001",
+            "artifact_hash": hash_parameters(PARAMS),
+            "timestamp": int(time.time()),
+            "nonce": generate_nonce("c1", 1),
+        }
         defaults.update(overrides)
         return UpdateMetadata(**defaults)
 

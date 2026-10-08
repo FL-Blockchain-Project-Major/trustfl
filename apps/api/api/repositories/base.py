@@ -1,19 +1,21 @@
 from __future__ import annotations
-from typing import Generic, TypeVar, Optional, List, Type
+
+from typing import Generic, TypeVar
+
 from sqlalchemy.orm import Session
 
 ModelT = TypeVar("ModelT")
 
 class BaseRepository(Generic[ModelT]):
-    model: Type[ModelT]
+    model: type[ModelT]
 
     def __init__(self, db: Session):
         self.db = db
 
-    def get(self, id: str) -> Optional[ModelT]:
+    def get(self, id: str) -> ModelT | None:
         return self.db.get(self.model, id)
 
-    def get_all(self, skip: int = 0, limit: int = 100) -> List[ModelT]:
+    def get_all(self, skip: int = 0, limit: int = 100) -> list[ModelT]:
         return self.db.query(self.model).offset(skip).limit(limit).all()
 
     def count(self) -> int:

@@ -4,7 +4,6 @@ Implements modern FlowerClient with local dataset partition and gradient descent
 """
 
 from __future__ import annotations
-from typing import List, Tuple
 
 from trustfl_core.flower_app import EvaluateIns, EvaluateRes, FitIns, FitRes, FlowerClient
 from trustfl_core.model import TinyLinearModel, generate_synthetic_data
@@ -18,8 +17,8 @@ class TrustFLClient(FlowerClient):
     def __init__(
         self,
         cid: str,
-        train_data: Tuple[List[List[float]], List[float]],
-        test_data: Tuple[List[List[float]], List[float]],
+        train_data: tuple[list[list[float]], list[float]],
+        test_data: tuple[list[list[float]], list[float]],
         local_epochs: int = 2,
         learning_rate: float = 0.05,
     ) -> None:

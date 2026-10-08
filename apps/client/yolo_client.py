@@ -12,12 +12,10 @@ Each client:
 """
 
 from __future__ import annotations
-from pathlib import Path
-from typing import Any, Dict
 
 from trustfl_core.flower_app import EvaluateIns, EvaluateRes, FitIns, FitRes, FlowerClient
-from trustfl_ml.config import ClientNodeConfig, DatasetConfig, TrainingConfig
-from trustfl_ml.dataset import DatasetValidationError, VisDroneParser
+from trustfl_ml.config import ClientNodeConfig
+from trustfl_ml.dataset import VisDroneParser
 from trustfl_ml.yolo_wrapper import YOLOModelWrapper
 
 
@@ -41,7 +39,7 @@ class TrustFLYOLOClient(FlowerClient):
             seed=config.training_config.seed,
         )
 
-    def validate_local_data(self) -> Dict[str, int]:
+    def validate_local_data(self) -> dict[str, int]:
         """Validates that local client images and annotations are sound."""
         return VisDroneParser.validate_dataset(
             images_dir=self.config.dataset_config.images_dir,

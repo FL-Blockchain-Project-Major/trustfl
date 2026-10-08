@@ -15,11 +15,10 @@ Additional terminal error state:
     → ROUND_FAILED
 """
 
-from enum import Enum
-from typing import Set
+from enum import StrEnum
 
 
-class RoundState(str, Enum):
+class RoundState(StrEnum):
     ROUND_CREATED = "ROUND_CREATED"
     CLIENT_ASSIGNED = "CLIENT_ASSIGNED"
     CLIENT_TRAINING = "CLIENT_TRAINING"
@@ -32,7 +31,7 @@ class RoundState(str, Enum):
 
 
 # Allowed state transitions graph
-VALID_TRANSITIONS: dict[RoundState, Set[RoundState]] = {
+VALID_TRANSITIONS: dict[RoundState, set[RoundState]] = {
     RoundState.ROUND_CREATED: {RoundState.CLIENT_ASSIGNED, RoundState.ROUND_FAILED},
     RoundState.CLIENT_ASSIGNED: {RoundState.CLIENT_TRAINING, RoundState.ROUND_FAILED},
     RoundState.CLIENT_TRAINING: {RoundState.UPDATE_SUBMITTED, RoundState.ROUND_FAILED},

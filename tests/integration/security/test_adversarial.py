@@ -1,8 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
-from apps.api.main import app
-from apps.api.api.db.session import engine
+
 from apps.api.api.db.models import Base
+from apps.api.api.db.session import engine
+from apps.api.main import app
 
 client = TestClient(app)
 
@@ -25,7 +26,7 @@ def test_duplicate_submission():
     }
     r1 = client.post("/updates/", json=payload)
     assert r1.status_code == 200
-    
+
     # Exact duplicate ID
     r2 = client.post("/updates/", json=payload)
     assert r2.status_code == 409

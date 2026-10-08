@@ -1,17 +1,18 @@
 from __future__ import annotations
-from datetime import datetime
-from typing import Optional, TypeVar, Generic, List
-from pydantic import BaseModel, Field
+
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel
 
 T = TypeVar("T")
 
 class APIResponse(BaseModel, Generic[T]):
     success: bool = True
-    data: Optional[T] = None
+    data: T | None = None
     message: str = "OK"
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    items: List[T]
+    items: list[T]
     total: int
     page: int
     page_size: int

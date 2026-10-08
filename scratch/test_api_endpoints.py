@@ -4,7 +4,8 @@ TrustFL API endpoint test using FastAPI TestClient (in-process, no network).
 Tests all major endpoints: health, auth, federation, client, round, update,
 artifact, blockchain, proof — including valid/invalid/missing/duplicate cases.
 """
-import sys, json, os
+import os
+import sys
 
 # Ensure DATABASE_URL uses SQLite so we don't need Postgres running
 os.environ.setdefault("DATABASE_URL", "sqlite:///./scratch_test.db")
@@ -18,9 +19,10 @@ sys.path.insert(0, "/home/sayam/Desktop/TrustFL/packages/blockchain")
 sys.path.insert(0, "/home/sayam/Desktop/TrustFL")
 
 from fastapi.testclient import TestClient
-from apps.api.main import app
-from apps.api.api.db.session import engine
+
 from apps.api.api.db.models import Base
+from apps.api.api.db.session import engine
+from apps.api.main import app
 
 # Create tables
 Base.metadata.drop_all(bind=engine)
@@ -151,7 +153,7 @@ r = check("POST /updates/ — same client/round, different ID (400 — duplicate
     "nonce": "nonce_abc_002"
 }), [400])
 
-r = check("POST /updates/ — nonce replay by new client (400)", 
+r = check("POST /updates/ — nonce replay by new client (400)",
     client.post("/clients/", json={"id": "client_002", "federation_id": "fed_001", "public_key_b64": "dGVzdA=="}),
     [200, 201])
 r = check("POST /updates/ — nonce replay (400)", client.post("/updates/", json={
@@ -242,6 +244,8 @@ if FAIL:
 
 # Cleanup
 Base.metadata.drop_all(bind=engine)
-import os as _os
-try: _os.remove("scratch_test.db")
-except: pass
+
+try:
+    os.remove("scratch_test.db")
+except OSError:
+    pass

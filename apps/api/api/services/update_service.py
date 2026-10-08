@@ -5,14 +5,16 @@ Update submission service with:
 - Nonce replay detection (400)
 """
 from __future__ import annotations
+
 import logging
-from datetime import datetime, timezone
-from typing import List
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime
+
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 from apps.api.api.db.models import Update, UpdateStatus
 from apps.api.api.repositories.updates import UpdateRepository
-from apps.api.api.schemas.updates import UpdateSubmit, UpdateStatusChange
+from apps.api.api.schemas.updates import UpdateStatusChange, UpdateSubmit
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ class UpdateService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Update '{update_id}' not found")
         return u
 
-    def list_by_round(self, round_id: str) -> List[Update]:
+    def list_by_round(self, round_id: str) -> list[Update]:
         return self.repo.get_by_round(round_id)
 
     def update_status(self, update_id: str, payload: UpdateStatusChange) -> Update:
@@ -72,6 +74,6 @@ class UpdateService:
         if payload.verified_at:
             upd.verified_at = payload.verified_at
         elif payload.status == UpdateStatus.VERIFIED:
-            upd.verified_at = datetime.now(timezone.utc)
+            upd.verified_at = datetime.now(UTC)
         logger.info("Updating update %s to status %s", update_id, payload.status)
         return self.repo.save(upd)

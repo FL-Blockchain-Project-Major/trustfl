@@ -12,10 +12,9 @@ Tests:
 import tempfile
 import unittest
 from pathlib import Path
-from PIL import Image
 
 from trustfl_ml.checkpoint import ParameterSerialization
-from trustfl_ml.config import ClientNodeConfig, DatasetConfig, TrainingConfig
+from trustfl_ml.config import DatasetConfig, TrainingConfig
 from trustfl_ml.dataset import DatasetValidationError, VisDroneParser
 from trustfl_ml.yolo_wrapper import YOLOModelWrapper
 
@@ -37,8 +36,8 @@ class TestMLCore(unittest.TestCase):
         data_bytes = ParameterSerialization.parameters_to_bytes(orig_params)
         restored = ParameterSerialization.bytes_to_parameters(data_bytes)
         self.assertEqual(len(orig_params), len(restored))
-        for layer_orig, layer_res in zip(orig_params, restored):
-            for v1, v2 in zip(layer_orig, layer_res):
+        for layer_orig, layer_res in zip(orig_params, restored, strict=False):
+            for v1, v2 in zip(layer_orig, layer_res, strict=False):
                 self.assertAlmostEqual(v1, v2, places=6)
 
         # Checkpoint disk save and load

@@ -1,7 +1,6 @@
 """Unit tests for cryptographic key management."""
 from __future__ import annotations
 
-import base64
 import os
 import tempfile
 import unittest
@@ -32,7 +31,7 @@ class TestClientIdentity(unittest.TestCase):
     def test_load_or_generate_creates_file(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "private.pem"
-            identity = ClientIdentity.load_or_generate("c1", path)
+            ClientIdentity.load_or_generate("c1", path)
             self.assertTrue(path.exists())
             # File must be owner-readable only
             mode = oct(os.stat(path).st_mode)[-3:]

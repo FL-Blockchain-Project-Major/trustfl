@@ -3,9 +3,10 @@ Configuration dataclasses for YOLO training, datasets, and federated rounds.
 """
 
 from __future__ import annotations
+
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -15,7 +16,7 @@ class DatasetConfig:
     annotations_dir: str
     dataset_name: str = "VisDrone"
     num_classes: int = 10
-    classes: List[str] = field(
+    classes: list[str] = field(
         default_factory=lambda: [
             "pedestrian",
             "people",
@@ -51,11 +52,11 @@ class TrainingConfig:
     optimizer: str = "AdamW"
     weight_decay: float = 0.0005
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> TrainingConfig:
+    def from_dict(cls, data: dict[str, Any]) -> TrainingConfig:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 

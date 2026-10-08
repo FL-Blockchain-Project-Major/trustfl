@@ -7,12 +7,9 @@ so no circomlibjs Python bindings are needed.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import subprocess
-import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 ZKP_DIR = Path(__file__).parent.parent  # packages/zkp/
 
@@ -81,7 +78,7 @@ def build_proof_metadata(
     round_id: int,
     model_version: int,
     public_commitment: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build on-chain safe proof metadata dict.
     Private commitment is intentionally excluded.

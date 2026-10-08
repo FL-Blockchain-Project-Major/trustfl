@@ -25,8 +25,12 @@ Steps:
   18. Dashboard: check API data is reflected
 """
 
-import sys, json, secrets, os, time, urllib.request, urllib.error, hashlib
-from pathlib import Path
+import json
+import secrets
+import sys
+import time
+import urllib.error
+import urllib.request
 
 # Python path setup
 for p in ["packages/schemas","packages/crypto","packages/storage",
@@ -138,7 +142,7 @@ def main():
              "Connection refused",
              "Next.js dev server is not running")
     # 500 is the known defect (empty layout.tsx) — dashboard process is alive
-    ok(f"Dashboard server running", f"HTTP {dash_code}")
+    ok("Dashboard server running", f"HTTP {dash_code}")
     if dash_code == 500:
         ok("Known defect: app/layout.tsx is empty (0 bytes) → Next.js cannot render any route",
            "Recorded, not a blocker for backend workflow")
@@ -161,7 +165,7 @@ def main():
         ok("Federation already exists — fetching current state")
         _, resp = api("GET", f"/federations/{FED_ID}")
     fed = resp["data"]
-    ok(f"Federation ready", f"id={fed['id']} status={fed['status']}")
+    ok("Federation ready", f"id={fed['id']} status={fed['status']}")
     mark_done(f"Federation created: {FED_ID}")
 
     # ── Step 3: Register clients ───────────────────────────────────
@@ -180,7 +184,7 @@ def main():
             ok(f"Client {cid} already registered")
         else:
             client = resp["data"]
-            ok(f"Client registered", f"id={client['id']} active={client['is_active']}")
+            ok("Client registered", f"id={client['id']} active={client['is_active']}")
     mark_done("2 clients registered with Ed25519 public keys")
 
     # ── Step 4: Create training round ─────────────────────────────
@@ -197,16 +201,15 @@ def main():
         ok(f"Round {ROUND_ID} already exists")
         _, resp = api("GET", f"/rounds/{ROUND_ID}")
     rnd = resp["data"]
-    ok(f"Round created", f"id={rnd['id']} status={rnd['status']} model_version={rnd['model_version']}")
+    ok("Round created", f"id={rnd['id']} status={rnd['status']} model_version={rnd['model_version']}")
     # Advance to ACTIVE
     _, upd = api("PUT", f"/rounds/{ROUND_ID}/status", {"status": "ACTIVE"})
-    ok(f"Round activated", f"status={upd['data']['status']}")
+    ok("Round activated", f"status={upd['data']['status']}")
     mark_done(f"Round {ROUND_ID} created and set ACTIVE")
 
     # ── Step 5: Client local training ─────────────────────────────
     step(5, "Client local training (FL core)")
     from trustfl_core.model import TinyLinearModel, generate_synthetic_data
-    from trustfl_core.flower_app import FitIns, FitRes
 
     global_model = TinyLinearModel(in_features=4, seed=42)
     initial_params = global_model.get_parameters()
@@ -326,8 +329,8 @@ def main():
 
     # ── Step 10: Blockchain — register clients ─────────────────────
     step(10, "Blockchain: register clients")
+
     from web3 import Web3
-    import time as _time
 
     w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
     if not w3.is_connected():
@@ -335,7 +338,7 @@ def main():
              "Connection refused", "Hardhat node is not running")
 
     chain_id = w3.eth.chain_id
-    ok(f"RPC connected", f"chain_id={chain_id} block={w3.eth.block_number}")
+    ok("RPC connected", f"chain_id={chain_id} block={w3.eth.block_number}")
 
     with open("packages/contracts/deployments/localhost/contracts.json") as f:
         deploy_data = json.load(f)["contracts"]
@@ -343,7 +346,7 @@ def main():
     ADMIN_PK = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     admin = w3.eth.account.from_key(ADMIN_PK)
 
-    def send_tx(contract, fn, *args):
+    def send_tx(_contract, fn, *args):
         tx = fn(*args).build_transaction({
             "from": admin.address,
             "nonce": w3.eth.get_transaction_count(admin.address),
@@ -364,7 +367,7 @@ def main():
     )
 
     bc_client_idx = {}
-    for i, (cid, identity) in enumerate(identities.items()):
+    for _i, (cid, identity) in enumerate(identities.items()):
         # On-chain clientId = a deterministic string based on cid
         bc_cid = f"bc-{cid}"
         bc_pubkey = identity.public_key_b64[:64]  # first 64 chars of b64 pubkey (string)
@@ -402,10 +405,10 @@ def main():
     BC_ROUND_ID = 1
     receipt = send_tx(round_reg, round_reg.functions.createRound,
                       BC_ROUND_ID, MODEL_VERSION)
-    ok(f"Round created on-chain", f"tx={receipt.transactionHash.hex()[:20]}...")
+    ok("Round created on-chain", f"tx={receipt.transactionHash.hex()[:20]}...")
 
     receipt = send_tx(round_reg, round_reg.functions.activateRound, BC_ROUND_ID)
-    ok(f"Round activated on-chain", f"tx={receipt.transactionHash.hex()[:20]}...")
+    ok("Round activated on-chain", f"tx={receipt.transactionHash.hex()[:20]}...")
     api("POST", "/blockchain/transactions", {
         "id": "bc-create-round-1", "tx_hash": receipt.transactionHash.hex(),
         "contract_name": "TrainingRoundRegistry", "function_name": "activateRound",
@@ -432,7 +435,7 @@ def main():
 
     # ── Step 13: ZKP — generate commitments ───────────────────────
     step(13, "ZKP: generate Poseidon commitments")
-    from trustfl_zkp import compute_poseidon_commitment, build_proof_metadata
+    from trustfl_zkp import build_proof_metadata, compute_poseidon_commitment
 
     zkp_proofs = {}
     for i, cid in enumerate(identities.keys()):
@@ -450,7 +453,7 @@ def main():
         if str(priv_commit) in str(proof_meta):
             fail(f"Private witness leaked into proof metadata for {cid}",
                  str(proof_meta), "build_proof_metadata must not include private commitment")
-        ok(f"Private witness NOT in proof metadata ✓")
+        ok("Private witness NOT in proof metadata ✓")
 
         # Submit proof to API
         upd_id = update_ids[cid]
@@ -553,7 +556,7 @@ def main():
     ok("Global model artifact recorded in API", f"id={art_id}")
 
     # Mark updates as aggregated
-    for cid, upd_id in update_ids.items():
+    for _cid, upd_id in update_ids.items():
         api("PUT", f"/updates/{upd_id}/status", {"status": "AGGREGATED"})
     ok("Updates marked AGGREGATED in API")
     mark_done(f"New global model ({NEW_MODEL_VERSION}) stored, artifact recorded in API")
@@ -600,7 +603,7 @@ def main():
     for check, result in checks.items():
         if not result:
             fail(f"Dashboard data check failed: {check}",
-                 f"API state inconsistent for dashboard rendering")
+                 "API state inconsistent for dashboard rendering")
         ok(f"Dashboard data: {check}")
 
     # Note dashboard render status
@@ -616,14 +619,14 @@ def main():
     print("\nAll completed steps:")
     for s in _workflow_steps_done:
         print(f"  {s}")
-    print(f"\nFirst Failing Step: None — all 19 steps completed")
-    print(f"\nKnown Defect (non-blocker for backend):")
-    print(f"  apps/dashboard/app/layout.tsx is empty (0 bytes)")
-    print(f"  Effect: Dashboard HTTP 500 on all routes")
-    print(f"  Does NOT affect: API, blockchain, ZKP, storage, FL core")
-    print(f"\nFINAL VERDICT: NOT READY")
-    print(f"  Reason: Dashboard is non-functional (layout.tsx empty)")
-    print(f"  All backend steps: READY")
+    print("\nFirst Failing Step: None — all 19 steps completed")
+    print("\nKnown Defect (non-blocker for backend):")
+    print("  apps/dashboard/app/layout.tsx is empty (0 bytes)")
+    print("  Effect: Dashboard HTTP 500 on all routes")
+    print("  Does NOT affect: API, blockchain, ZKP, storage, FL core")
+    print("\nFINAL VERDICT: NOT READY")
+    print("  Reason: Dashboard is non-functional (layout.tsx empty)")
+    print("  All backend steps: READY")
     print('='*60)
 
 if __name__ == "__main__":

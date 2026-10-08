@@ -1,6 +1,6 @@
 import json
-import os
 import sys
+
 from web3 import Web3
 
 # Hardhat default accounts
@@ -86,9 +86,11 @@ test("Finalize Round (Admin)", round_reg, "finalizeRound", admin_acct, (1, "v2.0
 
 print("\n=== BLOCKCHAIN VERDICT ===")
 print(f"Passed Transactions: {len(passed)}")
-for p in passed: print(f" - {p}")
+for p in passed:
+    print(f" - {p}")
 print(f"Failed Transactions: {len(failed)}")
-for f in failed: print(f" - {f}")
+for f in failed:
+    print(f" - {f}")
 
 if len(failed) == 0:
     print("\nFINAL VERDICT: READY FOR NEXT STAGE")

@@ -1,7 +1,8 @@
 import logging
-from typing import List
-from sqlalchemy.orm import Session
+
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 from apps.api.api.db.models import ModelArtifact
 from apps.api.api.repositories.artifacts import ArtifactRepository
 from apps.api.api.schemas.artifacts import ArtifactCreate
@@ -25,5 +26,5 @@ class ArtifactService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Artifact '{artifact_id}' not found")
         return a
 
-    def list_by_federation(self, federation_id: str) -> List[ModelArtifact]:
+    def list_by_federation(self, federation_id: str) -> list[ModelArtifact]:
         return self.repo.get_by_federation(federation_id)

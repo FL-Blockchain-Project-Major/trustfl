@@ -22,14 +22,12 @@ import base64
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-
 
 # ---------------------------------------------------------------------------
 # Serialisation helpers
@@ -96,12 +94,12 @@ class ClientIdentity:
     # ------------------------------------------------------------------
 
     @classmethod
-    def generate(cls, client_id: str) -> "ClientIdentity":
+    def generate(cls, client_id: str) -> ClientIdentity:
         """Generate a fresh Ed25519 key-pair for client_id."""
         return cls(client_id, Ed25519PrivateKey.generate())
 
     @classmethod
-    def load_pem(cls, client_id: str, pem_bytes: bytes) -> "ClientIdentity":
+    def load_pem(cls, client_id: str, pem_bytes: bytes) -> ClientIdentity:
         """Load from PKCS8 PEM-encoded private key bytes."""
         priv = serialization.load_pem_private_key(pem_bytes, password=None)
         if not isinstance(priv, Ed25519PrivateKey):
@@ -109,7 +107,7 @@ class ClientIdentity:
         return cls(client_id, priv)
 
     @classmethod
-    def load_or_generate(cls, client_id: str, key_path: Optional[Path] = None) -> "ClientIdentity":
+    def load_or_generate(cls, client_id: str, key_path: Path | None = None) -> ClientIdentity:
         """
         Load existing key from key_path if present, otherwise generate and
         optionally save to key_path.  key_path must NOT be inside the repo.
@@ -180,7 +178,7 @@ class PublicKeyRegistry:
         with self._lock:
             self._store[client_id] = key
 
-    def get(self, client_id: str) -> Optional[Ed25519PublicKey]:
+    def get(self, client_id: str) -> Ed25519PublicKey | None:
         with self._lock:
             return self._store.get(client_id)
 

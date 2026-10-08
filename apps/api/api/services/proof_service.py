@@ -1,7 +1,8 @@
 import logging
-from typing import List
-from sqlalchemy.orm import Session
+
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 from apps.api.api.db.models import Proof
 from apps.api.api.repositories.proofs import ProofRepository
 from apps.api.api.schemas.proofs import ProofSubmit
@@ -25,7 +26,7 @@ class ProofService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Proof '{proof_id}' not found")
         return p
 
-    def list_by_update(self, update_id: str) -> List[Proof]:
+    def list_by_update(self, update_id: str) -> list[Proof]:
         return self.repo.get_by_update(update_id)
 
     def set_validity(self, proof_id: str, is_valid: bool) -> Proof:

@@ -30,8 +30,7 @@ import json
 import secrets
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Dict
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # UpdateMetadata
@@ -68,11 +67,11 @@ class UpdateMetadata:
     def canonical_hash_hex(self) -> str:
         return self.canonical_hash().hex()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "UpdateMetadata":
+    def from_dict(cls, d: dict[str, Any]) -> UpdateMetadata:
         return cls(
             federation_id=d["federation_id"],
             round_id=int(d["round_id"]),

@@ -1,13 +1,13 @@
 """Coordinator network package."""
 from .protocol import (
-    RegisterRequest,
-    RegisterResponse,
     HeartbeatRequest,
     HeartbeatResponse,
+    RegisterRequest,
+    RegisterResponse,
     RoundInstructionsResponse,
+    StatusResponse,
     SubmitUpdateRequest,
     SubmitUpdateResponse,
-    StatusResponse,
 )
 from .server import CoordinatorServer, CoordinatorState
 

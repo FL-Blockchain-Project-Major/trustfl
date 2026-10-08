@@ -18,7 +18,7 @@ import os
 import signal
 import sys
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,19 +51,19 @@ def _build_train_fn(
     """
     try:
         sys.path.insert(0, "/app/packages/ml_core")
+        from trustfl_ml.config import TrainingConfig
         from trustfl_ml.yolo_wrapper import YOLOModelWrapper
-        from trustfl_ml.config import TrainingConfig, DatasetConfig, ClientNodeConfig
 
         def real_train_fn(
-            round_id: int,
-            global_params: List[List[float]],
-            config: Dict[str, Any],
+            _round_id: int,
+            global_params: list[list[float]],
+            _config: dict[str, Any],
         ):
             model = YOLOModelWrapper()
             if global_params:
                 model.set_parameters(global_params)
             train_cfg = TrainingConfig(local_epochs=epochs)
-            metrics = model.train_on_dataset(
+            model.train_on_dataset(
                 images_dir=images_dir,
                 annotations_dir=annotations_dir,
                 config=train_cfg,
@@ -84,9 +84,9 @@ def _build_train_fn(
         logger.warning("ML core not available — using synthetic train fn.")
 
         def synthetic_train_fn(
-            round_id: int,
-            global_params: List[List[float]],
-            config: Dict[str, Any],
+            _round_id: int,
+            global_params: list[list[float]],
+            _config: dict[str, Any],
         ):
             import random
             params = global_params if global_params else [[random.gauss(0, 0.1) for _ in range(10)]]
@@ -129,7 +129,7 @@ def main() -> None:
         poll_interval=args.poll_interval,
     )
 
-    def _shutdown(signum, frame):  # noqa: ANN001
+    def _shutdown(signum, _frame):  # noqa: ANN001
         logger.info("Signal %d received — stopping.", signum)
         agent.stop()
         sys.exit(0)

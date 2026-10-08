@@ -68,6 +68,16 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "7.0"
 addopts = "-ra -q --strict-markers"
+pythonpath = [
+    "packages/schemas",
+    "packages/crypto",
+    "packages/storage",
+    "packages/fl_core",
+    "packages/ml_core",
+    "packages/blockchain",
+    "packages/core",
+    "packages/zkp",
+]
 testpaths = [
     "tests",
 ]

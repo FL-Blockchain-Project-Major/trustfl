@@ -4,9 +4,10 @@ Implements modern ServerApp, FedAvg orchestration, and simulation runner.
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
 
-from trustfl_core.flower_app import ClientApp, FedAvg, ServerApp
+from typing import Any
+
+from trustfl_core.flower_app import FedAvg, ServerApp
 from trustfl_core.model import Parameters, TinyLinearModel
 
 
@@ -18,7 +19,7 @@ def create_server_app(
     min_evaluate_clients: int = 1,
     min_available_clients: int = 1,
     random_seed: int = 42,
-    initial_parameters: Optional[Parameters] = None,
+    initial_parameters: Parameters | None = None,
 ) -> ServerApp:
     """
     Factory creating a configured ServerApp with FedAvg strategy.
@@ -42,8 +43,8 @@ def run_simulation(
     learning_rate: float = 0.05,
     client_sampling_fraction: float = 1.0,
     random_seed: int = 42,
-    failing_clients: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    failing_clients: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Executes a complete federated learning simulation.
 
@@ -82,7 +83,7 @@ def run_simulation(
         learning_rate=learning_rate,
     )
 
-    history: List[Dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
 
     for round_num in range(1, num_rounds + 1):
         round_res = server_app.fit_round(

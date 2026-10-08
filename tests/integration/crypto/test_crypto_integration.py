@@ -12,25 +12,23 @@ This test proves end-to-end that:
 """
 from __future__ import annotations
 
-import base64
 import json
-import sys
 import os
+import sys
 import threading
 import time
 import unittest
-import urllib.request
 import urllib.error
+import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "packages", "crypto"))
 
+from coordinator.network.server import CoordinatorServer
+from trustfl_crypto.canonical import hash_parameters
 from trustfl_crypto.keys import ClientIdentity, PublicKeyRegistry
 from trustfl_crypto.signer import SignedUpdate, UpdateSigner
 from trustfl_crypto.verifier import UpdateVerifier, VerificationStatus
-from trustfl_crypto.canonical import hash_parameters
-
-from coordinator.network.server import CoordinatorServer
 
 # ---------------------------------------------------------------------------
 # Crypto-aware coordinator (thin wrapper)

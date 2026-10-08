@@ -2,8 +2,8 @@
 Unit test asserting repository bootstrap and basic structure sanity.
 """
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 
 class TestBootstrap(unittest.TestCase):

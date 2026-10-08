@@ -5,13 +5,16 @@ using the modern Flower ServerApp/ClientApp and YOLO architecture.
 """
 
 from __future__ import annotations
+
 import json
 from pathlib import Path
-from apps.client.yolo_client import TrustFLYOLOClient
-from apps.coordinator.coordinator import create_server_app
+
 from trustfl_core.flower_app import ClientApp
 from trustfl_ml.config import ClientNodeConfig, DatasetConfig, TrainingConfig
 from trustfl_ml.yolo_wrapper import YOLOModelWrapper
+
+from apps.client.yolo_client import TrustFLYOLOClient
+from apps.coordinator.coordinator import create_server_app
 
 
 def main() -> None:
@@ -98,8 +101,8 @@ def main() -> None:
     # 5. Measure Parameter Shift
     final_params = server_app.parameters
     total_delta = sum(
-        sum(abs(f - i) for f, i in zip(layer_f, layer_i))
-        for layer_f, layer_i in zip(final_params, initial_params)
+        sum(abs(f - i) for f, i in zip(layer_f, layer_i, strict=False))
+        for layer_f, layer_i in zip(final_params, initial_params, strict=False)
     )
     print(f"\nTotal Global Parameter Update Magnitude (L1 norm): {total_delta:.6f}")
 

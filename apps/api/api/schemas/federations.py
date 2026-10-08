@@ -1,27 +1,30 @@
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
+
 from apps.api.api.db.models import FederationStatus
+
 
 class FederationCreate(BaseModel):
     id: str = Field(..., min_length=1, max_length=64)
     name: str = Field(..., min_length=1, max_length=256)
-    description: Optional[str] = None
+    description: str | None = None
     min_clients: int = Field(default=2, ge=1)
     max_rounds: int = Field(default=10, ge=1)
 
 class FederationUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[FederationStatus] = None
-    min_clients: Optional[int] = Field(default=None, ge=1)
-    max_rounds: Optional[int] = Field(default=None, ge=1)
+    name: str | None = None
+    description: str | None = None
+    status: FederationStatus | None = None
+    min_clients: int | None = Field(default=None, ge=1)
+    max_rounds: int | None = Field(default=None, ge=1)
 
 class FederationOut(BaseModel):
     id: str
     name: str
-    description: Optional[str]
+    description: str | None
     status: FederationStatus
     min_clients: int
     max_rounds: int

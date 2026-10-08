@@ -9,10 +9,11 @@ Provides:
 """
 
 from __future__ import annotations
+
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class ParameterSerialization:
@@ -22,7 +23,7 @@ class ParameterSerialization:
     """
 
     @staticmethod
-    def parameters_to_bytes(parameters: List[List[float]]) -> bytes:
+    def parameters_to_bytes(parameters: list[list[float]]) -> bytes:
         """Serializes parameter list into deterministic byte sequence."""
         # Clean rounding to avoid floating point cross-platform drift
         payload = {
@@ -33,7 +34,7 @@ class ParameterSerialization:
         return json.dumps(payload, sort_keys=True).encode("utf-8")
 
     @staticmethod
-    def bytes_to_parameters(data: bytes) -> List[List[float]]:
+    def bytes_to_parameters(data: bytes) -> list[list[float]]:
         """Restores parameter list from serialized bytes."""
         payload = json.loads(data.decode("utf-8"))
         if "parameters" not in payload:
@@ -48,10 +49,10 @@ class ParameterSerialization:
     @classmethod
     def save_checkpoint(
         cls,
-        parameters: List[List[float]],
+        parameters: list[list[float]],
         output_path: Path | str,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Path, str]:
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[Path, str]:
         """
         Saves parameter checkpoint with metadata and returns (file_path, sha256_hash).
         """
@@ -71,7 +72,7 @@ class ParameterSerialization:
         return path, file_hash
 
     @classmethod
-    def load_checkpoint(cls, checkpoint_path: Path | str) -> Tuple[List[List[float]], Dict[str, Any]]:
+    def load_checkpoint(cls, checkpoint_path: Path | str) -> tuple[list[list[float]], dict[str, Any]]:
         """
         Loads and verifies parameter checkpoint from disk.
         """

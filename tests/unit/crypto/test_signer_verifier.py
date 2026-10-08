@@ -8,7 +8,6 @@ from trustfl_crypto.keys import ClientIdentity, PublicKeyRegistry
 from trustfl_crypto.signer import SignedUpdate, UpdateSigner
 from trustfl_crypto.verifier import UpdateVerifier, VerificationStatus
 
-
 PARAMS = [[0.1, 0.2, 0.3], [0.9, 0.8]]
 FED_ID = "fed-test"
 MODEL_VER = "sha256:deadbeef"
@@ -180,9 +179,7 @@ class TestSignerAndVerifier(unittest.TestCase):
     def test_future_timestamp_rejected(self):
         _, signer, _, verifier = _setup(clock_skew=5.0)
         future_ts = int(time.time()) + 3600   # 1 hour in the future
-        from trustfl_crypto.canonical import (
-            UpdateMetadata, generate_nonce, hash_parameters
-        )
+        from trustfl_crypto.canonical import UpdateMetadata, generate_nonce, hash_parameters
         meta = UpdateMetadata(
             federation_id=FED_ID,
             round_id=1,
@@ -209,9 +206,7 @@ class TestSignerAndVerifier(unittest.TestCase):
     def test_past_timestamp_rejected(self):
         _, signer, _, verifier = _setup(clock_skew=5.0)
         old_ts = int(time.time()) - 3600
-        from trustfl_crypto.canonical import (
-            UpdateMetadata, generate_nonce, hash_parameters
-        )
+        from trustfl_crypto.canonical import UpdateMetadata, generate_nonce, hash_parameters
         meta = UpdateMetadata(
             federation_id=FED_ID,
             round_id=1,

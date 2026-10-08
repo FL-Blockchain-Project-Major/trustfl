@@ -7,9 +7,8 @@ No framework dependencies — compatible with any HTTP client/server.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional
-
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -19,9 +18,9 @@ def _to_json(obj: Any) -> str:
     return json.dumps(asdict(obj) if hasattr(obj, "__dataclass_fields__") else obj)
 
 
-def _from_dict(cls, data: Dict[str, Any]):
+def _from_dict(cls, data: dict[str, Any]):
     """Construct a dataclass from a dict, ignoring unknown keys."""
-    known = {f for f in cls.__dataclass_fields__}
+    known = set(cls.__dataclass_fields__)
     return cls(**{k: v for k, v in data.items() if k in known})
 
 
@@ -32,13 +31,13 @@ def _from_dict(cls, data: Dict[str, Any]):
 @dataclass
 class RegisterRequest:
     client_id: str
-    capabilities: Dict[str, Any] = field(default_factory=dict)
+    capabilities: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RegisterRequest":
+    def from_dict(cls, data: dict[str, Any]) -> RegisterRequest:
         return _from_dict(cls, data)
 
 
@@ -52,7 +51,7 @@ class RegisterResponse:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RegisterResponse":
+    def from_dict(cls, data: dict[str, Any]) -> RegisterResponse:
         return _from_dict(cls, data)
 
 
@@ -69,7 +68,7 @@ class HeartbeatRequest:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "HeartbeatRequest":
+    def from_dict(cls, data: dict[str, Any]) -> HeartbeatRequest:
         return _from_dict(cls, data)
 
 
@@ -83,7 +82,7 @@ class HeartbeatResponse:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "HeartbeatResponse":
+    def from_dict(cls, data: dict[str, Any]) -> HeartbeatResponse:
         return _from_dict(cls, data)
 
 
@@ -96,14 +95,14 @@ class RoundInstructionsResponse:
     """Sent when a round is active and the client should train."""
     is_active: bool
     round_id: int = 0
-    global_parameters: List[List[float]] = field(default_factory=list)
-    config: Dict[str, Any] = field(default_factory=dict)
+    global_parameters: list[list[float]] = field(default_factory=list)
+    config: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RoundInstructionsResponse":
+    def from_dict(cls, data: dict[str, Any]) -> RoundInstructionsResponse:
         return _from_dict(cls, data)
 
 
@@ -115,19 +114,19 @@ class RoundInstructionsResponse:
 class SubmitUpdateRequest:
     client_id: str
     round_id: int
-    parameters: List[List[float]]
+    parameters: list[list[float]]
     num_examples: int
-    metrics: Dict[str, float] = field(default_factory=dict)
-    
+    metrics: dict[str, float] = field(default_factory=dict)
+
     # Cryptographic fields added in Stage 07
-    metadata: Optional[Dict[str, Any]] = None
-    signature: Optional[str] = None
+    metadata: dict[str, Any] | None = None
+    signature: str | None = None
 
     def to_json(self) -> str:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SubmitUpdateRequest":
+    def from_dict(cls, data: dict[str, Any]) -> SubmitUpdateRequest:
         return _from_dict(cls, data)
 
 
@@ -140,7 +139,7 @@ class SubmitUpdateResponse:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SubmitUpdateResponse":
+    def from_dict(cls, data: dict[str, Any]) -> SubmitUpdateResponse:
         return _from_dict(cls, data)
 
 
@@ -153,12 +152,12 @@ class StatusResponse:
     status: str                          # WAITING | ROUND_ACTIVE | DONE
     current_round: int = 0
     num_rounds: int = 0
-    active_clients: List[str] = field(default_factory=list)
-    round_history: List[Dict[str, Any]] = field(default_factory=list)
+    active_clients: list[str] = field(default_factory=list)
+    round_history: list[dict[str, Any]] = field(default_factory=list)
 
     def to_json(self) -> str:
         return _to_json(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StatusResponse":
+    def from_dict(cls, data: dict[str, Any]) -> StatusResponse:
         return _from_dict(cls, data)

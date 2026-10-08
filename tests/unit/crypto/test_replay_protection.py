@@ -1,10 +1,9 @@
 """Unit tests for replay protection mechanisms."""
 from __future__ import annotations
 
-import time
 import unittest
 
-from trustfl_crypto.canonical import generate_nonce, hash_parameters, UpdateMetadata
+from trustfl_crypto.canonical import UpdateMetadata, generate_nonce
 from trustfl_crypto.keys import ClientIdentity, PublicKeyRegistry
 from trustfl_crypto.signer import SignedUpdate, UpdateSigner
 from trustfl_crypto.verifier import (
@@ -122,7 +121,7 @@ class TestReplayProtection(unittest.TestCase):
 
         s1 = signer1.sign(round_id=1, model_version=MODEL_VER,
                           parameters=PARAMS, num_examples=10, metrics={})
-        s2 = signer2.sign(round_id=1, model_version=MODEL_VER,
+        signer2.sign(round_id=1, model_version=MODEL_VER,
                           parameters=PARAMS, num_examples=10, metrics={})
 
         verifier.verify(s1, expected_client_id="c1")   # accepted

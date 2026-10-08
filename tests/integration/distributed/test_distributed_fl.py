@@ -12,18 +12,17 @@ test_05  round timeout with partial update — timed_out flag
 """
 from __future__ import annotations
 
-import sys
 import os
-import time
+import sys
 import threading
+import time
 import unittest
 
 # Make sure the coordinator network package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps"))
 
-from coordinator.network.server import CoordinatorServer, CoordinatorState
-from coordinator.network.protocol import RegisterRequest
 from client.network.agent import DistributedClientAgent
+from coordinator.network.server import CoordinatorServer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,7 +40,7 @@ def _get_port() -> int:
     return p
 
 
-def _dummy_train(round_id, global_params, config):
+def _dummy_train(round_id, global_params, _config):
     """Instant deterministic training fn — returns perturbed params."""
     if global_params:
         updated = [[v + 0.01 * round_id for v in layer] for layer in global_params]
@@ -65,8 +64,8 @@ def _make_agent(client_id: str, port: int, **kwargs) -> DistributedClientAgent:
 
 def _wait_for_server(port: int, timeout: float = 5.0) -> bool:
     """Block until the server is accepting connections."""
-    import urllib.request
     import urllib.error
+    import urllib.request
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:

@@ -1,27 +1,30 @@
 from __future__ import annotations
-from datetime import datetime
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+
 import json
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
+
 
 class ClientRegister(BaseModel):
     id: str = Field(..., min_length=1, max_length=64)
     federation_id: str
     public_key_b64: str
-    capabilities: Optional[Dict[str, Any]] = None
+    capabilities: dict[str, Any] | None = None
 
 class ClientOut(BaseModel):
     id: str
     federation_id: str
     public_key_b64: str
     is_active: bool
-    capabilities: Optional[Dict[str, Any]] = None
+    capabilities: dict[str, Any] | None = None
     registered_at: datetime
-    last_seen_at: Optional[datetime]
+    last_seen_at: datetime | None
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_orm_with_caps(cls, obj) -> "ClientOut":
+    def from_orm_with_caps(cls, obj) -> ClientOut:
         caps = None
         if obj.capabilities:
             try:

@@ -20,16 +20,13 @@ OK                    all checks passed
 from __future__ import annotations
 
 import enum
-import hashlib
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import FrozenSet, Optional, Set
+from dataclasses import dataclass
 
-from .canonical import UpdateMetadata, hash_parameters
+from .canonical import hash_parameters
 from .keys import PublicKeyRegistry
 from .signer import SignedUpdate
-
 
 # ---------------------------------------------------------------------------
 # Result enum
@@ -81,7 +78,7 @@ class NonceStore:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # round_id → set of nonce strings
-        self._by_round: dict[int, Set[str]] = {}
+        self._by_round: dict[int, set[str]] = {}
 
     def check_and_add(self, nonce: str, round_id: int) -> bool:
         """
@@ -134,7 +131,7 @@ class UpdateVerifier:
         self.clock_skew = clock_skew_seconds
         self.nonce_store = NonceStore()
         self._current_round: int = 0
-        self._accepted_versions: FrozenSet[str] = frozenset()
+        self._accepted_versions: frozenset[str] = frozenset()
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -142,7 +139,7 @@ class UpdateVerifier:
     def set_round(
         self,
         current_round: int,
-        accepted_model_versions: Optional[Set[str]] = None,
+        accepted_model_versions: set[str] | None = None,
     ) -> None:
         """Called by coordinator when a new round begins."""
         with self._lock:

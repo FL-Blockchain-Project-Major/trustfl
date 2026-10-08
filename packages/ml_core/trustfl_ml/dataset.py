@@ -23,12 +23,13 @@ YOLO normalized format:
 """
 
 from __future__ import annotations
+
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+
 from PIL import Image
 
-VISDRONE_CLASSES: Dict[int, str] = {
+VISDRONE_CLASSES: dict[int, str] = {
     1: "pedestrian",
     2: "people",
     3: "bicycle",
@@ -53,7 +54,7 @@ class VisDroneParser:
     @staticmethod
     def parse_annotation_line(
         line: str, img_width: int, img_height: int
-    ) -> Optional[Tuple[int, float, float, float, float]]:
+    ) -> tuple[int, float, float, float, float] | None:
         """
         Parses a single VisDrone annotation line.
         Returns (yolo_class_id, x_center, y_center, w, h) or None if ignored/invalid.
@@ -101,7 +102,7 @@ class VisDroneParser:
         images_dir: Path | str,
         annotations_dir: Path | str,
         check_images_readable: bool = True,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Validates presence and pairing of images and annotations.
         Raises DatasetValidationError on invalid, corrupted or missing inputs.
@@ -135,14 +136,14 @@ class VisDroneParser:
                         if w <= 0 or h <= 0:
                             raise DatasetValidationError(f"Corrupt image dimensions in {img_path}")
                 except Exception as e:
-                    raise DatasetValidationError(f"Failed to read image {img_path}: {e}")
+                    raise DatasetValidationError(f"Failed to read image {img_path}: {e}") from e
             else:
                 w, h = 1920, 1080
 
             try:
                 content = ann_path.read_text(encoding="utf-8")
             except Exception as e:
-                raise DatasetValidationError(f"Failed to read annotation file {ann_path}: {e}")
+                raise DatasetValidationError(f"Failed to read annotation file {ann_path}: {e}") from e
 
             for line in content.splitlines():
                 parsed = cls.parse_annotation_line(line, w, h)
@@ -167,7 +168,7 @@ class VisDroneParser:
         annotations_dir: Path | str,
         output_images_dir: Path | str,
         output_labels_dir: Path | str,
-        max_samples: Optional[int] = None,
+        max_samples: int | None = None,
     ) -> int:
         """
         Converts VisDrone annotations to YOLO formatted labels and symlinks/copies images.

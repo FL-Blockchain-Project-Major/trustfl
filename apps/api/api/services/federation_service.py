@@ -1,9 +1,10 @@
 import logging
-from datetime import datetime, timezone
-from typing import List, Optional
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime
+
 from fastapi import HTTPException, status
-from apps.api.api.db.models import Federation, FederationStatus
+from sqlalchemy.orm import Session
+
+from apps.api.api.db.models import Federation
 from apps.api.api.repositories.federations import FederationRepository
 from apps.api.api.schemas.federations import FederationCreate, FederationUpdate
 
@@ -26,14 +27,14 @@ class FederationService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Federation '{federation_id}' not found")
         return fed
 
-    def list_all(self, skip: int = 0, limit: int = 100) -> List[Federation]:
+    def list_all(self, skip: int = 0, limit: int = 100) -> list[Federation]:
         return self.repo.get_all(skip=skip, limit=limit)
 
     def update(self, federation_id: str, payload: FederationUpdate) -> Federation:
         fed = self.get_or_404(federation_id)
         for field, value in payload.model_dump(exclude_none=True).items():
             setattr(fed, field, value)
-        fed.updated_at = datetime.now(timezone.utc)
+        fed.updated_at = datetime.now(UTC)
         logger.info("Updating federation %s", federation_id)
         return self.repo.save(fed)
 

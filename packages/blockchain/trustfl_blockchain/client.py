@@ -1,7 +1,6 @@
 import json
 import logging
 import time
-from typing import Dict, Any, Optional
 
 from web3 import Web3
 from web3.exceptions import ContractLogicError
@@ -19,7 +18,7 @@ class BlockchainClient:
         rpc_url: str,
         contracts_json_path: str,
         private_key: str,
-        network_name: str = "default",
+        _network_name: str = "default",
         max_retries: int = 3,
     ):
         self.w3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -30,7 +29,7 @@ class BlockchainClient:
         self.w3.eth.default_account = self.account.address
         self.max_retries = max_retries
 
-        with open(contracts_json_path, "r") as f:
+        with open(contracts_json_path) as f:
             data = json.load(f)
 
         contracts = data.get("contracts", {})
@@ -54,17 +53,17 @@ class BlockchainClient:
             try:
                 # We fetch the current nonce per attempt in case of stuck transactions
                 nonce = self.w3.eth.get_transaction_count(self.account.address, 'pending')
-                
+
                 # Build transaction
                 tx = contract_func.build_transaction({
                     'from': self.account.address,
                     'nonce': nonce,
                 })
-                
+
                 signed_tx = self.account.sign_transaction(tx)
                 tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
-                
+
                 if receipt.status == 1:
                     logger.debug(f"{error_context} succeeded (tx: {tx_hash.hex()})")
                     return True
@@ -79,7 +78,7 @@ class BlockchainClient:
             except Exception as e:
                 logger.warning(f"{error_context} exception on attempt {attempt+1}: {e}")
                 time.sleep(1)
-                
+
         logger.error(f"{error_context} failed after {self.max_retries} attempts")
         return False
 

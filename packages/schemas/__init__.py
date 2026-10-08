@@ -5,6 +5,7 @@ Common Pydantic data models for messages, round states, proof payloads, and meta
 """
 
 from trustfl_schemas import (
+    VALID_TRANSITIONS,
     ArtifactId,
     BlockchainEventType,
     BlockchainRecord,
@@ -28,7 +29,6 @@ from trustfl_schemas import (
     TrainingMetrics,
     TrainingRound,
     UpdateId,
-    VALID_TRANSITIONS,
     assert_valid_transition,
     validate_artifact_id,
     validate_client_id,

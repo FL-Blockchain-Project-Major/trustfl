@@ -7,12 +7,13 @@ and creates non-overlapping partitions for federated edge clients.
 """
 
 from __future__ import annotations
+
 import argparse
 import json
 import os
 import shutil
 from pathlib import Path
-from typing import Dict, List
+from typing import Any
 
 from trustfl_ml.dataset import VisDroneParser
 
@@ -23,7 +24,7 @@ def partition_dataset(
     output_dir: Path | str,
     num_clients: int = 3,
     samples_per_client: int = 50,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Creates client partitions from source VisDrone dataset.
     Generates:
@@ -44,7 +45,7 @@ def partition_dataset(
         [f for f in img_dir.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png"}]
     )
 
-    manifest: Dict[str, Any] = {"clients": {}}
+    manifest: dict[str, Any] = {"clients": {}}
 
     for i in range(num_clients):
         cid = f"client_{i}"

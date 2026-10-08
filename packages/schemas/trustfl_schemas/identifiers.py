@@ -12,6 +12,7 @@ Identifiers provide prefix-based formatting and validation for all core domain e
 
 import re
 from typing import Annotated
+
 from trustfl_schemas.base import AfterValidator, BaseModel, Field
 
 

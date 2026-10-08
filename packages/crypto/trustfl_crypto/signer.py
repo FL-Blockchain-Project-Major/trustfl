@@ -15,11 +15,10 @@ from __future__ import annotations
 import base64
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
-from .canonical import UpdateMetadata, build_metadata, hash_parameters
+from .canonical import UpdateMetadata, build_metadata
 from .keys import ClientIdentity
-
 
 # ---------------------------------------------------------------------------
 # SignedUpdate — the wire object sent from client to coordinator
@@ -44,9 +43,9 @@ class SignedUpdate:
 
     metadata: UpdateMetadata
     signature: bytes                 # 64-byte Ed25519 sig
-    parameters: List[List[float]]
+    parameters: list[list[float]]
     num_examples: int
-    metrics: Dict[str, float]
+    metrics: dict[str, float]
 
     # ------------------------------------------------------------------
 
@@ -54,7 +53,7 @@ class SignedUpdate:
     def signature_b64(self) -> str:
         return base64.b64encode(self.signature).decode()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "metadata": self.metadata.to_dict(),
             "signature": self.signature_b64,
@@ -64,7 +63,7 @@ class SignedUpdate:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "SignedUpdate":
+    def from_dict(cls, d: dict[str, Any]) -> SignedUpdate:
         return cls(
             metadata=UpdateMetadata.from_dict(d["metadata"]),
             signature=base64.b64decode(d["signature"]),
@@ -103,9 +102,9 @@ class UpdateSigner:
         *,
         round_id: int,
         model_version: str,
-        parameters: List[List[float]],
+        parameters: list[list[float]],
         num_examples: int,
-        metrics: Dict[str, float],
+        metrics: dict[str, float],
         update_id: str | None = None,
     ) -> SignedUpdate:
         """

@@ -2,9 +2,7 @@
 Unit tests for TrustFL typed models, serialization, and validation.
 """
 
-import json
 import unittest
-from datetime import datetime, timezone
 
 from trustfl_schemas.models import (
     BlockchainEventType,
@@ -15,12 +13,10 @@ from trustfl_schemas.models import (
     ClientUpdate,
     EvaluationMetrics,
     ModelArtifact,
-    ModelMetadata,
     ProofMetadata,
     ProofType,
     StorageProtocol,
     TrainingMetrics,
-    TrainingRound,
 )
 
 

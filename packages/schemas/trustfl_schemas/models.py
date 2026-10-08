@@ -13,12 +13,12 @@ Schemas defined:
 - TrainingRound: Full lifecycle state machine for a federated round
 """
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any
 import re
-from trustfl_schemas.base import BaseModel, ConfigDict, Field, field_validator
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
+from trustfl_schemas.base import BaseModel, ConfigDict, Field, field_validator
 from trustfl_schemas.identifiers import (
     ArtifactId,
     ClientId,
@@ -30,13 +30,13 @@ from trustfl_schemas.identifiers import (
 from trustfl_schemas.lifecycle import RoundState, assert_valid_transition
 
 
-class ClientRole(str, Enum):
+class ClientRole(StrEnum):
     TRAINER = "TRAINER"
     EVALUATOR = "EVALUATOR"
     AGGREGATOR = "AGGREGATOR"
 
 
-class ClientStatus(str, Enum):
+class ClientStatus(StrEnum):
     REGISTERED = "REGISTERED"
     ACTIVE = "ACTIVE"
     IDLE = "IDLE"
@@ -66,7 +66,7 @@ class ClientIdentity(BaseModel):
     role: ClientRole = Field(default=ClientRole.TRAINER)
     status: ClientStatus = Field(default=ClientStatus.ACTIVE)
     registered_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp of client registration in UTC",
     )
     staked_amount_wei: int = Field(
@@ -87,7 +87,7 @@ class ClientIdentity(BaseModel):
         return v
 
 
-class ProofType(str, Enum):
+class ProofType(StrEnum):
     GROTH16 = "GROTH16"
     PLONK = "PLONK"
     STARK = "STARK"
@@ -121,7 +121,7 @@ class ProofMetadata(BaseModel):
     verification_timestamp: datetime | None = None
 
 
-class StorageProtocol(str, Enum):
+class StorageProtocol(StrEnum):
     IPFS = "ipfs"
     S3 = "s3"
     LOCAL_MOCK = "local"
@@ -178,7 +178,7 @@ class ModelMetadata(BaseModel):
     framework: str = Field(default="pytorch", examples=["pytorch", "tensorflow", "jax"])
     parameter_count: int = Field(..., gt=0)
     hyperparameters: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class TrainingMetrics(BaseModel):
@@ -238,10 +238,10 @@ class ClientUpdate(BaseModel):
         description="Hex-encoded signature over (round_id + client_id + artifact.sha256_hash + proof_hash)",
         min_length=64,
     )
-    submitted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class BlockchainEventType(str, Enum):
+class BlockchainEventType(StrEnum):
     ROUND_INITIATED = "ROUND_INITIATED"
     CLIENT_COMMITTED = "CLIENT_COMMITTED"
     UPDATE_ACCEPTED = "UPDATE_ACCEPTED"
@@ -277,7 +277,7 @@ class BlockchainRecord(BaseModel):
         description="Hash of the state payload committed to blockchain calldata or storage",
         min_length=64,
     )
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("transaction_hash")
     @classmethod
@@ -309,8 +309,8 @@ class TrainingRound(BaseModel):
     aggregated_artifact: ModelArtifact | None = None
     evaluation_metrics: EvaluationMetrics | None = None
     blockchain_records: list[BlockchainRecord] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def transition_to(self, new_state: RoundState) -> None:
         """
@@ -318,4 +318,4 @@ class TrainingRound(BaseModel):
         """
         assert_valid_transition(self.state, new_state)
         self.state = new_state
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)

@@ -11,18 +11,20 @@ Defines:
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
-import random
-from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from trustfl_core.model import Parameters, TinyLinearModel, generate_synthetic_data
+import random
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from trustfl_core.model import Parameters, TinyLinearModel
 
 
 @dataclass
 class FitIns:
     """Parameters and configuration sent from server to client for training."""
     parameters: Parameters
-    config: Dict[str, Any] = field(default_factory=dict)
+    config: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -30,7 +32,7 @@ class FitRes:
     """Updated parameters and training metrics returned from client to server."""
     parameters: Parameters
     num_examples: int
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
     status: str = "OK"
 
 
@@ -38,7 +40,7 @@ class FitRes:
 class EvaluateIns:
     """Parameters and configuration sent from server to client for evaluation."""
     parameters: Parameters
-    config: Dict[str, Any] = field(default_factory=dict)
+    config: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -46,7 +48,7 @@ class EvaluateRes:
     """Evaluation loss and metrics returned from client to server."""
     loss: float
     num_examples: int
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
     status: str = "OK"
 
 
@@ -62,32 +64,32 @@ class Strategy:
         self,
         server_round: int,
         parameters: Parameters,
-        client_manager: List[str],
-    ) -> List[Tuple[str, FitIns]]:
+        client_manager: list[str],
+    ) -> list[tuple[str, FitIns]]:
         raise NotImplementedError
 
     def aggregate_fit(
         self,
         server_round: int,
-        results: List[Tuple[str, FitRes]],
-        failures: List[Tuple[str, BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Any]]:
+        results: list[tuple[str, FitRes]],
+        failures: list[tuple[str, BaseException]],
+    ) -> tuple[Parameters | None, dict[str, Any]]:
         raise NotImplementedError
 
     def configure_evaluate(
         self,
-        server_round: int,
+        _server_round: int,
         parameters: Parameters,
-        client_manager: List[str],
-    ) -> List[Tuple[str, EvaluateIns]]:
+        client_manager: list[str],
+    ) -> list[tuple[str, EvaluateIns]]:
         raise NotImplementedError
 
     def aggregate_evaluate(
         self,
-        server_round: int,
-        results: List[Tuple[str, EvaluateRes]],
-        failures: List[Tuple[str, BaseException]],
-    ) -> Tuple[Optional[float], Dict[str, Any]]:
+        _server_round: int,
+        results: list[tuple[str, EvaluateRes]],
+        failures: list[tuple[str, BaseException]],
+    ) -> tuple[float | None, dict[str, Any]]:
         raise NotImplementedError
 
 
@@ -104,7 +106,7 @@ class FedAvg(Strategy):
         min_fit_clients: int = 1,
         min_evaluate_clients: int = 1,
         min_available_clients: int = 1,
-        initial_parameters: Optional[Parameters] = None,
+        initial_parameters: Parameters | None = None,
         random_seed: int = 42,
     ) -> None:
         self.fraction_fit = fraction_fit
@@ -126,8 +128,8 @@ class FedAvg(Strategy):
         self,
         server_round: int,
         parameters: Parameters,
-        client_manager: List[str],
-    ) -> List[Tuple[str, FitIns]]:
+        client_manager: list[str],
+    ) -> list[tuple[str, FitIns]]:
         """Select clients and send fit instructions."""
         num_available = len(client_manager)
         if num_available < self.min_available_clients:
@@ -143,10 +145,10 @@ class FedAvg(Strategy):
 
     def aggregate_fit(
         self,
-        server_round: int,
-        results: List[Tuple[str, FitRes]],
-        failures: List[Tuple[str, BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Any]]:
+        server_round: int,  # noqa: ARG002
+        results: list[tuple[str, FitRes]],
+        failures: list[tuple[str, BaseException]],
+    ) -> tuple[Parameters | None, dict[str, Any]]:
         """
         Computes weighted average of client parameters:
         W_global = sum(n_k * W_k) / sum(n_k)
@@ -184,8 +186,8 @@ class FedAvg(Strategy):
         self,
         server_round: int,
         parameters: Parameters,
-        client_manager: List[str],
-    ) -> List[Tuple[str, EvaluateIns]]:
+        client_manager: list[str],
+    ) -> list[tuple[str, EvaluateIns]]:
         """Select clients and send evaluation instructions."""
         num_available = len(client_manager)
         if num_available < self.min_available_clients:
@@ -202,10 +204,10 @@ class FedAvg(Strategy):
 
     def aggregate_evaluate(
         self,
-        server_round: int,
-        results: List[Tuple[str, EvaluateRes]],
-        failures: List[Tuple[str, BaseException]],
-    ) -> Tuple[Optional[float], Dict[str, Any]]:
+        server_round: int,  # noqa: ARG002
+        results: list[tuple[str, EvaluateRes]],
+        failures: list[tuple[str, BaseException]],
+    ) -> tuple[float | None, dict[str, Any]]:
         """Computes weighted average of evaluation loss and accuracy."""
         if not results:
             return None, {}
@@ -266,15 +268,15 @@ class ServerApp:
         self.strategy = strategy
         self.num_rounds = num_rounds
         self.parameters: Parameters = self.strategy.initialize_parameters()
-        self.round_history: List[Dict[str, Any]] = []
+        self.round_history: list[dict[str, Any]] = []
 
     def fit_round(
         self,
         server_round: int,
         client_app: ClientApp,
-        client_ids: List[str],
-        failing_clients: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        client_ids: list[str],
+        failing_clients: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Executes a single federated training and evaluation round."""
         failing_clients = failing_clients or []
 
@@ -285,8 +287,8 @@ class ServerApp:
             client_manager=client_ids,
         )
 
-        results: List[Tuple[str, FitRes]] = []
-        failures: List[Tuple[str, BaseException]] = []
+        results: list[tuple[str, FitRes]] = []
+        failures: list[tuple[str, BaseException]] = []
 
         # 2. Local Training on Clients
         for cid, ins in fit_instructions:
@@ -317,8 +319,8 @@ class ServerApp:
             client_manager=client_ids,
         )
 
-        eval_results: List[Tuple[str, EvaluateRes]] = []
-        eval_failures: List[Tuple[str, BaseException]] = []
+        eval_results: list[tuple[str, EvaluateRes]] = []
+        eval_failures: list[tuple[str, BaseException]] = []
 
         for cid, ins in eval_instructions:
             if cid in failing_clients:

@@ -1,8 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
-from apps.api.main import app
-from apps.api.api.db.session import engine
+
 from apps.api.api.db.models import Base
+from apps.api.api.db.session import engine
+from apps.api.main import app
 
 client = TestClient(app)
 
@@ -29,7 +30,7 @@ def test_federation_lifecycle():
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["id"] == "fed_test_1"
-    
+
     # 2. List Federations
     response = client.get("/federations/")
     assert response.status_code == 200
@@ -46,7 +47,7 @@ def test_federation_lifecycle():
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["id"] == "client_1"
-    
+
     # 4. Create Round
     round_payload = {
         "federation_id": "fed_test_1",
@@ -68,7 +69,7 @@ def test_federation_lifecycle():
     }
     response = client.post("/updates/", json=update_payload)
     assert response.status_code == 200
-    
+
     # 6. Submit Proof
     proof_payload = {
         "id": "proof_1",
@@ -80,7 +81,7 @@ def test_federation_lifecycle():
     }
     response = client.post("/proofs/", json=proof_payload)
     assert response.status_code == 200
-    
+
     # 7. Record Blockchain Tx
     tx_payload = {
         "id": "tx_1",

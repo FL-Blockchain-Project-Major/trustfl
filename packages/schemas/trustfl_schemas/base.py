@@ -4,21 +4,29 @@ If pydantic is installed, this module transparently re-exports everything from r
 """
 
 from __future__ import annotations
+
 import inspect
 import json
-import re
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union, get_args, get_origin
+from typing import (
+    Any,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+)
 
 try:
-    import pydantic as _real_pydantic
     from pydantic import (
+        AfterValidator,
         BaseModel,
         ConfigDict,
         Field,
         field_validator,
-        AfterValidator,
+    )
+    from pydantic import (
         ValidationError as PydanticValidationError,
     )
     HAVE_REAL_PYDANTIC = True
@@ -88,7 +96,7 @@ if not HAVE_REAL_PYDANTIC:
 
         def __init__(self, **data: Any):
             # Gather annotations across inheritance hierarchy
-            annotations: Dict[str, Any] = {}
+            annotations: dict[str, Any] = {}
             for base in self.__class__.__mro__:
                 if hasattr(base, "__annotations__"):
                     for k, v in base.__annotations__.items():
@@ -105,7 +113,7 @@ if not HAVE_REAL_PYDANTIC:
                         raise PydanticValidationError(f"Extra field '{k}' is forbidden")
 
             # Find validators
-            validators: Dict[str, List[Callable]] = {}
+            validators: dict[str, list[Callable]] = {}
             for base in self.__class__.__mro__:
                 for name, attr in base.__dict__.items():
                     # Handle regular method or classmethod
@@ -186,7 +194,7 @@ if not HAVE_REAL_PYDANTIC:
                 raise TypeError(f"Instance of {self.__class__.__name__} is frozen")
             super().__setattr__(key, value)
 
-        def model_dump(self, mode: str = "python") -> Dict[str, Any]:
+        def model_dump(self, mode: str = "python") -> dict[str, Any]:
             res = {}
             for k in getattr(self.__class__, "__annotations__", {}):
                 v = getattr(self, k, None)
@@ -215,7 +223,7 @@ if not HAVE_REAL_PYDANTIC:
             return json.dumps(self.model_dump(mode="json"), default=json_encoder)
 
         @classmethod
-        def model_validate(cls: Type[T], obj: Any) -> T:
+        def model_validate(cls: type[T], obj: Any) -> T:
             if isinstance(obj, dict):
                 return cls(**obj)
             if isinstance(obj, cls):
@@ -223,7 +231,7 @@ if not HAVE_REAL_PYDANTIC:
             raise ValueError(f"Cannot validate object of type {type(obj)}")
 
         @classmethod
-        def model_validate_json(cls: Type[T], json_str: str) -> T:
+        def model_validate_json(cls: type[T], json_str: str) -> T:
             data = json.loads(json_str)
             return cls.model_validate(data)
 

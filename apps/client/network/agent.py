@@ -18,15 +18,16 @@ import json
 import logging
 import threading
 import time
-import urllib.request
 import urllib.error
-from typing import Any, Callable, Dict, List, Optional
+import urllib.request
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # Type alias for the local training function
 TrainFn = Callable[
-    [int, List[List[float]], Dict[str, Any]],   # round_id, params, config
+    [int, list[list[float]], dict[str, Any]],   # round_id, params, config
     tuple,                                        # (new_params, num_examples, metrics)
 ]
 
@@ -71,7 +72,7 @@ class DistributedClientAgent:
         self.connection_timeout = connection_timeout_seconds
 
         self._stop_event = threading.Event()
-        self._bg_thread: Optional[threading.Thread] = None
+        self._bg_thread: threading.Thread | None = None
         self._registered = False
 
         self.last_round_submitted: int = 0
@@ -168,15 +169,15 @@ class DistributedClientAgent:
     def _heartbeat(self) -> None:
         self._post("/heartbeat", {"client_id": self.client_id, "status": self.status})
 
-    def _get_round_instructions(self) -> Optional[Dict[str, Any]]:
+    def _get_round_instructions(self) -> dict[str, Any] | None:
         return self._get(f"/round/instructions/{self.client_id}")
 
     def _submit_update(
         self,
         round_id: int,
-        params: List[List[float]],
+        params: list[list[float]],
         n_examples: int,
-        metrics: Dict[str, float],
+        metrics: dict[str, float],
     ) -> bool:
         payload = {
             "client_id": self.client_id,
@@ -191,12 +192,12 @@ class DistributedClientAgent:
     def _train_with_timeout(
         self,
         round_id: int,
-        global_params: List[List[float]],
-        config: Dict[str, Any],
-    ) -> Optional[tuple]:
+        global_params: list[list[float]],
+        config: dict[str, Any],
+    ) -> tuple | None:
         """Run train_fn in a thread; return None if it exceeds training_timeout."""
-        result_holder: List[Any] = [None]
-        exc_holder: List[Optional[Exception]] = [None]
+        result_holder: list[Any] = [None]
+        exc_holder: list[Exception | None] = [None]
 
         def _run() -> None:
             try:
@@ -221,15 +222,15 @@ class DistributedClientAgent:
     # HTTP helpers with retry
     # ------------------------------------------------------------------
 
-    def _post(self, path: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         return self._request("POST", path, payload)
 
-    def _get(self, path: str) -> Optional[Dict[str, Any]]:
+    def _get(self, path: str) -> dict[str, Any] | None:
         return self._request("GET", path, None)
 
     def _request(
-        self, method: str, path: str, payload: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        self, method: str, path: str, payload: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         url = self.coordinator_url + path
         data = json.dumps(payload).encode() if payload is not None else None
         headers = {"Content-Type": "application/json"}

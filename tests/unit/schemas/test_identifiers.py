@@ -3,6 +3,7 @@ Unit tests for TrustFL typed identifiers.
 """
 
 import unittest
+
 from trustfl_schemas.identifiers import (
     EntityIdentifierPayload,
     validate_artifact_id,

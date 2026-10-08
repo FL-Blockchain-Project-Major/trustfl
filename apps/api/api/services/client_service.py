@@ -1,9 +1,10 @@
 import json
 import logging
-from datetime import datetime, timezone
-from typing import List
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime
+
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 from apps.api.api.db.models import Client
 from apps.api.api.repositories.clients import ClientRepository
 from apps.api.api.repositories.federations import FederationRepository
@@ -36,10 +37,10 @@ class ClientService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Client '{client_id}' not found")
         return c
 
-    def list_by_federation(self, federation_id: str) -> List[Client]:
+    def list_by_federation(self, federation_id: str) -> list[Client]:
         return self.repo.get_by_federation(federation_id)
 
     def heartbeat(self, client_id: str) -> Client:
         c = self.get_or_404(client_id)
-        c.last_seen_at = datetime.now(timezone.utc)
+        c.last_seen_at = datetime.now(UTC)
         return self.repo.save(c)

@@ -6,6 +6,7 @@ Outputs execution telemetry and verifies convergence without heavy logging.
 
 import json
 from pathlib import Path
+
 from apps.coordinator.coordinator import run_simulation
 
 
@@ -41,7 +42,7 @@ def main() -> None:
 
     delta_w = [
         round(f - i, 5)
-        for i, f in zip(sim["initial_parameters"][0], sim["final_parameters"][0])
+        for i, f in zip(sim["initial_parameters"][0], sim["final_parameters"][0], strict=False)
     ]
     print(f"\nGlobal Model Weight Updates (Final - Initial): {delta_w}")
 

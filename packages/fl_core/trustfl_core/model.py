@@ -5,12 +5,12 @@ complete compatibility with Flower NDArrays parameter formats.
 """
 
 from __future__ import annotations
+
 import math
 import random
-from typing import List, Tuple
 
 # Parameters represented as List[List[float]]: [weights, biases]
-Parameters = List[List[float]]
+Parameters = list[list[float]]
 
 
 class TinyLinearModel:
@@ -29,8 +29,8 @@ class TinyLinearModel:
         self.in_features = in_features
         rng = random.Random(seed)
         # Deterministic weight initialization
-        self.w: List[float] = [rng.uniform(-0.1, 0.1) for _ in range(in_features)]
-        self.b: List[float] = [0.0]
+        self.w: list[float] = [rng.uniform(-0.1, 0.1) for _ in range(in_features)]
+        self.b: list[float] = [0.0]
 
     def get_parameters(self) -> Parameters:
         """Returns deep copy of model parameters."""
@@ -56,15 +56,15 @@ class TinyLinearModel:
         z_clamped = max(min(z, 20.0), -20.0)
         return 1.0 / (1.0 + math.exp(-z_clamped))
 
-    def forward(self, x: List[float]) -> float:
+    def forward(self, x: list[float]) -> float:
         """Computes single forward pass prediction."""
-        dot = sum(wi * xi for wi, xi in zip(self.w, x)) + self.b[0]
+        dot = sum(wi * xi for wi, xi in zip(self.w, x, strict=False)) + self.b[0]
         return self._sigmoid(dot)
 
     def train_step(
         self,
-        batch_x: List[List[float]],
-        batch_y: List[float],
+        batch_x: list[list[float]],
+        batch_y: list[float],
         lr: float = 0.05,
     ) -> float:
         """
@@ -79,7 +79,7 @@ class TinyLinearModel:
         grad_b = 0.0
         total_loss = 0.0
 
-        for x, y in zip(batch_x, batch_y):
+        for x, y in zip(batch_x, batch_y, strict=False):
             pred = self.forward(x)
             # Binary Cross Entropy loss
             eps = 1e-12
@@ -101,8 +101,8 @@ class TinyLinearModel:
         return total_loss / n
 
     def evaluate(
-        self, test_x: List[List[float]], test_y: List[float]
-    ) -> Tuple[float, float]:
+        self, test_x: list[list[float]], test_y: list[float]
+    ) -> tuple[float, float]:
         """
         Computes (loss, accuracy) over dataset.
         """
@@ -113,7 +113,7 @@ class TinyLinearModel:
         correct = 0
         eps = 1e-12
 
-        for x, y in zip(test_x, test_y):
+        for x, y in zip(test_x, test_y, strict=False):
             pred = self.forward(x)
             pred_clamped = max(min(pred, 1.0 - eps), eps)
             loss = -(y * math.log(pred_clamped) + (1.0 - y) * math.log(1.0 - pred_clamped))
@@ -132,14 +132,14 @@ def generate_synthetic_data(
     in_features: int = 4,
     seed: int = 42,
     noise: float = 0.05,
-) -> Tuple[List[List[float]], List[float]]:
+) -> tuple[list[list[float]], list[float]]:
     """
     Generates deterministic synthetic linearly separable binary classification dataset.
     Decision boundary: sum(x[:in_features//2]) > sum(x[in_features//2:])
     """
     rng = random.Random(seed)
-    x_data: List[List[float]] = []
-    y_data: List[float] = []
+    x_data: list[list[float]] = []
+    y_data: list[float] = []
 
     mid = in_features // 2
     for _ in range(num_samples):

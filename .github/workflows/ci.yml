@@ -39,7 +39,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.13'
           cache: 'npm'
           cache-dependency-path: 'apps/dashboard/package-lock.json'
           
@@ -63,7 +63,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.13'
           cache: 'npm'
           cache-dependency-path: 'packages/contracts/package-lock.json'
           
@@ -87,7 +87,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.13'
           
       - name: Install ZKP dependencies
         run: npm ci
