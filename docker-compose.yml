@@ -43,6 +43,20 @@ services:
       timeout: 5s
       retries: 5
 
+  contract-deployer:
+    image: node:22.13-alpine
+    working_dir: /app
+    volumes:
+      - ./packages/contracts:/app
+      - contract_deployments:/app/deployments
+    command: >
+      sh -c "npm ci && npx hardhat compile &&
+      until wget -qO- --post-data='' http://hardhat:8545 >/dev/null 2>&1; do sleep 1; done &&
+      npx hardhat run scripts/deploy.js --network localhost"
+    depends_on:
+      hardhat:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -79,7 +93,14 @@ services:
       - COORDINATOR_PORT=8100
       - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
       - IPFS_URL=http://ipfs:5001
-      - WEB3_PROVIDER_URI=http://hardhat:8545
+      - IPFS_API_URL=http://ipfs:5001
+      - STORAGE_BACKEND=ipfs
+      - BLOCKCHAIN_ENABLED=true
+      - BLOCKCHAIN_RPC_URL=http://hardhat:8545
+      - BLOCKCHAIN_CONTRACTS_JSON=/contracts-deployments/localhost/contracts.json
+      - COORDINATOR_PRIVATE_KEY=${COORDINATOR_PRIVATE_KEY:-ac0974bec39e6ba9a2c7e2f6b8f5b2f6a3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e}
+    volumes:
+      - contract_deployments:/contracts-deployments
     ports:
       - "8100:8100"
     depends_on:
@@ -91,6 +112,8 @@ services:
         condition: service_healthy
       hardhat:
         condition: service_healthy
+      contract-deployer:
+        condition: service_completed_successfully
 
   client-1:
     build:
@@ -118,6 +141,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - API_SECRET_KEY=${API_SECRET_KEY:-}
     ports:
       - "3000:3000"
     depends_on:
@@ -127,3 +151,4 @@ services:
 volumes:
   db_data:
   ipfs_data:
+  contract_deployments:

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -50,9 +51,25 @@ def _fedavg(
     Weighted average of parameter updates.
     Each update: {"parameters": [[...], ...], "num_examples": int}
     """
+    if not updates:
+        raise ValueError("At least one update is required")
+    reference = updates[0]["parameters"]
+    if not isinstance(reference, list) or any(not isinstance(layer, list) for layer in reference):
+        raise ValueError("Update parameters must be a list of layers")
+    for update in updates:
+        examples = update.get("num_examples")
+        parameters = update.get("parameters")
+        if not isinstance(examples, int) or examples <= 0:
+            raise ValueError("num_examples must be a positive integer")
+        if len(parameters) != len(reference):
+            raise ValueError("All updates must have the same number of layers")
+        for expected, layer in zip(reference, parameters, strict=True):
+            if len(layer) != len(expected):
+                raise ValueError("All update layers must have matching shapes")
+            if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in layer):
+                raise ValueError("Update parameters must be finite numbers")
+
     total_examples = sum(u["num_examples"] for u in updates)
-    if total_examples == 0:
-        return updates[0]["parameters"]
 
     num_layers = len(updates[0]["parameters"])
     aggregated: list[list[float]] = []
@@ -89,12 +106,14 @@ class CoordinatorState:
         heartbeat_timeout_seconds: float = 30.0,
         blockchain_client = None,
         require_signatures: bool | None = None,
+        storage_client=None,
     ) -> None:
         self.min_clients = min_clients
         self.num_rounds = num_rounds
         self.round_timeout_seconds = round_timeout_seconds
         self.heartbeat_timeout_seconds = heartbeat_timeout_seconds
         self.blockchain_client = blockchain_client
+        self.storage_client = storage_client
         self.require_signatures = (
             require_signatures
             if require_signatures is not None
@@ -241,8 +260,28 @@ class CoordinatorState:
                 return False
 
             update_id = f"update_{cid}_{round_id}"
+            try:
+                artifact_data = json.dumps(
+                    {"parameters": parameters, "num_examples": num_examples, "metrics": metrics},
+                    separators=(",", ":"),
+                ).encode()
+                stored_artifact = (
+                    self.storage_client.save_artifact(
+                        artifact_data, str(self.current_round), round_id, cid, update_id
+                    )
+                    if self.storage_client else None
+                )
+            except (TypeError, ValueError, OSError) as exc:
+                logger.warning("Rejecting update %s: artifact storage failed: %s", update_id, exc)
+                return False
             nonce = metadata["nonce"] if metadata else f"nonce_{update_id}"
-            artifact_hash = metadata["artifact_hash"] if metadata else "0x_dummy_hash"
+            artifact_hash = stored_artifact.sha256_hash if stored_artifact else (
+                metadata["artifact_hash"] if metadata else "0x_dummy_hash"
+            )
+            if metadata and metadata.get("artifact_hash") and stored_artifact:
+                if metadata["artifact_hash"] != stored_artifact.sha256:
+                    logger.warning("Rejecting update %s: artifact hash mismatch", update_id)
+                    return False
 
             if self.require_signatures:
                 if not metadata or not signature:
@@ -289,6 +328,8 @@ class CoordinatorState:
                 "num_examples": num_examples,
                 "metrics": metrics,
                 "update_id": update_id,
+                "artifact_uri": stored_artifact.uri if stored_artifact else None,
+                "artifact_hash": artifact_hash,
             }
             logger.info(
                 "Update received from %s (round %d, %d examples)",

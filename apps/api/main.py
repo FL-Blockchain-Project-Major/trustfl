@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from apps.api.api.db.session import create_all_tables
+from apps.api.api.middleware.security import AuditLogMiddleware, RequestSizeLimitMiddleware
 from apps.api.api.routers import (
     artifacts,
     blockchain,
@@ -70,6 +71,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(AuditLogMiddleware)
 
 # Startup event for dev only
 @app.on_event("startup")

@@ -5,7 +5,7 @@
 - **Immutable On-Chain Auditability** (Smart Contracts / Blockchain SDK)
 - **Cryptographic Model Verification** (Digital Signatures, Hash Tree Integrity)
 - **Verifiable Decentralized Storage** (IPFS & S3-compatible Object Stores)
-- **Zero-Knowledge Proofs (ZKP)** (Proofs that a private commitment opens to a public, round-bound commitment without exposing the committed value)
+- **Zero-Knowledge Proofs (ZKP)** (an independently implemented and tested optional verifier boundary; coordinator updates currently require signatures and artifact hashes)
 - **Extensible API Gateway & Real-Time Dashboard** (FastAPI & Next.js)
 
 ---
@@ -53,7 +53,7 @@ For complete architectural details and security invariants, consult [docs/ARCHIT
 ### Prerequisites
 
 - **Python**: `>= 3.11` (managed via `uv` or standard venv)
-- **Node.js**: `>= 20.x` & `npm`
+- **Node.js**: `>= 22.13` & `npm`
 - **Make**: Standard build automation utility
 
 ### Quick Setup

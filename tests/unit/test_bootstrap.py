@@ -18,7 +18,6 @@ class TestBootstrap(unittest.TestCase):
             "packages/blockchain-sdk",
             "packages/storage",
             "contracts",
-            "zk",
             "datasets/tools",
             "infrastructure",
             "tests",
@@ -46,7 +45,7 @@ class TestBootstrap(unittest.TestCase):
         for file in root.rglob("*"):
             # Skip third-party and build directories
             parts = file.parts
-            if any(p in parts for p in ("node_modules", "__pycache__", ".git")):
+            if any(p in parts for p in ("node_modules", "__pycache__", ".git", ".venv", "venv")):
                 continue
             if file.is_file():
                 self.assertNotIn(

@@ -119,3 +119,6 @@ trustfl_test.db
 
 # Hardhat logs
 packages/contracts/hardhat.log
+packages/contracts/deployments/
+bandit_report.json
+tests/output/

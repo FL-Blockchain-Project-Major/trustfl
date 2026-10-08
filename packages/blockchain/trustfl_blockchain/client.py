@@ -1,6 +1,8 @@
 import json
 import logging
 import time
+from collections.abc import Callable
+from typing import Any
 
 from web3 import Web3
 from web3.exceptions import ContractLogicError
@@ -20,6 +22,7 @@ class BlockchainClient:
         private_key: str,
         _network_name: str = "default",
         max_retries: int = 3,
+        transaction_recorder: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.w3 = Web3(Web3.HTTPProvider(rpc_url))
         if not self.w3.is_connected():
@@ -28,6 +31,7 @@ class BlockchainClient:
         self.account = self.w3.eth.account.from_key(private_key)
         self.w3.eth.default_account = self.account.address
         self.max_retries = max_retries
+        self.transaction_recorder = transaction_recorder
 
         with open(contracts_json_path) as f:
             data = json.load(f)
@@ -47,7 +51,11 @@ class BlockchainClient:
             abi=contracts["UpdateRegistry"]["abi"]
         )
 
-    def _send_tx_with_retry(self, contract_func, error_context: str = "") -> bool:
+    def _send_tx_with_retry(
+        self, contract_func, error_context: str = "", *,
+        contract_name: str, function_name: str,
+        entity_id: str | None = None, entity_type: str | None = None,
+    ) -> bool:
         """Helper to send a transaction with retry logic and receipt handling."""
         for attempt in range(self.max_retries):
             try:
@@ -65,14 +73,26 @@ class BlockchainClient:
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
 
                 if receipt.status == 1:
+                    self._record_transaction(
+                        contract_name, function_name, entity_id, entity_type,
+                        tx_hash.hex(), "CONFIRMED", None,
+                    )
                     logger.debug(f"{error_context} succeeded (tx: {tx_hash.hex()})")
                     return True
                 else:
+                    self._record_transaction(
+                        contract_name, function_name, entity_id, entity_type,
+                        tx_hash.hex(), "FAILED", "Transaction reverted on-chain",
+                    )
                     logger.error(f"{error_context} failed on-chain (tx: {tx_hash.hex()})")
                     # If it failed on-chain (reverted), retrying exactly won't help unless state changes
                     return False
 
             except ContractLogicError as e:
+                self._record_transaction(
+                    contract_name, function_name, entity_id, entity_type,
+                    None, "FAILED", str(e),
+                )
                 logger.error(f"{error_context} reverted: {e}")
                 return False
             except Exception as e:
@@ -80,14 +100,30 @@ class BlockchainClient:
                 time.sleep(1)
 
         logger.error(f"{error_context} failed after {self.max_retries} attempts")
+        self._record_transaction(
+            contract_name, function_name, entity_id, entity_type,
+            None, "FAILED", f"Failed after {self.max_retries} attempts",
+        )
         return False
+
+    def _record_transaction(
+        self, contract_name: str, function_name: str, entity_id: str | None,
+        entity_type: str | None, tx_hash: str | None, status: str, error: str | None,
+    ) -> None:
+        if self.transaction_recorder:
+            self.transaction_recorder({
+                "contract_name": contract_name, "function_name": function_name,
+                "entity_id": entity_id, "entity_type": entity_type,
+                "tx_hash": tx_hash, "status": status, "error": error,
+            })
 
     def register_client(self, client_id: str, pubkey: str) -> bool:
         """Register a new client."""
         logger.info(f"Registering client {client_id} on-chain...")
         return self._send_tx_with_retry(
             self.client_registry.functions.registerClient(client_id, pubkey),
-            f"register_client({client_id})"
+            f"register_client({client_id})", contract_name="ClientRegistry",
+            function_name="registerClient", entity_id=client_id, entity_type="client",
         )
 
     def create_round(self, round_id: int, global_model_version: str) -> bool:
@@ -95,7 +131,8 @@ class BlockchainClient:
         logger.info(f"Creating round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.createRound(round_id, global_model_version),
-            f"create_round({round_id})"
+            f"create_round({round_id})", contract_name="TrainingRoundRegistry",
+            function_name="createRound", entity_id=str(round_id), entity_type="round",
         )
 
     def activate_round(self, round_id: int) -> bool:
@@ -103,7 +140,8 @@ class BlockchainClient:
         logger.info(f"Activating round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.activateRound(round_id),
-            f"activate_round({round_id})"
+            f"activate_round({round_id})", contract_name="TrainingRoundRegistry",
+            function_name="activateRound", entity_id=str(round_id), entity_type="round",
         )
 
     def finalize_round(self, round_id: int, new_global_model_version: str) -> bool:
@@ -111,7 +149,8 @@ class BlockchainClient:
         logger.info(f"Finalizing round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.finalizeRound(round_id, new_global_model_version),
-            f"finalize_round({round_id})"
+            f"finalize_round({round_id})", contract_name="TrainingRoundRegistry",
+            function_name="finalizeRound", entity_id=str(round_id), entity_type="round",
         )
 
     def submit_update(self, update_id: str, round_id: int, client_id: str, artifact_hash: str, nonce: str) -> bool:
@@ -119,7 +158,8 @@ class BlockchainClient:
         logger.info(f"Submitting update {update_id} from {client_id} for round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.update_registry.functions.submitUpdate(update_id, round_id, client_id, artifact_hash, nonce),
-            f"submit_update({update_id})"
+            f"submit_update({update_id})", contract_name="UpdateRegistry",
+            function_name="submitUpdate", entity_id=update_id, entity_type="update",
         )
 
     def mark_verification_state(self, update_id: str, is_valid: bool) -> bool:
@@ -128,7 +168,8 @@ class BlockchainClient:
         logger.info(f"Marking update {update_id} as {state_str} on-chain...")
         return self._send_tx_with_retry(
             self.update_registry.functions.markVerificationState(update_id, is_valid),
-            f"mark_verification_state({update_id})"
+            f"mark_verification_state({update_id})", contract_name="UpdateRegistry",
+            function_name="markVerificationState", entity_id=update_id, entity_type="update",
         )
 
     def record_aggregation(self, update_id: str) -> bool:
@@ -136,5 +177,6 @@ class BlockchainClient:
         logger.info(f"Recording aggregation for update {update_id} on-chain...")
         return self._send_tx_with_retry(
             self.update_registry.functions.recordAggregation(update_id),
-            f"record_aggregation({update_id})"
+            f"record_aggregation({update_id})", contract_name="UpdateRegistry",
+            function_name="recordAggregation", entity_id=update_id, entity_type="update",
         )

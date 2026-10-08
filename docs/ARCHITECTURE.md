@@ -19,7 +19,7 @@ TrustFL provides a verifiable, privacy-preserving, and auditable Federated Learn
 | `packages/blockchain-sdk/`| Abstraction and client drivers for EVM / smart contract interaction (Web3). Provides client wrappers for model registry, round progression, and participant verification contracts. |
 | `packages/storage/` | Unified storage abstraction layer providing adapters for decentralized storage (IPFS / Pinata) and object stores (MinIO / AWS S3) for model weight serialization and retrieval. |
 | `contracts/` | Smart contracts (Solidity) implementing the on-chain audit log, client staking/slashing, and verifiable global model state updates. |
-| `zk/` | Zero-Knowledge proof circuits (Circom/Noir) and verification verification keys/scripts to guarantee local training validity and boundary constraints without revealing raw training gradients or datasets. |
+| `packages/zkp/` | Independently implemented and tested zero-knowledge proof runtime. ZKP verification is an optional/deferred coordinator boundary; signed metadata and artifact hashes are the current mandatory update checks. |
 | `datasets/tools/` | Tooling for synthetic dataset generation, Dirichlet non-IID data partitioning, and data format validation. |
 | `infrastructure/` | Deployment definitions, Docker Compose setups for local development (IPFS node, local Ethereum testnet, MinIO), and Kubernetes/Helm charts. |
 | `tests/` | Comprehensive test suites, separated into `unit/`, `integration/`, and end-to-end tests across modules. |
@@ -59,7 +59,7 @@ sequenceDiagram
     participant Coord as Coordinator (apps/coordinator)
     participant Client as Client Node (apps/client)
     participant Storage as IPFS / Object Store (packages/storage)
-    participant ZK as ZK Prover (zk/)
+    participant ZK as ZK Prover (packages/zkp/)
     participant Chain as Blockchain (contracts/)
 
     Coord->>Storage: Publish Global Model Weights (CID_0)

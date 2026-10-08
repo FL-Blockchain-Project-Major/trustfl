@@ -40,7 +40,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.method in MUTATING_METHODS:
             content_length = request.headers.get("content-length")
-            if content_length and int(content_length) > MAX_BODY_BYTES:
+            if content_length and content_length.isdigit() and int(content_length) > MAX_BODY_BYTES:
                 return JSONResponse(
                     status_code=413,
                     content={"detail": "Request body too large. Maximum allowed: 1 MB."},

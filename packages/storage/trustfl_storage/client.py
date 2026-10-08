@@ -81,7 +81,7 @@ class IPFSStorageClient(StorageClient):
         files = {
             'file': ('artifact.bin', data, 'application/octet-stream')
         }
-        resp = requests.post(f"{self.api_url}/api/v0/add", files=files)
+        resp = requests.post(f"{self.api_url}/api/v0/add", files=files, timeout=(5, 30))
         resp.raise_for_status()
 
         result = resp.json()
@@ -104,7 +104,7 @@ class IPFSStorageClient(StorageClient):
         cid = uri[len("ipfs://"):]
 
         # IPFS HTTP API: POST /api/v0/cat?arg=<cid>
-        resp = requests.post(f"{self.api_url}/api/v0/cat?arg={cid}")
+        resp = requests.post(f"{self.api_url}/api/v0/cat?arg={cid}", timeout=(5, 30))
         resp.raise_for_status()
 
         data = resp.content

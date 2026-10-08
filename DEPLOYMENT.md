@@ -7,6 +7,9 @@ The easiest way to spin up the entire TrustFL stack locally is using `docker com
 cp .env.example .env
 docker-compose up --build
 ```
+- The Compose startup waits for Hardhat, compiles and deploys contracts dynamically,
+  and shares the generated deployment JSON with the coordinator. No transient
+  contract address is hardcoded.
 - Dashboard: http://localhost:3000
 - API Docs: http://localhost:8000/docs
 - IPFS UI: http://localhost:5001/webui
@@ -27,6 +30,8 @@ also requires Ed25519 client public keys at registration and rejects unsigned or
 update submissions. Set `COORDINATOR_REQUIRE_SIGNATURES=true` explicitly when deploying
 the coordinator outside the development Compose stack.
 - **Coordinator & API**: Deploy behind an Application Load Balancer (ALB) or NGINX with TLS termination. Ensure minimum 2 instances of API. Coordinator must be a singleton per federation to prevent race conditions.
-- **Smart Contracts**: Deploy to Ethereum Mainnet or an L2 (Arbitrum/Optimism). Store the contract ABIs and addresses in the environment configuration.
+- **Smart Contracts**: Deploy to Ethereum Mainnet or an L2 (Arbitrum/Optimism). Store the generated contract ABI/address JSON in the environment configuration.
+- **ZKP**: The package is independently tested and optional in the coordinator path;
+  do not document it as mandatory until a verifier is explicitly enabled.
 - **Private Key**: Inject the Coordinator's private key via an HSM/KMS (e.g. AWS KMS). Never pass it as an unencrypted environment variable.
 - **Storage**: Use a decentralized storage provider network (Filecoin/Arweave) or enterprise-grade IPFS pinning service.

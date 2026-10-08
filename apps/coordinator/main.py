@@ -17,6 +17,7 @@ import logging
 import os
 import signal
 import sys
+import uuid
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,6 +55,47 @@ def main() -> None:
     # Import here so the module is importable without network deps
     from network.server import CoordinatorServer
 
+    blockchain_client = None
+    transaction_recorder = None
+    if os.getenv("BLOCKCHAIN_ENABLED", "false").lower() == "true":
+        from packages.blockchain.trustfl_blockchain.client import BlockchainClient
+
+        def transaction_recorder(event):
+            try:
+                from apps.api.api.db.session import SessionLocal
+                from apps.api.api.services.blockchain_service import BlockchainTxService
+
+                with SessionLocal() as db:
+                    service = BlockchainTxService(db)
+                    tx = service.record(
+                        id=str(uuid.uuid4()),
+                        contract_name=event["contract_name"],
+                        function_name=event["function_name"],
+                        entity_id=event["entity_id"],
+                        entity_type=event["entity_type"],
+                        tx_hash=event["tx_hash"],
+                        status=event["status"],
+                    )
+                    if event["error"]:
+                        tx.error_message = event["error"]
+                        db.commit()
+            except Exception:
+                logger.exception("Unable to persist blockchain transaction audit event")
+
+        blockchain_client = BlockchainClient(
+            rpc_url=os.environ["BLOCKCHAIN_RPC_URL"],
+            contracts_json_path=os.environ["BLOCKCHAIN_CONTRACTS_JSON"],
+            private_key=os.environ["COORDINATOR_PRIVATE_KEY"],
+            transaction_recorder=transaction_recorder,
+        )
+
+    from packages.storage.trustfl_storage.client import IPFSStorageClient, LocalStorageClient
+    storage_client = (
+        IPFSStorageClient(os.environ["IPFS_API_URL"])
+        if os.getenv("STORAGE_BACKEND", "local").lower() == "ipfs"
+        else LocalStorageClient(os.getenv("STORAGE_LOCAL_DIR", "/tmp/trustfl-artifacts"))
+    )
+
     server = CoordinatorServer(
         host=args.host,
         port=args.port,
@@ -65,6 +107,8 @@ def main() -> None:
             "COORDINATOR_REQUIRE_SIGNATURES",
             "true" if os.getenv("ENVIRONMENT", "production").lower() == "production" else "false",
         ).lower() == "true",
+        blockchain_client=blockchain_client,
+        storage_client=storage_client,
     )
 
     def _shutdown(signum, _frame):  # noqa: ANN001
