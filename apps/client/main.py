@@ -100,6 +100,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="TrustFL Client")
     parser.add_argument("--client-id", default=_env("FL_CLIENT_ID", "client_001"))
     parser.add_argument(
+        "--federation-id", default=_env("FL_FEDERATION_ID", "fed-default")
+    )
+    parser.add_argument("--identity-path", default=_env("FL_IDENTITY_PATH", ""))
+    parser.add_argument(
         "--coordinator", default=_env("FL_COORDINATOR_URL", "http://127.0.0.1:8100")
     )
     parser.add_argument("--images-dir", default=_env("FL_IMAGES_DIR", ""))
@@ -127,6 +131,8 @@ def main() -> None:
         coordinator_url=args.coordinator,
         train_fn=train_fn,
         poll_interval=args.poll_interval,
+        federation_id=args.federation_id,
+        identity_path=args.identity_path or None,
     )
 
     def _shutdown(signum, _frame):  # noqa: ANN001

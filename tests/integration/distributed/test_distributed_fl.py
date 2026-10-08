@@ -121,6 +121,35 @@ class TestDistributedFL(unittest.TestCase):
         self.assertEqual(rh["num_successful_clients"], 2)
         self.assertFalse(rh["timed_out"])
 
+    def test_01b_signed_client_lifecycle(self):
+        """A real client identity can register and submit an accepted update."""
+        port = _get_port()
+        server = CoordinatorServer(
+            host="127.0.0.1",
+            port=port,
+            min_clients=1,
+            num_rounds=1,
+            require_signatures=True,
+            round_timeout_seconds=15.0,
+            heartbeat_timeout_seconds=30.0,
+        )
+        server.start()
+        self.assertTrue(_wait_for_server(port))
+        agent = _make_agent("signed-client", port)
+        try:
+            self.assertTrue(agent.register())
+            deadline = time.time() + 10.0
+            while time.time() < deadline and not server.state.round_history:
+                agent.step()
+                time.sleep(0.1)
+            server.state.wait_until_done(timeout=5.0)
+        finally:
+            server.stop()
+            agent.stop()
+
+        self.assertEqual(len(server.state.round_history), 1)
+        self.assertEqual(server.state.round_history[0]["num_successful_clients"], 1)
+
     # ── test_02: 3 clients, 2 rounds ────────────────────────────────────────
 
     def test_02_three_clients_two_rounds(self):

@@ -237,6 +237,11 @@ class CoordinatorState:
                 "global_parameters": self.global_parameters,
                 "config": {
                     "round": self.current_round,
+                    "model_version": (
+                        hash_parameters(self.global_parameters)
+                        if self.global_parameters
+                        else "initial"
+                    ),
                     "local_epochs": 1,
                 },
             }

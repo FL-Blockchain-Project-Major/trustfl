@@ -21,7 +21,11 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+
+from packages.crypto.trustfl_crypto.keys import ClientIdentity
+from packages.crypto.trustfl_crypto.signer import UpdateSigner
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +65,9 @@ class DistributedClientAgent:
         retry_delay: float = 1.0,
         training_timeout_seconds: float = 300.0,
         connection_timeout_seconds: float = 10.0,
+        federation_id: str = "fed-default",
+        identity: ClientIdentity | None = None,
+        identity_path: str | None = None,
     ) -> None:
         self.client_id = client_id
         self.coordinator_url = coordinator_url.rstrip("/")
@@ -70,6 +77,12 @@ class DistributedClientAgent:
         self.retry_delay = retry_delay
         self.training_timeout = training_timeout_seconds
         self.connection_timeout = connection_timeout_seconds
+        self.federation_id = federation_id
+        self.identity = identity or ClientIdentity.load_or_generate(
+            client_id,
+            Path(identity_path) if identity_path else None,
+        )
+        self.signer = UpdateSigner(self.identity, federation_id)
 
         self._stop_event = threading.Event()
         self._bg_thread: threading.Thread | None = None
@@ -84,7 +97,10 @@ class DistributedClientAgent:
 
     def register(self) -> bool:
         """POST /register; returns True on success."""
-        payload = {"client_id": self.client_id, "capabilities": {}}
+        payload = {
+            "client_id": self.client_id,
+            "capabilities": {"public_key": self.identity.public_key_b64},
+        }
         resp = self._post("/register", payload)
         if resp and resp.get("accepted"):
             self._registered = True
@@ -125,7 +141,13 @@ class DistributedClientAgent:
         new_params, n_examples, metrics = result
 
         # 4. Submit update
-        submitted = self._submit_update(round_id, new_params, n_examples, metrics)
+        submitted = self._submit_update(
+            round_id,
+            new_params,
+            n_examples,
+            metrics,
+            str(config.get("model_version", "initial")),
+        )
         if submitted:
             self.last_round_submitted = round_id
             self.status = "IDLE"
@@ -178,13 +200,23 @@ class DistributedClientAgent:
         params: list[list[float]],
         n_examples: int,
         metrics: dict[str, float],
+        model_version: str,
     ) -> bool:
+        signed_update = self.signer.sign(
+            round_id=round_id,
+            model_version=model_version,
+            parameters=params,
+            num_examples=n_examples,
+            metrics=metrics,
+        )
         payload = {
             "client_id": self.client_id,
             "round_id": round_id,
             "parameters": params,
             "num_examples": n_examples,
             "metrics": metrics,
+            "metadata": signed_update.metadata.to_dict(),
+            "signature": signed_update.signature_b64,
         }
         resp = self._post("/submit", payload)
         return bool(resp and resp.get("accepted"))
