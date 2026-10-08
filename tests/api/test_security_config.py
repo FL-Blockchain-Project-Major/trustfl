@@ -55,6 +55,21 @@ def test_cors_allows_configured_development_origin_and_rejects_other_origins():
     assert "access-control-allow-origin" not in rejected.headers
 
 
+def test_production_requires_api_key_for_non_health_endpoints(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("API_SECRET_KEY", "test-secret")
+
+    unauthorized = client.get("/federations/")
+    authorized = client.get(
+        "/does-not-exist",
+        headers={"Authorization": "Bearer test-secret"},
+    )
+
+    assert unauthorized.status_code == 401
+    assert authorized.status_code != 401
+    assert client.get("/health/").status_code != 401
+
+
 @pytest.mark.asyncio
 async def test_unexpected_exception_response_is_generic():
     request = Request(

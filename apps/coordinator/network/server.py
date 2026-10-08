@@ -17,20 +17,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from packages.crypto.trustfl_crypto.keys import PublicKeyRegistry
+from packages.crypto.trustfl_crypto.signer import SignedUpdate
+from packages.crypto.trustfl_crypto.verifier import UpdateVerifier
 
 from .protocol import (
-    RegisterRequest,
-    RegisterResponse,
     HeartbeatRequest,
     HeartbeatResponse,
-    RoundInstructionsResponse,
+    RegisterRequest,
+    RegisterResponse,
     SubmitUpdateRequest,
     SubmitUpdateResponse,
-    StatusResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,8 +44,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _fedavg(
-    updates: List[Dict[str, Any]],
-) -> List[List[float]]:
+    updates: list[dict[str, Any]],
+) -> list[list[float]]:
     """
     Weighted average of parameter updates.
     Each update: {"parameters": [[...], ...], "num_examples": int}
@@ -52,7 +55,7 @@ def _fedavg(
         return updates[0]["parameters"]
 
     num_layers = len(updates[0]["parameters"])
-    aggregated: List[List[float]] = []
+    aggregated: list[list[float]] = []
     for layer_idx in range(num_layers):
         layer_len = len(updates[0]["parameters"][layer_idx])
         layer_avg = [0.0] * layer_len
@@ -85,26 +88,37 @@ class CoordinatorState:
         round_timeout_seconds: float = 60.0,
         heartbeat_timeout_seconds: float = 30.0,
         blockchain_client = None,
+        require_signatures: bool | None = None,
     ) -> None:
         self.min_clients = min_clients
         self.num_rounds = num_rounds
         self.round_timeout_seconds = round_timeout_seconds
         self.heartbeat_timeout_seconds = heartbeat_timeout_seconds
         self.blockchain_client = blockchain_client
+        self.require_signatures = (
+            require_signatures
+            if require_signatures is not None
+            else os.getenv(
+                "COORDINATOR_REQUIRE_SIGNATURES",
+                "true" if os.getenv("ENVIRONMENT", "development").lower() == "production" else "false",
+            ).lower() == "true"
+        )
+        self.key_registry = PublicKeyRegistry()
+        self.update_verifier = UpdateVerifier(self.key_registry)
 
         self.lock = threading.Lock()
         self.current_round: int = 0          # 0 = not started
-        self.round_start_time: Optional[float] = None
-        self.global_parameters: List[List[float]] = []
+        self.round_start_time: float | None = None
+        self.global_parameters: list[list[float]] = []
 
         # cid → {"status": str, "last_heartbeat": float, "registered_at": float, "pubkey": str}
-        self.registered_clients: Dict[str, Dict[str, Any]] = {}
+        self.registered_clients: dict[str, dict[str, Any]] = {}
 
         # cid → update dict (for the current round)
-        self.pending_updates: Dict[str, Dict[str, Any]] = {}
+        self.pending_updates: dict[str, dict[str, Any]] = {}
 
         # History of completed rounds
-        self.round_history: List[Dict[str, Any]] = []
+        self.round_history: list[dict[str, Any]] = []
 
         self._done_event = threading.Event()
 
@@ -113,7 +127,7 @@ class CoordinatorState:
     # ------------------------------------------------------------------
 
     @property
-    def active_clients(self) -> List[str]:
+    def active_clients(self) -> list[str]:
         """Clients that are ONLINE (heartbeat OK)."""
         return [
             cid
@@ -132,18 +146,21 @@ class CoordinatorState:
     # Registration
     # ------------------------------------------------------------------
 
-    def register_client(self, cid: str, capabilities: Dict[str, Any]) -> bool:
+    def register_client(self, cid: str, capabilities: dict[str, Any]) -> bool:
         with self.lock:
             if cid not in self.registered_clients:
-                pubkey = capabilities.get("pubkey", "unknown_pubkey")
-                
+                pubkey = capabilities.get("pubkey") or capabilities.get("public_key")
+                if self.require_signatures and not pubkey:
+                    logger.warning("Rejecting client %s without a public key", cid)
+                    return False
+
                 # BlockChain logic
                 if self.blockchain_client:
                     bc_ok = self.blockchain_client.register_client(cid, pubkey)
                     if not bc_ok:
                         logger.error("Blockchain registration failed for %s", cid)
                         return False
-                        
+
                 self.registered_clients[cid] = {
                     "status": "ONLINE",
                     "last_heartbeat": time.time(),
@@ -151,6 +168,13 @@ class CoordinatorState:
                     "capabilities": capabilities,
                     "pubkey": pubkey,
                 }
+                if pubkey:
+                    try:
+                        self.key_registry.register(cid, pubkey)
+                    except (TypeError, ValueError):
+                        logger.warning("Rejecting client %s with an invalid public key", cid)
+                        del self.registered_clients[cid]
+                        return False
                 logger.info("Client registered: %s", cid)
             else:
                 # Re-registration after disconnect
@@ -164,7 +188,7 @@ class CoordinatorState:
     # Heartbeat
     # ------------------------------------------------------------------
 
-    def heartbeat(self, cid: str, status: str) -> Optional[int]:
+    def heartbeat(self, cid: str, status: str) -> int | None:
         """Update last_heartbeat; return current_round or None if unknown."""
         with self.lock:
             if cid not in self.registered_clients:
@@ -177,7 +201,7 @@ class CoordinatorState:
     # Round instructions
     # ------------------------------------------------------------------
 
-    def get_round_instructions(self, cid: str) -> Dict[str, Any]:
+    def get_round_instructions(self, cid: str) -> dict[str, Any]:
         with self.lock:
             is_active = (
                 self.current_round > 0
@@ -202,11 +226,11 @@ class CoordinatorState:
         self,
         cid: str,
         round_id: int,
-        parameters: List[List[float]],
+        parameters: list[list[float]],
         num_examples: int,
-        metrics: Dict[str, float],
-        metadata: Optional[Dict[str, Any]] = None,
-        signature: Optional[str] = None,
+        metrics: dict[str, float],
+        metadata: dict[str, Any] | None = None,
+        signature: str | None = None,
     ) -> bool:
         with self.lock:
             if round_id != self.current_round:
@@ -215,18 +239,44 @@ class CoordinatorState:
                     cid, round_id, self.current_round,
                 )
                 return False
-                
+
             update_id = f"update_{cid}_{round_id}"
             nonce = metadata["nonce"] if metadata else f"nonce_{update_id}"
             artifact_hash = metadata["artifact_hash"] if metadata else "0x_dummy_hash"
-                
+
+            if self.require_signatures:
+                if not metadata or not signature:
+                    logger.warning("Rejecting unsigned update from %s", cid)
+                    return False
+                try:
+                    signed_update = SignedUpdate.from_dict(
+                        {
+                            "metadata": metadata,
+                            "signature": signature,
+                            "parameters": parameters,
+                            "num_examples": num_examples,
+                            "metrics": metrics,
+                        }
+                    )
+                except (KeyError, TypeError, ValueError):
+                    logger.warning("Rejecting malformed signed update from %s", cid)
+                    return False
+                verification = self.update_verifier.verify(signed_update, cid)
+                if not verification.ok:
+                    logger.warning(
+                        "Rejected update from %s: %s",
+                        cid,
+                        verification.status.value,
+                    )
+                    return False
+
             # Submit to blockchain
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.submit_update(update_id, round_id, cid, artifact_hash, nonce)
                 if not bc_ok:
                     logger.error("Blockchain submit_update failed for %s", cid)
                     return False
-                
+
                 # We assume signature is valid for this Stage 07 integration to keep it simple,
                 # but we'll still call mark_verification_state on-chain.
                 bc_ok = self.blockchain_client.mark_verification_state(update_id, True)
@@ -253,7 +303,7 @@ class CoordinatorState:
     # Status
     # ------------------------------------------------------------------
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         with self.lock:
             return {
                 "status": self._status_label(),
@@ -305,14 +355,16 @@ class CoordinatorState:
         ):
             self.current_round = 1
             self.round_start_time = time.time()
-            
+            if self.require_signatures:
+                self.update_verifier.set_round(self.current_round)
+
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
                 if not bc_ok:
                     logger.error("Blockchain round 1 creation failed")
                 else:
                     self.blockchain_client.activate_round(self.current_round)
-            
+
             logger.info(
                 "Round 1 started with %d clients", len(self.active_clients)
             )
@@ -322,7 +374,7 @@ class CoordinatorState:
         updates = list(self.pending_updates.values())
         if updates:
             self.global_parameters = _fedavg(updates)
-            
+
             if self.blockchain_client:
                 for u in updates:
                     update_id = u.get("update_id")
@@ -347,7 +399,7 @@ class CoordinatorState:
 
     def _advance_round_locked(self) -> None:
         self.pending_updates.clear()
-        
+
         # Finalize the current round
         if self.blockchain_client:
             self.blockchain_client.finalize_round(self.current_round, f"model_v{self.current_round+1}")
@@ -358,6 +410,8 @@ class CoordinatorState:
             self._done_event.set()
         else:
             self.round_start_time = time.time()
+            if self.require_signatures:
+                self.update_verifier.set_round(self.current_round)
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
                 if not bc_ok:
@@ -370,11 +424,11 @@ class CoordinatorState:
     # Blocking wait
     # ------------------------------------------------------------------
 
-    def wait_until_done(self, timeout: Optional[float] = None) -> bool:
+    def wait_until_done(self, timeout: float | None = None) -> bool:
         return self._done_event.wait(timeout=timeout)
 
 
-def _avg_metrics(metrics_list: List[Dict[str, float]]) -> Dict[str, float]:
+def _avg_metrics(metrics_list: list[dict[str, float]]) -> dict[str, float]:
     if not metrics_list:
         return {}
     keys = metrics_list[0].keys()
@@ -443,12 +497,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ---- helpers ----------------------------------------------------------
 
-    def _read_body(self) -> Dict[str, Any]:
+    def _read_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
         return json.loads(raw)
 
-    def _respond_json(self, code: int, body: Dict[str, Any]) -> None:
+    def _respond_json(self, code: int, body: dict[str, Any]) -> None:
         payload = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -507,8 +561,8 @@ class CoordinatorServer:
         self._httpd = HTTPServer((host, port), BoundHandler)
         self._httpd.timeout = 0.5   # so serve_forever can be interrupted quickly
 
-        self._http_thread: Optional[threading.Thread] = None
-        self._monitor_thread: Optional[threading.Thread] = None
+        self._http_thread: threading.Thread | None = None
+        self._monitor_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
     # ------------------------------------------------------------------

@@ -61,9 +61,13 @@ def main() -> None:
         num_rounds=args.num_rounds,
         round_timeout_seconds=args.round_timeout,
         heartbeat_timeout_seconds=args.heartbeat_timeout,
+        require_signatures=os.getenv(
+            "COORDINATOR_REQUIRE_SIGNATURES",
+            "true" if os.getenv("ENVIRONMENT", "production").lower() == "production" else "false",
+        ).lower() == "true",
     )
 
-    def _shutdown(signum, frame):  # noqa: ANN001
+    def _shutdown(signum, _frame):  # noqa: ANN001
         logger.info("Signal %d received — stopping.", signum)
         server.stop()
         sys.exit(0)
@@ -77,7 +81,7 @@ def main() -> None:
         args.host, args.port, args.min_clients, args.num_rounds,
     )
 
-    done = server.state.wait_until_done(timeout=None)
+    server.state.wait_until_done(timeout=None)
     server.stop()
     logger.info("Training complete. %d rounds finished.", args.num_rounds)
 
