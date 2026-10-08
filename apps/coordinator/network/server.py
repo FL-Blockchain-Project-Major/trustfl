@@ -290,7 +290,7 @@ class CoordinatorState:
                 metadata["artifact_hash"] if metadata else "0x_dummy_hash"
             )
             if metadata and metadata.get("artifact_hash") and stored_artifact:
-                if metadata["artifact_hash"] != stored_artifact.sha256:
+                if metadata["artifact_hash"] != stored_artifact.sha256_hash:
                     logger.warning("Rejecting update %s: artifact hash mismatch", update_id)
                     return False
 
@@ -429,7 +429,8 @@ class CoordinatorState:
                 if not bc_ok:
                     logger.error("Blockchain round 1 creation failed")
                 else:
-                    self.blockchain_client.activate_round(self.current_round)
+                    if not self.blockchain_client.activate_round(self.current_round):
+                        logger.error("Blockchain round 1 activation failed")
             if self.persistence:
                 self.persistence.start_round(self.current_round, f"model_v{self.current_round}")
 
@@ -492,7 +493,13 @@ class CoordinatorState:
                 if not bc_ok:
                     logger.error("Blockchain round %d creation failed", self.current_round)
                 else:
-                    self.blockchain_client.activate_round(self.current_round)
+                    if not self.blockchain_client.activate_round(self.current_round):
+                        logger.error("Blockchain round %d activation failed", self.current_round)
+            if self.persistence:
+                self.persistence.start_round(
+                    self.current_round,
+                    f"model_v{self.current_round}",
+                )
             logger.info("Round %d started.", self.current_round)
 
     # ------------------------------------------------------------------

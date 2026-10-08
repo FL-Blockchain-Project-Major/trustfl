@@ -140,7 +140,7 @@ class BlockchainClient:
     def create_round(self, round_id: int, global_model_version: str) -> bool:
         """Create a new training round."""
         existing = self.round_registry.functions.getRound(round_id).call()
-        if existing[0] != 0:
+        if int(existing[1]) != 0:
             return True
         logger.info(f"Creating round {round_id} on-chain...")
         return self._send_tx_with_retry(
@@ -151,6 +151,17 @@ class BlockchainClient:
 
     def activate_round(self, round_id: int) -> bool:
         """Activate a training round."""
+        existing = self.round_registry.functions.getRound(round_id).call()
+        status = int(existing[1])
+        if status == 2:  # Active
+            return True
+        if status != 1:  # Created
+            logger.error(
+                "Cannot activate round %d with on-chain status %d",
+                round_id,
+                status,
+            )
+            return False
         logger.info(f"Activating round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.activateRound(round_id),

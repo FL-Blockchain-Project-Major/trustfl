@@ -143,7 +143,7 @@ services:
       context: ./apps/dashboard
       dockerfile: Dockerfile
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - INTERNAL_API_URL=http://api:8000
       - API_SECRET_KEY=${API_SECRET_KEY:-}
     ports:
       - "3000:3000"

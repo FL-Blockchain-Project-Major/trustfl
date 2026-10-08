@@ -26,7 +26,7 @@ class StorageClient(ABC):
         pass
 
 def compute_sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 class LocalStorageClient(StorageClient):
     """Local filesystem for development."""
@@ -38,7 +38,7 @@ class LocalStorageClient(StorageClient):
         sha256_hash = compute_sha256(data)
         size = len(data)
 
-        filename = f"{sha256_hash}.bin"
+        filename = f"{sha256_hash.removeprefix('sha256:')}.bin"
         filepath = os.path.join(self.base_dir, filename)
 
         with open(filepath, "wb") as f:

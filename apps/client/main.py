@@ -18,6 +18,7 @@ import os
 import signal
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 logging.basicConfig(
@@ -49,6 +50,22 @@ def _build_train_fn(
     Build a training callable compatible with DistributedClientAgent.
     Falls back to a synthetic train fn if the ML layer is unavailable.
     """
+    if not (images_dir and annotations_dir and
+            Path(images_dir).is_dir() and Path(annotations_dir).is_dir()):
+        logger.info("Training data is not configured — using synthetic train fn.")
+
+        def synthetic_train_fn(
+            _round_id: int,
+            global_params: list[list[float]],
+            _config: dict[str, Any],
+        ):
+            import random
+            params = global_params if global_params else [[random.gauss(0, 0.1) for _ in range(10)]]
+            updated = [[v + random.gauss(0, 0.01) for v in layer] for layer in params]
+            return updated, 50, {"loss": random.uniform(0.3, 0.7)}
+
+        return synthetic_train_fn
+
     try:
         sys.path.insert(0, "/app/packages/ml_core")
         from trustfl_ml.config import TrainingConfig
@@ -62,7 +79,7 @@ def _build_train_fn(
             model = YOLOModelWrapper()
             if global_params:
                 model.set_parameters(global_params)
-            train_cfg = TrainingConfig(local_epochs=epochs)
+            train_cfg = TrainingConfig(epochs=epochs)
             model.train_on_dataset(
                 images_dir=images_dir,
                 annotations_dir=annotations_dir,
@@ -80,7 +97,7 @@ def _build_train_fn(
         logger.info("Using real YOLO training function.")
         return real_train_fn
 
-    except ImportError:
+    except (ImportError, ValueError):
         logger.warning("ML core not available — using synthetic train fn.")
 
         def synthetic_train_fn(
