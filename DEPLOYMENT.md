@@ -30,9 +30,7 @@ Production API access uses separate role-scoped credentials: configure
 the write key for mutations, and the admin key for DELETE operations. The coordinator
 also requires Ed25519 client public keys at registration and rejects unsigned or invalid
 update submissions. Set `COORDINATOR_REQUIRE_SIGNATURES=true` explicitly when deploying
-the coordinator outside the development Compose stack. Production API access uses
-separate `API_READ_KEY`, `API_WRITE_KEY`, and `API_ADMIN_KEY` secrets: use the read key
-for GET/HEAD, the write key for mutations, and the admin key for DELETE operations.
+the coordinator outside the development Compose stack.
 - **Coordinator & API**: Deploy behind an Application Load Balancer (ALB) or NGINX with TLS termination. Ensure minimum 2 instances of API. Coordinator must be a singleton per federation to prevent race conditions.
 - **Smart Contracts**: Deploy to Ethereum Mainnet or an L2 (Arbitrum/Optimism). Store the generated contract ABI/address JSON in the environment configuration.
 - **ZKP**: The package is independently tested and optional in the coordinator path;

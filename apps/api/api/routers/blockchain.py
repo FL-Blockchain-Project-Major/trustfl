@@ -27,6 +27,14 @@ class TxFail(BaseModel):
 def get_service(db: Session = Depends(get_db)) -> BlockchainTxService:  # noqa: B008
     return BlockchainTxService(db)
 
+@router.get("/transactions", response_model=APIResponse[list[BlockchainTxOut]])
+def list_transactions(
+    skip: int = 0,
+    limit: int = 100,
+    service: BlockchainTxService = Depends(get_service),  # noqa: B008
+):  # noqa: B008
+    return APIResponse(data=service.list_all(skip=skip, limit=min(limit, 100)))
+
 @router.post("/transactions", response_model=APIResponse[BlockchainTxOut])
 def record_tx(payload: TxCreate, service: BlockchainTxService = Depends(get_service)):  # noqa: B008
     tx = service.record(

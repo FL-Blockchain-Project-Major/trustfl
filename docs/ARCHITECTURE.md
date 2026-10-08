@@ -11,13 +11,13 @@ TrustFL provides a verifiable, privacy-preserving, and auditable Federated Learn
 | Directory | Responsibility & Scope |
 | :--- | :--- |
 | `apps/coordinator/` | Orchestrates federated learning rounds, monitors participant heartbeats, receives model weight updates or diff commitments, coordinates aggregation rounds, and triggers blockchain state transitions. |
-| `apps/client/` | Lightweight edge/worker runtime executing on participant nodes. Responsible for fetching global models, conducting local training on private datasets, generating cryptographic signatures and ZK proofs of training execution, and uploading encrypted/signed weight commitments. |
+| `apps/client/` | Lightweight edge/worker runtime executing on participant nodes. Fetches round instructions, trains locally, and submits Ed25519-signed updates with canonical artifact metadata. |
 | `apps/api/` | FastAPI backend and API gateway service. Exposes REST/WebSocket endpoints for external clients, administrative services, and UI integrations. Handles authentication, metadata queries, and proxying status from the coordinator and storage layers. |
 | `apps/dashboard/` | Next.js frontend application. Visualizes ongoing training rounds, participant nodes, performance metrics, IPFS storage integrity, and on-chain audit trails. |
 | `packages/schemas/` | Core data schemas and protocol interfaces (built with Pydantic). Standardizes message interchange formats across coordinator, client, API, and storage layers. |
 | `packages/crypto/` | Cryptographic primitives including ECDSA/Ed25519 digital signatures, Merkle hash trees, commitment schemes, and key management helpers. |
-| `packages/blockchain/`| Abstraction and client drivers for EVM / smart contract interaction (Web3). Provides client wrappers for model registry, round progression, and participant verification contracts. |
-| `packages/storage/` | Unified storage abstraction layer providing adapters for decentralized storage (IPFS / Pinata) and object stores (MinIO / AWS S3) for model weight serialization and retrieval. |
+| `packages/blockchain/`| Abstraction and client driver for EVM / smart contract interaction (Web3). |
+| `packages/storage/` | Storage abstraction with local and IPFS adapters for canonical model artifacts. |
 | `packages/contracts/` | Smart contracts (Solidity) implementing the on-chain audit log, client registration, round progression, and update verification state. |
 | `packages/zkp/` | Independently implemented and tested zero-knowledge proof runtime. ZKP verification is an optional/deferred coordinator boundary; signed metadata and artifact hashes are the current mandatory update checks. |
 | `datasets/tools/` | Tooling for synthetic dataset generation, Dirichlet non-IID data partitioning, and data format validation. |
@@ -59,18 +59,23 @@ sequenceDiagram
     participant Coord as Coordinator (apps/coordinator)
     participant Client as Client Node (apps/client)
     participant Storage as IPFS / Object Store (packages/storage)
-    participant ZK as ZK Prover (packages/zkp/)
-    participant Chain as Blockchain (contracts/)
+    participant ZK as Optional ZK package (packages/zkp/)
+    participant Chain as Blockchain (packages/contracts/)
 
     Coord->>Storage: Publish Global Model Weights (CID_0)
     Coord->>Chain: Register Round Start (Round N, CID_0)
     Client->>Coord: Request Current Global Model & Round Params
     Client->>Storage: Download Weights (CID_0)
     Client->>Client: Execute Local Training on Private Data
-    Client->>ZK: Generate Proof of Valid Computation
+    opt Optional deployment policy
+        Client->>ZK: Generate proof commitment
+    end
     Client->>Storage: Upload Updated Weights (CID_Client)
     Client->>Coord: Submit Signed Update (CID_Client, Hash, ZK Proof)
-    Coord->>Coord: Verify Signatures & ZK Proofs
+    Coord->>Coord: Verify signatures, nonce, round, model, and artifact hash
+    opt Optional ZKP policy
+        Coord->>Coord: Verify ZKP commitment
+    end
     Coord->>Coord: Compute Aggregated Weights (FedAvg / Robust Aggregation)
     Coord->>Storage: Upload New Global Model (CID_N+1)
     Coord->>Chain: Record Round Completion & Audit Trail (CID_N+1, Merkle Root)

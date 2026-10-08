@@ -17,11 +17,11 @@
 7. **Auditability**: Implemented `AuditLogMiddleware` for structured, JSON-based mutation logging, emitting an `X-Request-ID` and timing metrics.
 
 ## 3. Unresolved Security Issues (Accepted/Deferred Risks)
-1. **Dependency Vulnerabilities (pip-audit)**: A full `pip-audit` scan revealed ~104 CVEs in base dependencies (e.g., `cryptography`, `urllib3`, `pillow`). We deferred a complete dependency resolution freeze/update to avoid breaking the local python environment compatibility.
-2. **Authentication / Authorization (FastAPI)**: API access uses the configured bearer secret in production; local Compose intentionally uses a development secret. This is shared-secret authentication, not a user/session authorization model.
-3. **Private-Key Handling (Coordinator)**: Private keys for signing blockchain transactions are currently passed as raw environment variables / Hardhat defaults. Production requires a secure HSM or KMS integration (e.g., AWS KMS).
+1. **Dependency Vulnerabilities**: Dependency advisories must be scanned and triaged as part of release management. The repository does not claim that a local dependency installation is a complete vulnerability assessment.
+2. **Authentication / Authorization (FastAPI)**: Production uses separate role-scoped bearer keys (`API_READ_KEY`, `API_WRITE_KEY`, and `API_ADMIN_KEY`) for read, mutation, and destructive requests. This is scoped shared-secret authorization, not a user/session identity provider.
+3. **Private-Key Handling (Coordinator)**: Local Compose uses a Hardhat development key only. Production requires a secure HSM or KMS integration and must not use the Compose default.
 4. **Transport Layer Security (TLS)**: The FastAPI server relies on external TLS termination. Local host traffic is currently unencrypted HTTP.
 5. **Round Timeouts & Client Crashes**: The coordinator monitor marks stale clients offline and finalizes timed-out rounds. Operators still need to size timeouts for their deployment and monitor failed rounds.
-6. **Coordinator Crash Inconsistency**: If the coordinator crashes between saving state to the relational DB and submitting the transaction on-chain, the two state machines will diverge. A reliable outbox pattern or two-phase commit is needed.
+6. **Coordinator Crash Inconsistency**: Lifecycle metadata is persisted through the API database adapter, but blockchain submission is not atomically coupled to the database. A durable outbox/reconciliation worker is still needed.
 7. **Database Failures**: SQLite is supported for development. Production needs HA PostgreSQL with proper backups.
 8. **ZKP enforcement**: The Circom implementation in `packages/zkp/` is independently tested but is not mandatory in the coordinator update path. Deployments requiring proof enforcement must add that policy boundary before treating updates as ZKP-attested.

@@ -2,9 +2,9 @@
 
 **TrustFL** is a production-oriented Federated Learning research and development platform featuring:
 - **Federated Coordination & Model Aggregation**
-- **Immutable On-Chain Auditability** (Smart Contracts / Blockchain SDK)
-- **Cryptographic Model Verification** (Digital Signatures, Hash Tree Integrity)
-- **Verifiable Decentralized Storage** (IPFS & S3-compatible Object Stores)
+- **Immutable On-Chain Auditability** (Solidity contracts and the Web3 client)
+- **Cryptographic Model Verification** (Ed25519 signatures and canonical SHA-256 artifacts)
+- **Verifiable Artifact Storage** (local development storage or IPFS)
 - **Zero-Knowledge Proofs (ZKP)** (an independently implemented and tested optional verifier boundary; coordinator updates currently require signatures and artifact hashes)
 - **Extensible API Gateway & Real-Time Dashboard** (FastAPI & Next.js)
 
@@ -24,8 +24,8 @@ TrustFL/
 ├── packages/
 │   ├── schemas/           # Shared Pydantic data schemas & message protocols
 │   ├── crypto/            # Cryptographic primitives (signing, key management, hashing)
-│   ├── blockchain-sdk/    # EVM / contract interaction wrappers
-│   └── storage/           # Storage adapters (IPFS, S3, local abstraction)
+│   ├── blockchain/        # EVM / contract interaction wrapper
+│   └── storage/           # IPFS and local artifact storage adapters
 ├── packages/contracts/    # Solidity smart contracts for registry and round logs
 ├── packages/zkp/          # Circom commitment circuit and proof runtime
 ├── datasets/tools/        # Utilities for dataset partitioning, verification, and synthetic testing
@@ -36,6 +36,9 @@ TrustFL/
 ```
 
 For complete architectural details and security invariants, consult [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+For dashboard usage, consult [docs/DASHBOARD.md](docs/DASHBOARD.md). For operations
+and production boundaries, consult [docs/OPERATIONS.md](docs/OPERATIONS.md) and
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
@@ -74,11 +77,16 @@ make check
 
 | Command | Action |
 | --- | --- |
-| `make check` | Run all available linting, syntax, and test checks |
+| `make check` | Run Ruff, Python tests, and repository artifact/security checks |
 | `make lint` | Run code quality checks (Ruff, ESLint) |
 | `make format` | Automatically format codebases |
 | `make test` | Execute unit and integration test suites |
 | `make clean` | Remove temporary build, cache, and test artifacts |
+
+The dashboard is read-only and uses a server-side API proxy so credentials are
+never shipped to the browser. Signed updates and artifact hashes are mandatory
+when `COORDINATOR_REQUIRE_SIGNATURES=true`; ZKP is independently tested but
+optional/deferred in the coordinator lifecycle.
 
 ---
 
