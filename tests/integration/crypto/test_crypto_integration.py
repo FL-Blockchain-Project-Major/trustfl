@@ -86,6 +86,16 @@ def _get(port, path, client_id=None):
 
 class TestCryptoIntegration(unittest.TestCase):
 
+    def setUp(self):
+        self._old_insecure = os.environ.get("COORDINATOR_INSECURE_DEV_AUTH")
+        os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = "true"
+
+    def tearDown(self):
+        if self._old_insecure is None:
+            os.environ.pop("COORDINATOR_INSECURE_DEV_AUTH", None)
+        else:
+            os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = self._old_insecure
+
     def _start_server(self, port, min_clients=2, num_rounds=1, round_timeout=15.0):
         server = CoordinatorServer(
             host="127.0.0.1",

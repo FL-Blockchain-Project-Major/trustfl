@@ -64,6 +64,8 @@ jobs:
 
       - run: npm ci
       - run: npx hardhat compile
+      - name: Verify committed contract types are current
+        run: git diff --exit-code -- packages/contracts/types/ethers-contracts
       - run: npx hardhat test
 
   zk-tests:

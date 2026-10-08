@@ -6,6 +6,7 @@ export type { updateRegistrySol };
 export type { ClientRegistry } from './ClientRegistry.js';
 export type { TrainingRoundRegistry } from './TrainingRoundRegistry.js';
 export * as factories from './factories/index.js';
+export { ClientRegistry__factory } from './factories/ClientRegistry__factory.js';
 export { TrainingRoundRegistry__factory } from './factories/TrainingRoundRegistry__factory.js';
 export type { IClientRegistry } from './UpdateRegistry.sol/IClientRegistry.js';
 export { IClientRegistry__factory } from './factories/UpdateRegistry.sol/IClientRegistry__factory.js';
@@ -13,4 +14,3 @@ export type { ITrainingRoundRegistry } from './UpdateRegistry.sol/ITrainingRound
 export { ITrainingRoundRegistry__factory } from './factories/UpdateRegistry.sol/ITrainingRoundRegistry__factory.js';
 export type { UpdateRegistry } from './UpdateRegistry.sol/UpdateRegistry.js';
 export { UpdateRegistry__factory } from './factories/UpdateRegistry.sol/UpdateRegistry__factory.js';
-export { ClientRegistry__factory } from './factories/ClientRegistry__factory.js';

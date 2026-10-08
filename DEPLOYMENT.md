@@ -12,7 +12,8 @@ docker-compose up --build
   contract address is hardcoded.
 - Dashboard: http://localhost:3000
 - API Docs: http://localhost:8000/docs
-- IPFS UI: http://localhost:5001/webui
+- IPFS API is intentionally not published to the host. For development diagnostics use
+  `docker compose exec ipfs ipfs id` (or the loopback-only gateway at http://localhost:8081).
 
 ## 2. Staging
 Staging deployments should mirror production closely but can use cheaper, managed services.
@@ -33,7 +34,12 @@ update submissions. Set `COORDINATOR_REQUIRE_SIGNATURES=true` explicitly when de
 the coordinator outside the development Compose stack.
 - **Coordinator & API**: Deploy behind an Application Load Balancer (ALB) or NGINX with TLS termination. Ensure minimum 2 instances of API. Coordinator must be a singleton per federation to prevent race conditions.
 - **Ingress headers**: Redirect HTTP to HTTPS and enable HSTS at the TLS ingress after validating the domain and certificate. Do not enable HSTS on plaintext development Compose endpoints.
-- **Enrollment**: Replace the shared development enrollment token with per-client IdP or mTLS credentials bound to the client ID and public key.
+- **Enrollment**: Provision each client ID and its Ed25519 public key in
+  `COORDINATOR_ENROLLMENT_ALLOWLIST`. Registration includes a signed
+  proof-of-possession; every subsequent coordinator request is separately
+  signed and replay-protected. To rotate or revoke a key, update/remove that
+  client’s allow-list entry and restart the singleton coordinator. Do not set
+  `COORDINATOR_INSECURE_DEV_AUTH=true` outside disposable development.
 - **Smart Contracts**: Deploy to Ethereum Mainnet or an L2 (Arbitrum/Optimism). Store the generated contract ABI/address JSON in the environment configuration.
 - **ZKP**: The package is independently tested and optional in the coordinator path;
   do not document it as mandatory until a verifier is explicitly enabled.

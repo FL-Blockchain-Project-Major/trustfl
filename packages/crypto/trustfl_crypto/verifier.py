@@ -103,6 +103,19 @@ class NonceStore:
         with self._lock:
             return any(nonce in bucket for bucket in self._by_round.values())
 
+    def snapshot(self) -> dict[int, list[str]]:
+        """Return a serialisable copy for durable coordinator recovery."""
+        with self._lock:
+            return {round_id: sorted(values) for round_id, values in self._by_round.items()}
+
+    def restore(self, snapshot: dict[int | str, list[str]]) -> None:
+        with self._lock:
+            self._by_round = {
+                int(round_id): set(values)
+                for round_id, values in snapshot.items()
+                if isinstance(values, list)
+            }
+
 
 # ---------------------------------------------------------------------------
 # Verifier
@@ -251,6 +264,23 @@ class UpdateVerifier:
         """Commit a previously verified nonce after durable submission succeeds."""
         meta = signed_update.metadata
         return self.nonce_store.check_and_add(meta.nonce, meta.round_id)
+
+    def snapshot_state(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "current_round": self._current_round,
+                "accepted_model_versions": sorted(self._accepted_versions),
+                "used_nonces": self.nonce_store.snapshot(),
+            }
+
+    def restore_state(self, state: dict[str, object]) -> None:
+        self.set_round(
+            int(state.get("current_round", 0)),
+            set(state.get("accepted_model_versions", [])),
+        )
+        snapshot = state.get("used_nonces", {})
+        if isinstance(snapshot, dict):
+            self.nonce_store.restore(snapshot)
 
 
 # ---------------------------------------------------------------------------

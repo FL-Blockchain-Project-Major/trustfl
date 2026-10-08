@@ -32,6 +32,7 @@ contract UpdateRegistry is AccessControl {
 
     event UpdateSubmitted(string indexed updateId, uint256 indexed roundId, string indexed clientId);
     event UpdateStatusChanged(string indexed updateId, UpdateStatus status);
+    event UpdateRejected(string indexed updateId, string reasonCode);
 
     constructor(address clientRegistryAddr, address roundRegistryAddr) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -71,6 +72,13 @@ contract UpdateRegistry is AccessControl {
         _updates[updateId].status = newStatus;
         
         emit UpdateStatusChanged(updateId, newStatus);
+    }
+
+    function markRejected(string memory updateId, string memory reasonCode) external onlyRole(COORDINATOR_ROLE) {
+        require(_updates[updateId].status == UpdateStatus.Submitted, "UpdateRegistry: must be submitted");
+        _updates[updateId].status = UpdateStatus.Rejected;
+        emit UpdateStatusChanged(updateId, UpdateStatus.Rejected);
+        emit UpdateRejected(updateId, reasonCode);
     }
 
     function recordAggregation(string memory updateId) external onlyRole(COORDINATOR_ROLE) {

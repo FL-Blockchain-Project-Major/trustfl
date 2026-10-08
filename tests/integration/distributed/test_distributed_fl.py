@@ -82,6 +82,16 @@ def _wait_for_server(port: int, timeout: float = 5.0) -> bool:
 
 class TestDistributedFL(unittest.TestCase):
 
+    def setUp(self):
+        self._old_insecure = os.environ.get("COORDINATOR_INSECURE_DEV_AUTH")
+        os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = "true"
+
+    def tearDown(self):
+        if self._old_insecure is None:
+            os.environ.pop("COORDINATOR_INSECURE_DEV_AUTH", None)
+        else:
+            os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = self._old_insecure
+
     # ── test_01: 2 clients, 1 round ─────────────────────────────────────────
 
     def test_01_two_clients_one_round(self):

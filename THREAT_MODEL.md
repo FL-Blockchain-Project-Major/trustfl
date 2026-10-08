@@ -8,7 +8,7 @@
 - **Zero-Knowledge Prover (Circom)**: Off-chain verifiable computation constraints.
 
 ## 2. Mitigated Threats (Current hardening)
-1. **API Abuse & DoS (Oversized Payloads)**: Enforced via `RequestSizeLimitMiddleware` (1MB limit), the coordinator HTTP limit, and `slowapi` rate limits (100 req/min).
+1. **API Abuse & DoS (Oversized Payloads)**: Enforced via `RequestSizeLimitMiddleware` (1MB limit), the coordinator HTTP limit, and an explicit global fixed-window rate limit (100 req/min).
 2. **Malformed Client Updates**: Enforced via strict `pydantic.Field` validation constraints (max lengths, bounded metrics).
 3. **Replay Attacks (Updates)**: Re-submission of updates uses `nonce` checking in both the DB (`UpdateService`) and Smart Contract (`UpdateRegistry`).
 4. **Duplicate Submissions**: Addressed in `UpdateService` to reject a second update from the same `client_id` in a given `round_id`.
@@ -25,4 +25,4 @@
 6. **Coordinator Crash Inconsistency**: Lifecycle metadata is persisted through the API database adapter, but blockchain submission is not atomically coupled to the database. A durable outbox/reconciliation worker is still needed.
 7. **Database Failures**: SQLite is supported for development. Production needs HA PostgreSQL with proper backups.
 8. **ZKP enforcement**: The Circom implementation in `packages/zkp/` is independently tested but is not mandatory in the coordinator update path. Deployments requiring proof enforcement must add that policy boundary before treating updates as ZKP-attested.
-9. **Enrollment identity**: A coordinator token authenticates transport requests but is not an identity provider. Client IDs are bound to their first Ed25519 public key and key substitution is rejected. Production deployments should use mTLS or IdP-issued per-client credentials bound to client ID and public key.
+9. **Enrollment identity**: Production registration requires an operator-provisioned per-client public-key allow-list and a signed proof of possession. Coordinator reads, heartbeats, and submissions require signed, timestamped, nonce-protected requests. The legacy shared-token path is available only with the explicit `COORDINATOR_INSECURE_DEV_AUTH=true` flag for disposable development.

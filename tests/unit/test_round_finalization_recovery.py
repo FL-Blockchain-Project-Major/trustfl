@@ -33,6 +33,7 @@ def test_failed_finalization_retries_without_reaggregating():
     assert state.submit_update("client", 1, [[1.0]], 1, {})
     assert state.current_round == 1
     assert len(state.round_history) == 1
+    state._next_finalization_retry = 0
     state.monitor_tick()
     assert state.current_round == 2
     assert len(state.round_history) == 1

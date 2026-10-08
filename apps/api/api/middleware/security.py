@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -21,7 +23,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 logger = logging.getLogger("trustfl.audit")
 
 def _client_ip(request: Request) -> str:
-    trusted = {item.strip() for item in __import__("os").environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
+    trusted = {item.strip() for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
     peer = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
     return forwarded if peer in trusted and forwarded else peer
@@ -40,22 +42,104 @@ SECURITY_HEADERS = {
 }
 
 
-class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """Rejects requests whose bodies exceed MAX_BODY_BYTES."""
+class RequestSizeLimitMiddleware:
+    """Bound mutating request streams without requiring Content-Length.
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if request.method in MUTATING_METHODS:
-            content_length = request.headers.get("content-length")
-            if content_length and content_length.isdigit() and int(content_length) > MAX_BODY_BYTES:
-                return JSONResponse(
-                    status_code=413,
-                    content={"detail": "Request body too large. Maximum allowed: 1 MB."},
-                )
-            # ASGI servers stream a body in chunks.  Do not call request.body()
-            # here: it buffers an attacker-controlled unbounded stream.
-            if not content_length:
-                return JSONResponse(status_code=411, content={"detail": "Content-Length is required."})
-        return await call_next(request)
+    The receive wrapper counts chunks as downstream consumes them; it never
+    joins or pre-buffers an untrusted body.  A bodiless DELETE is therefore
+    treated as a zero-byte request while chunked uploads are capped too.
+    """
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or scope["method"] not in MUTATING_METHODS:
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers", []))
+        raw_length = headers.get(b"content-length", b"")
+        if raw_length.isdigit() and int(raw_length) > MAX_BODY_BYTES:
+            response = JSONResponse(status_code=413, content={"detail": "Request body too large. Maximum allowed: 1 MB."})
+            await response(scope, receive, send)
+            return
+        size = 0
+        exceeded = False
+
+        async def limited_receive():
+            nonlocal size, exceeded
+            message = await receive()
+            if message["type"] == "http.request":
+                size += len(message.get("body", b""))
+                if size > MAX_BODY_BYTES:
+                    exceeded = True
+                    # Starlette turns a disconnect during body consumption
+                    # into a controlled request failure.  We replace it with
+                    # a 413 below and suppress any partial application reply.
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def limited_send(message):
+            if not exceeded:
+                await send(message)
+
+        try:
+            await self.app(scope, limited_receive, limited_send)
+        except Exception:
+            if not exceeded:
+                raise
+        if exceeded:
+            response = JSONResponse(status_code=413, content={"detail": "Request body too large. Maximum allowed: 1 MB."})
+            await response(scope, receive, send)
+
+
+class GlobalRateLimitMiddleware:
+    """Small, explicit in-process fixed-window limiter for every request.
+
+    SlowAPI only applies limits to decorated endpoints; this API uses routers
+    without decorators, so its middleware silently did not enforce defaults.
+    This middleware deliberately sits outside authentication, thus failed key
+    guesses consume the same per-IP budget. Deployments with multiple API
+    workers must use a shared gateway/Redis limiter in addition to this guard.
+    """
+
+    def __init__(self, app, limit: str | None = None) -> None:
+        self.app = app
+        self.limit = limit
+        self._lock = threading.Lock()
+        self._windows: dict[str, tuple[float, int]] = {}
+
+    @staticmethod
+    def _parse(value: str) -> tuple[int, float]:
+        count, period = value.strip().lower().split("/", 1)
+        seconds = {"second": 1, "minute": 60, "hour": 3600}.get(period.rstrip("s"))
+        if not seconds or int(count) <= 0:
+            raise ValueError("API_RATE_LIMIT must be e.g. 100/minute")
+        return int(count), float(seconds)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        if scope["method"] != "OPTIONS":
+            limit, period = self._parse(self.limit or os.getenv("API_RATE_LIMIT", "100/minute"))
+            now = time.monotonic()
+            peer = (scope.get("client") or ("unknown", 0))[0]
+            headers = dict(scope.get("headers", []))
+            trusted = {item.strip() for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
+            forwarded = headers.get(b"x-forwarded-for", b"").decode("latin-1").split(",")[0].strip()
+            key = forwarded if peer in trusted and forwarded else peer
+            with self._lock:
+                started, count = self._windows.get(key, (now, 0))
+                if now - started >= period:
+                    started, count = now, 0
+                count += 1
+                self._windows[key] = (started, count)
+            if count > limit:
+                response = JSONResponse(status_code=429, content={"detail": "Rate limit exceeded."})
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class AuditLogMiddleware(BaseHTTPMiddleware):

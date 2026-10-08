@@ -14,6 +14,7 @@ Retry logic wraps every HTTP call (max_retries with exponential back-off).
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -109,9 +111,17 @@ class DistributedClientAgent:
 
     def register(self) -> bool:
         """POST /register; returns True on success."""
+        nonce = uuid.uuid4().hex
+        proof = b"|".join((
+            b"trustfl-registration-v1", self.client_id.encode(), self.identity.public_key_b64.encode(), nonce.encode(),
+        ))
         payload = {
             "client_id": self.client_id,
-            "capabilities": {"public_key": self.identity.public_key_b64},
+            "capabilities": {
+                "public_key": self.identity.public_key_b64,
+                "registration_nonce": nonce,
+                "registration_signature": base64.b64encode(self.identity.sign(proof)).decode(),
+            },
         }
         resp = self._post("/register", payload)
         if resp and resp.get("accepted"):
@@ -277,7 +287,18 @@ class DistributedClientAgent:
     ) -> dict[str, Any] | None:
         url = self.coordinator_url + path
         data = json.dumps(payload).encode() if payload is not None else None
-        headers = {"Content-Type": "application/json", "X-TrustFL-Client-ID": self.client_id}
+        timestamp = str(int(time.time()))
+        nonce = uuid.uuid4().hex
+        proof = b"|".join((
+            b"trustfl-request-v1", self.client_id.encode(), method.encode(), path.encode(), timestamp.encode(), nonce.encode(),
+        ))
+        headers = {
+            "Content-Type": "application/json",
+            "X-TrustFL-Client-ID": self.client_id,
+            "X-TrustFL-Timestamp": timestamp,
+            "X-TrustFL-Nonce": nonce,
+            "X-TrustFL-Signature": base64.b64encode(self.identity.sign(proof)).decode(),
+        }
         token = self.enrollment_token
         if token:
             headers["Authorization"] = f"Bearer {token}"

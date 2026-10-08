@@ -9,7 +9,10 @@ contract TrainingRoundRegistry is AccessControl {
     enum RoundStatus { None, Created, Active, Finalized }
 
     struct TrainingRound {
-        string globalModelVersion;
+        // Input is immutable provenance for this round; output is populated
+        // only after aggregation/finalization.
+        string inputModelVersion;
+        string outputModelVersion;
         RoundStatus status;
     }
 
@@ -27,7 +30,8 @@ contract TrainingRoundRegistry is AccessControl {
         require(_rounds[roundId].status == RoundStatus.None, "RoundRegistry: round already exists");
 
         _rounds[roundId] = TrainingRound({
-            globalModelVersion: globalModelVersion,
+            inputModelVersion: globalModelVersion,
+            outputModelVersion: "",
             status: RoundStatus.Created
         });
 
@@ -43,7 +47,7 @@ contract TrainingRoundRegistry is AccessControl {
     function finalizeRound(uint256 roundId, string memory newGlobalModelVersion) external onlyRole(COORDINATOR_ROLE) {
         require(_rounds[roundId].status == RoundStatus.Active, "RoundRegistry: invalid status for finalization");
         _rounds[roundId].status = RoundStatus.Finalized;
-        _rounds[roundId].globalModelVersion = newGlobalModelVersion;
+        _rounds[roundId].outputModelVersion = newGlobalModelVersion;
         emit RoundFinalized(roundId, newGlobalModelVersion);
     }
 

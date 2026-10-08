@@ -3,7 +3,7 @@
 /* eslint-disable */
 import type { BaseContract, BigNumberish, BytesLike, FunctionFragment, Result, Interface, EventFragment, AddressLike, ContractRunner, ContractMethod, Listener } from "ethers"
 import type { TypedContractEvent, TypedDeferredTopicFilter, TypedEventLog, TypedLogDescription, TypedListener, TypedContractMethod } from "../common.js"
-  
+
 export declare namespace UpdateRegistry {
       
     export type UpdateStruct = {roundId: BigNumberish, clientId: string, artifactHash: string, nonce: string, status: BigNumberish}
@@ -13,9 +13,9 @@ export declare namespace UpdateRegistry {
     }
 
   export interface UpdateRegistryInterface extends Interface {
-    getFunction(nameOrSignature: "COORDINATOR_ROLE" | "DEFAULT_ADMIN_ROLE" | "clientRegistry" | "getRoleAdmin" | "getUpdate" | "grantRole" | "hasRole" | "markVerificationState" | "recordAggregation" | "renounceRole" | "revokeRole" | "roundRegistry" | "submitUpdate" | "supportsInterface"): FunctionFragment;
+    getFunction(nameOrSignature: "COORDINATOR_ROLE" | "DEFAULT_ADMIN_ROLE" | "clientRegistry" | "getRoleAdmin" | "getUpdate" | "grantRole" | "hasRole" | "markRejected" | "markVerificationState" | "recordAggregation" | "renounceRole" | "revokeRole" | "roundRegistry" | "submitUpdate" | "supportsInterface"): FunctionFragment;
 
-    getEvent(nameOrSignatureOrTopic: "RoleAdminChanged" | "RoleGranted" | "RoleRevoked" | "UpdateStatusChanged" | "UpdateSubmitted"): EventFragment;
+    getEvent(nameOrSignatureOrTopic: "RoleAdminChanged" | "RoleGranted" | "RoleRevoked" | "UpdateRejected" | "UpdateStatusChanged" | "UpdateSubmitted"): EventFragment;
 
     encodeFunctionData(functionFragment: 'COORDINATOR_ROLE', values?: undefined): string;
 encodeFunctionData(functionFragment: 'DEFAULT_ADMIN_ROLE', values?: undefined): string;
@@ -24,6 +24,7 @@ encodeFunctionData(functionFragment: 'getRoleAdmin', values: [BytesLike]): strin
 encodeFunctionData(functionFragment: 'getUpdate', values: [string]): string;
 encodeFunctionData(functionFragment: 'grantRole', values: [BytesLike, AddressLike]): string;
 encodeFunctionData(functionFragment: 'hasRole', values: [BytesLike, AddressLike]): string;
+encodeFunctionData(functionFragment: 'markRejected', values: [string, string]): string;
 encodeFunctionData(functionFragment: 'markVerificationState', values: [string, boolean]): string;
 encodeFunctionData(functionFragment: 'recordAggregation', values: [string]): string;
 encodeFunctionData(functionFragment: 'renounceRole', values: [BytesLike, AddressLike]): string;
@@ -39,6 +40,7 @@ decodeFunctionResult(functionFragment: 'getRoleAdmin', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'getUpdate', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'grantRole', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'hasRole', data: BytesLike): Result;
+decodeFunctionResult(functionFragment: 'markRejected', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'markVerificationState', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'recordAggregation', data: BytesLike): Result;
 decodeFunctionResult(functionFragment: 'renounceRole', data: BytesLike): Result;
@@ -85,6 +87,18 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
 
   
 
+    export namespace UpdateRejectedEvent {
+      export type InputTuple = [updateId: string, reasonCode: string];
+      export type OutputTuple = [updateId: string, reasonCode: string];
+      export interface OutputObject {updateId: string, reasonCode: string };
+      export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
+      export type Filter = TypedDeferredTopicFilter<Event>
+      export type Log = TypedEventLog<Event>
+      export type LogDescription = TypedLogDescription<Event>
+    }
+
+  
+
     export namespace UpdateStatusChangedEvent {
       export type InputTuple = [updateId: string, status: BigNumberish];
       export type OutputTuple = [updateId: string, status: bigint];
@@ -110,13 +124,13 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
   
 
   export interface UpdateRegistry extends BaseContract {
-    
+
     connect(runner?: ContractRunner | null): UpdateRegistry;
     waitForDeployment(): Promise<this>;
 
     interface: UpdateRegistryInterface;
 
-    
+
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
     fromBlockOrBlockhash?: string | number | undefined,
@@ -141,7 +155,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
   removeAllListeners<TCEvent extends TypedContractEvent>(event?: TCEvent): Promise<this>
 
 
-    
+
     
     COORDINATOR_ROLE: TypedContractMethod<
       [],
@@ -195,6 +209,14 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
       [role: BytesLike, account: AddressLike, ],
       [boolean],
       'view'
+    >
+    
+
+    
+    markRejected: TypedContractMethod<
+      [updateId: string, reasonCode: string, ],
+      [void],
+      'nonpayable'
     >
     
 
@@ -292,6 +314,11 @@ getFunction(nameOrSignature: 'hasRole'): TypedContractMethod<
       [boolean],
       'view'
     >;
+getFunction(nameOrSignature: 'markRejected'): TypedContractMethod<
+      [updateId: string, reasonCode: string, ],
+      [void],
+      'nonpayable'
+    >;
 getFunction(nameOrSignature: 'markVerificationState'): TypedContractMethod<
       [updateId: string, isValid: boolean, ],
       [void],
@@ -331,6 +358,7 @@ getFunction(nameOrSignature: 'supportsInterface'): TypedContractMethod<
     getEvent(key: 'RoleAdminChanged'): TypedContractEvent<RoleAdminChangedEvent.InputTuple, RoleAdminChangedEvent.OutputTuple, RoleAdminChangedEvent.OutputObject>;
 getEvent(key: 'RoleGranted'): TypedContractEvent<RoleGrantedEvent.InputTuple, RoleGrantedEvent.OutputTuple, RoleGrantedEvent.OutputObject>;
 getEvent(key: 'RoleRevoked'): TypedContractEvent<RoleRevokedEvent.InputTuple, RoleRevokedEvent.OutputTuple, RoleRevokedEvent.OutputObject>;
+getEvent(key: 'UpdateRejected'): TypedContractEvent<UpdateRejectedEvent.InputTuple, UpdateRejectedEvent.OutputTuple, UpdateRejectedEvent.OutputObject>;
 getEvent(key: 'UpdateStatusChanged'): TypedContractEvent<UpdateStatusChangedEvent.InputTuple, UpdateStatusChangedEvent.OutputTuple, UpdateStatusChangedEvent.OutputObject>;
 getEvent(key: 'UpdateSubmitted'): TypedContractEvent<UpdateSubmittedEvent.InputTuple, UpdateSubmittedEvent.OutputTuple, UpdateSubmittedEvent.OutputObject>;
 
@@ -346,6 +374,10 @@ getEvent(key: 'UpdateSubmitted'): TypedContractEvent<UpdateSubmittedEvent.InputT
 
       'RoleRevoked(bytes32,address,address)': TypedContractEvent<RoleRevokedEvent.InputTuple, RoleRevokedEvent.OutputTuple, RoleRevokedEvent.OutputObject>;
       RoleRevoked: TypedContractEvent<RoleRevokedEvent.InputTuple, RoleRevokedEvent.OutputTuple, RoleRevokedEvent.OutputObject>;
+    
+
+      'UpdateRejected(string,string)': TypedContractEvent<UpdateRejectedEvent.InputTuple, UpdateRejectedEvent.OutputTuple, UpdateRejectedEvent.OutputObject>;
+      UpdateRejected: TypedContractEvent<UpdateRejectedEvent.InputTuple, UpdateRejectedEvent.OutputTuple, UpdateRejectedEvent.OutputObject>;
     
 
       'UpdateStatusChanged(string,uint8)': TypedContractEvent<UpdateStatusChangedEvent.InputTuple, UpdateStatusChangedEvent.OutputTuple, UpdateStatusChangedEvent.OutputObject>;

@@ -106,6 +106,10 @@ describe("TrustFL Blockchain Subsystem", function () {
         .to.emit(roundRegistry, "RoundFinalized")
         .withArgs(1, "model_v2");
 
+      const round = await roundRegistry.getRound(1);
+      expect(round.inputModelVersion).to.equal("model_v1");
+      expect(round.outputModelVersion).to.equal("model_v2");
+
       expect(await roundRegistry.isRoundActive(1)).to.be.false;
     });
 
@@ -234,6 +238,13 @@ describe("TrustFL Blockchain Subsystem", function () {
       await expect(
         updateRegistry.connect(coordinator).recordAggregation(updateId)
       ).to.be.revertedWith("UpdateRegistry: must be verified");
+    });
+
+    it("records a rejection reason without storing an update payload", async function () {
+      await updateRegistry.connect(coordinator).submitUpdate(updateId, roundId, clientId, artifactHash, nonce);
+      await expect(updateRegistry.connect(coordinator).markRejected(updateId, "INVALID_SIGNATURE"))
+        .to.emit(updateRegistry, "UpdateRejected").withArgs(updateId, "INVALID_SIGNATURE");
+      expect((await updateRegistry.getUpdate(updateId)).status).to.equal(4);
     });
   });
 });

@@ -16,13 +16,31 @@ Services and local ports:
 | API | 8000 | FastAPI control plane and OpenAPI |
 | Coordinator | 8100 | FL registration, rounds, and signed updates |
 | Hardhat | 8545 | Development EVM node only |
-| IPFS API | 5001 | Artifact storage API |
+| IPFS gateway | 8081 | Loopback-only artifact gateway (the API remains container-internal) |
 | PostgreSQL | 5432 | Control-plane metadata |
 
 The Compose stack is a development/integration environment. It uses a local
 Hardhat chain, development credentials, a single coordinator, and local
 persistence volumes. Published ports are loopback-only; IPFS's API is container-internal.
 Do not expose it to the public internet. Production TLS ingress must enforce HTTPS and HSTS.
+For safe IPFS diagnostics, run `docker compose exec ipfs ipfs id`; do not publish port 5001.
+
+`FL_MAX_CLIENT_WEIGHT_SHARE` (default `0.5`) clips a client’s effective FedAvg
+weight only after all updates are collected. This makes the defense independent
+of submission order; `FL_MAX_NUM_EXAMPLES_PER_UPDATE` remains the hard input cap.
+
+If chain finalization fails, the coordinator retries with exponential backoff,
+bounded by `FL_FINALIZE_MAX_RETRIES`. A terminal `finalization.terminal_error`
+in authenticated coordinator status means the round is frozen without re-aggregation.
+Investigate the chain transaction/state, repair the chain connection or state, then
+restart the coordinator only after confirming the round can be finalized.
+
+The generated Ethers declarations in `packages/contracts/types/ethers-contracts`
+are intentionally tracked so downstream consumers can use the deployed ABI without
+running Hardhat. Contract CI compiles first and fails if generation changes them.
+Each on-chain round preserves `inputModelVersion` (the model clients trained from)
+and `outputModelVersion` (the finalized aggregate); do not treat the latter as a
+replacement for input provenance.
 
 ## Checks
 

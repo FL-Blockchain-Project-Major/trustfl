@@ -6,9 +6,9 @@ import type { TypedContractEvent, TypedDeferredTopicFilter, TypedEventLog, Typed
   
 export declare namespace TrainingRoundRegistry {
       
-    export type TrainingRoundStruct = {globalModelVersion: string, status: BigNumberish}
+    export type TrainingRoundStruct = {inputModelVersion: string, outputModelVersion: string, status: BigNumberish}
 
-    export type TrainingRoundStructOutput = [globalModelVersion: string, status: bigint] & {globalModelVersion: string, status: bigint }
+    export type TrainingRoundStructOutput = [inputModelVersion: string, outputModelVersion: string, status: bigint] & {inputModelVersion: string, outputModelVersion: string, status: bigint }
   
     }
 

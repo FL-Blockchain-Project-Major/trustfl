@@ -6,13 +6,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from apps.api.api.db.session import create_all_tables
-from apps.api.api.middleware.security import AuditLogMiddleware, RequestSizeLimitMiddleware
+from apps.api.api.middleware.security import (
+    AuditLogMiddleware,
+    GlobalRateLimitMiddleware,
+    RequestSizeLimitMiddleware,
+)
 from apps.api.api.routers import (
     artifacts,
     blockchain,
@@ -26,20 +26,6 @@ from apps.api.api.routers import (
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-
-def rate_limit_key(request: Request) -> str:
-    """Honor X-Forwarded-For only when the immediate proxy is trusted."""
-    trusted = {x.strip() for x in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if x.strip()}
-    peer = request.client.host if request.client else "unknown"
-    if peer in trusted:
-        forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        if forwarded:
-            return forwarded
-    return get_remote_address(request)
-
-
-limiter = Limiter(key_func=rate_limit_key, default_limits=[os.getenv("API_RATE_LIMIT", "100/minute")])
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,9 +41,6 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
@@ -121,7 +104,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
-app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(GlobalRateLimitMiddleware)
 
 # Include routers
 app.include_router(health.router)
