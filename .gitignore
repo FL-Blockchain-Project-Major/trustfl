@@ -110,3 +110,12 @@ id_ed25519
 *~
 .DS_Store
 Thumbs.db
+
+# Local databases
+*.db
+trustfl.db
+trustfl_e2e.db
+trustfl_test.db
+
+# Hardhat logs
+packages/contracts/hardhat.log

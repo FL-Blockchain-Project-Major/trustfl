@@ -34,6 +34,8 @@ app.add_middleware(
 # Startup event for dev only
 @app.on_event("startup")
 def startup_event():
+    from apps.api.api.db.session import check_config
+    check_config(app)
     create_all_tables()
 
 # Include routers

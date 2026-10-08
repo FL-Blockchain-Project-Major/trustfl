@@ -20,3 +20,8 @@ def submit_update(payload: UpdateSubmit, service: UpdateService = Depends(get_se
 def list_updates(round_id: str, service: UpdateService = Depends(get_service)):
     upds = service.list_by_round(round_id)
     return APIResponse(data=upds)
+
+@router.put("/{update_id}/status", response_model=APIResponse[UpdateOut])
+def update_status(update_id: str, payload: UpdateStatusChange, service: UpdateService = Depends(get_service)):
+    upd = service.update_status(update_id, payload)
+    return APIResponse(data=upd)

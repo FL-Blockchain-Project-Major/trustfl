@@ -21,11 +21,11 @@ services:
     image: ipfs/kubo:latest
     ports:
       - "5001:5001"
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - ipfs_data:/data/ipfs
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/v0/id"]
+      test: ["CMD", "wget", "--post-data=", "-qO-", "http://localhost:5001/api/v0/id"]
       interval: 10s
       timeout: 5s
       retries: 5

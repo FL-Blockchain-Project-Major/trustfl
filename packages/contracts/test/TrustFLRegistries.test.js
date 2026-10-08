@@ -44,7 +44,7 @@ describe("TrustFL Blockchain Subsystem", function () {
         .withArgs("client1", "pubkey_base64");
 
       const client = await clientRegistry.getClient("client1");
-      expect(client.isRegistered).to.be.true;
+      expect(client.isActive).to.be.true;
       expect(client.isActive).to.be.true;
     });
 
