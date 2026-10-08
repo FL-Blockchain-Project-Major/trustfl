@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bash scripts/build.sh",
-    "test": "node test/prove_and_verify.js"
+    "test": "node test/test_zkp.js"
   },
   "dependencies": {
     "circomlib": "^2.0.5",

@@ -49,6 +49,9 @@ jobs:
       - name: Run Jest Tests
         run: npm test
 
+      - name: Build dashboard
+        run: npm run build
+
   contract-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -86,14 +89,14 @@ jobs:
         with:
           node-version: '20'
           
-      - name: Install snarkjs
-        run: npm install -g snarkjs circom
+      - name: Install ZKP dependencies
+        run: npm ci
         
-      - name: Run ZK script (mock)
-        run: echo "ZKP tests passed" # Placeholder for actual Circom compilation if needed
+      - name: Run ZKP commitment and invalid-proof tests
+        run: npm test
 
   docker-build:
-    needs: [python-tests, frontend-tests, contract-tests]
+    needs: [python-tests, frontend-tests, contract-tests, zk-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +106,12 @@ jobs:
         
       - name: Build Coordinator Image
         run: docker build -t trustfl-coordinator -f apps/coordinator/Dockerfile .
+
+      - name: Build Client Image
+        run: docker build -t trustfl-client -f apps/client/Dockerfile .
         
       - name: Build Dashboard Image
         run: cd apps/dashboard && docker build -t trustfl-dashboard -f Dockerfile .
+
+      - name: Validate Compose configuration
+        run: docker compose config

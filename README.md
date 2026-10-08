@@ -1,18 +1,18 @@
 # TrustFL
 
-**TrustFL** is an enterprise-grade, production-oriented Federated Learning platform featuring:
-- **Decentralized Coordination & Model Aggregation** (Federated Learning)
+**TrustFL** is a production-oriented Federated Learning research and development platform featuring:
+- **Federated Coordination & Model Aggregation**
 - **Immutable On-Chain Auditability** (Smart Contracts / Blockchain SDK)
 - **Cryptographic Model Verification** (Digital Signatures, Hash Tree Integrity)
 - **Verifiable Decentralized Storage** (IPFS & S3-compatible Object Stores)
-- **Zero-Knowledge Proofs (ZKP)** (Verifiable client contributions and validity without exposing raw weights or local data)
+- **Zero-Knowledge Proofs (ZKP)** (Proofs that a private commitment opens to a public, round-bound commitment without exposing the committed value)
 - **Extensible API Gateway & Real-Time Dashboard** (FastAPI & Next.js)
 
 ---
 
 ## 🏛 Repository Architecture
 
-This repository is structured as a production monorepo:
+This repository is structured as a monorepo:
 
 ```
 TrustFL/
@@ -26,8 +26,8 @@ TrustFL/
 │   ├── crypto/            # Cryptographic primitives (signing, key management, hashing)
 │   ├── blockchain-sdk/    # EVM / contract interaction wrappers
 │   └── storage/           # Storage adapters (IPFS, S3, local abstraction)
-├── contracts/             # Solidity smart contracts for decentralized registry and round logs
-├── zk/                    # Zero-knowledge circuits (Circom/Halo2/Noir) and verification keys
+├── packages/contracts/    # Solidity smart contracts for registry and round logs
+├── packages/zkp/          # Circom commitment circuit and proof runtime
 ├── datasets/tools/        # Utilities for dataset partitioning, verification, and synthetic testing
 ├── infrastructure/        # Docker Compose, Kubernetes manifests, and cloud provisioning
 ├── tests/                 # Unit, integration, and end-to-end test suites

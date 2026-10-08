@@ -3,13 +3,15 @@ Database session factory.
 Supports SQLite (dev) and PostgreSQL (prod) via DATABASE_URL env var.
 """
 from __future__ import annotations
-import os
-import re
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from typing import Generator
-from fastapi import FastAPI, Request
 
+import os
+from collections.abc import Generator
+
+from fastapi import FastAPI
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./trustfl.db")
 
 # Validate DATABASE_URL format
@@ -23,8 +25,8 @@ elif DATABASE_URL.startswith("postgresql"):
         raise RuntimeError(
             "psycopg2/psycopg3 is required for PostgreSQL support. "
             "Install with: pip install psycopg[binary]"
-        )
-    connect_args = {"check_same_thread": False}
+        ) from None
+    connect_args = {}
 else:
     raise RuntimeError(
         f"Unsupported DATABASE_URL scheme: {DATABASE_URL!r}. "
@@ -50,30 +52,36 @@ def create_all_tables() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-def check_config(app: FastAPI) -> None:
+def check_config(_app: FastAPI) -> None:
     """Validate required environment variables at startup.
     Call this in the FastAPI startup event to catch misconfigurations early.
     """
     errors = []
     # Check DATABASE_URL
     db_url = os.getenv("DATABASE_URL", "sqlite:///./trustfl.db")
-    if db_url.startswith("sqlite") and db_url == "sqlite:///./trustfl.db":
+    if ENVIRONMENT == "production" and db_url.startswith("sqlite"):
+        errors.append("Production requires a PostgreSQL DATABASE_URL")
+    elif db_url.startswith("sqlite") and db_url == "sqlite:///./trustfl.db":
         # Dev mode: check that SQLite file is writable
         import pathlib
         db_path = pathlib.Path("./trustfl.db")
         if db_path.exists() and not os.access(db_path, os.W_OK):
             errors.append("SQLite database file is not writable")
     elif not db_url.startswith("postgresql"):
-        errors.append(f"DATABASE_URL has unexpected scheme: {db_url!r}")
+        errors.append("DATABASE_URL must use sqlite or postgresql")
 
     # Check API_SECRET_KEY
     api_key = os.getenv("API_SECRET_KEY", "")
-    if not api_key or api_key in ("CHANGE_ME_IN_PRODUCTION", "changeme_in_production", ""):
+    if ENVIRONMENT == "production" and (
+        not api_key or api_key in ("CHANGE_ME_IN_PRODUCTION", "changeme_in_production")
+    ):
         errors.append("API_SECRET_KEY is not configured. Set it in .env file.")
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")
-    if coord_key == "0xYOUR_PRIVATE_KEY_HERE":
+    if ENVIRONMENT == "production" and (
+        not coord_key or coord_key == "0xYOUR_PRIVATE_KEY_HERE"
+    ):
         errors.append("COORDINATOR_PRIVATE_KEY is using placeholder value. Set a real private key in .env.")
 
     if errors:

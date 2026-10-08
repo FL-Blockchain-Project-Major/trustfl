@@ -1,0 +1,15 @@
+.git
+.env
+**/.env*
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+**/*.db
+**/*.log
+datasets/raw
+datasets/processed
+scratch/playwright-test/screenshots
+packages/contracts/artifacts
+packages/contracts/cache
+packages/zkp/artifacts
