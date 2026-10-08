@@ -12,124 +12,89 @@ permissions:
 jobs:
   python-tests:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Lint with Ruff
+      - name: Lint
         run: ruff check .
 
-      - name: Run Python tests
+      - name: Test
         run: pytest tests/
 
   frontend-tests:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: apps/dashboard
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22.13"
-          cache: "npm"
-          cache-dependency-path: "apps/dashboard/package-lock.json"
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Jest tests
-        run: npm test
-
-      - name: Build dashboard
-        run: npm run build
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
 
   contract-tests:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: packages/contracts
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22.13"
-          cache: "npm"
-          cache-dependency-path: "packages/contracts/package-lock.json"
+          cache: npm
+          cache-dependency-path: packages/contracts/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Compile contracts
-        run: npx hardhat compile
-
-      - name: Test contracts
-        run: npx hardhat test
+      - run: npm ci
+      - run: npx hardhat compile
+      - run: npx hardhat test
 
   zk-tests:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: packages/zkp
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22.13"
+          cache: npm
+          cache-dependency-path: packages/zkp/package-lock.json
 
-      - name: Install ZKP dependencies
-        run: npm ci
-
-      - name: Run ZKP tests
-        run: npm test
+      - run: npm ci
+      - run: npm test
 
   docker-build:
-    needs:
-      - python-tests
-      - frontend-tests
-      - contract-tests
-      - zk-tests
-
+    needs: [python-tests, frontend-tests, contract-tests, zk-tests]
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build API image
-        run: docker build -t trustfl-api -f apps/api/Dockerfile .
-
-      - name: Build coordinator image
-        run: docker build -t trustfl-coordinator -f apps/coordinator/Dockerfile .
-
-      - name: Build client image
-        run: docker build -t trustfl-client -f apps/client/Dockerfile .
-
-      - name: Build dashboard image
+      - name: Build images
         run: |
-          cd apps/dashboard
-          docker build -t trustfl-dashboard -f Dockerfile .
+          docker build -t trustfl-api -f apps/api/Dockerfile .
+          docker build -t trustfl-coordinator -f apps/coordinator/Dockerfile .
+          docker build -t trustfl-client -f apps/client/Dockerfile .
+          docker build -t trustfl-dashboard apps/dashboard
 
       - name: Validate Compose configuration
         run: docker compose config
@@ -138,11 +103,10 @@ jobs:
     needs: docker-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run full TrustFL Compose E2E
+      - name: Run Compose E2E
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -152,106 +116,51 @@ jobs:
 
           cleanup() {
             local status=$?
-
-            echo "=================================================="
-            echo "TrustFL E2E cleanup"
-            echo "=================================================="
-
             if [[ "$status" -ne 0 ]]; then
-              echo "=== Compose status ==="
               docker compose ps --all || true
-
-              echo "=== Compose logs ==="
               docker compose logs --no-color --tail=500 || true
             fi
-
-            echo "=== Stopping Compose stack ==="
             docker compose down --volumes --remove-orphans || true
-
             exit "$status"
           }
-
           trap cleanup EXIT
 
-          echo "=================================================="
-          echo "Starting TrustFL Compose stack"
-          echo "=================================================="
-
-          docker compose up --build -d
+          http_get() {
+            curl --fail --silent --show-error --location \
+              --connect-timeout 2 --max-time 10 \
+              --retry 3 --retry-all-errors --retry-delay 1 "$1"
+          }
 
           wait_for_url() {
-            local url="$1"
-            local timeout_seconds="${2:-180}"
-            local deadline=$((SECONDS + timeout_seconds))
-
-            while (( SECONDS < deadline )); do
-              if curl \
-                --fail \
-                --silent \
-                --show-error \
-                --location \
-                --connect-timeout 2 \
-                --max-time 10 \
-                --retry 3 \
-                --retry-all-errors \
-                --retry-delay 1 \
-                "$url" >/dev/null 2>&1; then
-                echo "Ready: $url"
-                return 0
+            local deadline=$((SECONDS + 180))
+            until http_get "$1" >/dev/null 2>&1; do
+              if (( SECONDS >= deadline )); then
+                echo "Timed out waiting for: $1"
+                return 1
               fi
-
               sleep 3
             done
-
-            echo "Timed out waiting for: $url"
-            return 1
+            echo "Ready: $1"
           }
 
           wait_for_coordinator() {
-            local timeout_seconds="${1:-180}"
-            local deadline=$((SECONDS + timeout_seconds))
+            local deadline=$((SECONDS + 180))
+            local container_id state
 
             while (( SECONDS < deadline )); do
-              local container_id
-              local state
-
-              container_id="$(
-                docker compose ps -q coordinator 2>/dev/null || true
-              )"
+              container_id="$(docker compose ps -q coordinator 2>/dev/null || true)"
 
               if [[ -n "$container_id" ]]; then
-                state="$(
-                  docker inspect \
-                    --format '{{.State.Status}} {{.State.ExitCode}}' \
-                    "$container_id" \
-                    2>/dev/null || true
-                )"
-
-                if curl \
-                  --fail \
-                  --silent \
-                  --show-error \
-                  --location \
-                  --connect-timeout 2 \
-                  --max-time 10 \
-                  --retry 3 \
-                  --retry-all-errors \
-                  --retry-delay 1 \
-                  "http://localhost:${COORDINATOR_HOST_PORT}/health" \
-                  >/dev/null 2>&1; then
+                if http_get "http://localhost:${COORDINATOR_HOST_PORT}/health" >/dev/null 2>&1; then
                   echo "Coordinator is ready."
                   return 0
                 fi
 
-                if [[ "$state" == "exited 0" ]]; then
-                  echo "Coordinator completed with exit code 0."
-                  return 0
-                fi
-
-                if [[ "$state" == exited* ]] && [[ "$state" != "exited 0" ]]; then
-                  echo "Coordinator exited unexpectedly: $state"
-                  return 1
-                fi
+                state="$(docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+                case "$state" in
+                  "exited 0") echo "Coordinator completed with exit code 0."; return 0 ;;
+                  exited*)    echo "Coordinator exited unexpectedly: $state"; return 1 ;;
+                esac
               fi
 
               sleep 3
@@ -261,349 +170,98 @@ jobs:
             return 1
           }
 
-          echo "=================================================="
-          echo "Waiting for infrastructure"
-          echo "=================================================="
+          check_lifecycle() {
+            local rounds updates transactions
+            rounds="$(http_get "http://localhost:8000/rounds/federation/fed-default")" || return 1
+            updates="$(http_get "http://localhost:8000/updates/federation/fed-default")" || return 1
+            transactions="$(http_get "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
 
-          wait_for_url "http://localhost:8000/health/" 180
-          wait_for_url "http://localhost:3000/" 180
-          wait_for_coordinator 180
-
-          echo "Checking PostgreSQL..."
-
-          docker compose exec -T db \
-            pg_isready \
-            -U "${POSTGRES_USER:-trustfl}" \
-            -d "${POSTGRES_DB:-trustfl}"
-
-          echo "Checking IPFS..."
-
-          docker compose exec -T ipfs \
-            wget \
-            -qO- \
-            --post-data= \
-            http://localhost:5001/api/v0/id \
-            >/dev/null
-
-          echo "Checking Hardhat..."
-
-          docker compose exec -T hardhat \
-            node -e "
-              fetch('http://localhost:8545', {
-                method: 'POST',
-                headers: {'content-type': 'application/json'},
-                body: JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: 1,
-                  method: 'net_version',
-                  params: []
-                })
-              })
-              .then(response => {
-                if (!response.ok) process.exit(1);
-              })
-              .catch(() => process.exit(1));
-            "
-
-          echo "=================================================="
-          echo "Infrastructure is ready"
-          echo "=================================================="
-
-          docker compose ps --all
-
-          fetch_json() {
-            local url="$1"
-
-            curl \
-              --fail \
-              --silent \
-              --show-error \
-              --location \
-              --connect-timeout 2 \
-              --max-time 10 \
-              --retry 5 \
-              --retry-all-errors \
-              --retry-delay 1 \
-              "$url"
-          }
-
-          echo "=================================================="
-          echo "Waiting for signed FL lifecycle"
-          echo "=================================================="
-
-          lifecycle_timeout_seconds=600
-          lifecycle_deadline=$((SECONDS + lifecycle_timeout_seconds))
-          lifecycle_passed=false
-          attempt=0
-
-          while (( SECONDS < lifecycle_deadline )); do
-            attempt=$((attempt + 1))
-
-            echo "Checking FL lifecycle... attempt=${attempt}"
-
-            rounds="$(
-              fetch_json \
-                "http://localhost:8000/rounds/federation/fed-default"
-            )" || {
-              echo "Unable to fetch rounds; retrying..."
-              sleep 3
-              continue
-            }
-
-            updates="$(
-              fetch_json \
-                "http://localhost:8000/updates/federation/fed-default"
-            )" || {
-              echo "Unable to fetch updates; retrying..."
-              sleep 3
-              continue
-            }
-
-            transactions="$(
-              fetch_json \
-                "http://localhost:8000/blockchain/transactions?limit=100"
-            )" || {
-              echo "Unable to fetch blockchain transactions; retrying..."
-              sleep 3
-              continue
-            }
-
-            if python - "$rounds" "$updates" "$transactions" <<'PY'
+            python - "$rounds" "$updates" "$transactions" <<'PY'
           import json
           import sys
 
           rounds, updates, transactions = map(json.loads, sys.argv[1:])
 
-          round_data = rounds.get("data", [])
-          update_data = updates.get("data", [])
-          transaction_data = transactions.get("data", [])
-
-          finalized_rounds = {
-              int(item["round_number"])
-              for item in round_data
-              if item.get("status") == "FINALIZED"
+          finalized = {
+              int(r["round_number"])
+              for r in rounds.get("data", [])
+              if r.get("status") == "FINALIZED"
           }
+          if not {1, 2, 3} <= finalized:
+              sys.exit(f"Expected finalized rounds {{1, 2, 3}}, got {sorted(finalized)}")
 
-          expected_rounds = {1, 2, 3}
-
-          assert expected_rounds.issubset(finalized_rounds), (
-              f"Expected finalized rounds {expected_rounds}, "
-              f"got {finalized_rounds}"
-          )
-
-          expected_clients = {"client_001", "client_002"}
-
-          verified_clients = {
-              item["client_id"]
-              for item in update_data
-              if item.get("status") in {"VERIFIED", "AGGREGATED"}
-              and item.get("client_id") in expected_clients
+          clients = {
+              u["client_id"]
+              for u in updates.get("data", [])
+              if u.get("status") in {"VERIFIED", "AGGREGATED"} and "client_id" in u
           }
+          if not {"client_001", "client_002"} <= clients:
+              sys.exit(f"Expected client_001 and client_002 updates, got {sorted(clients)}")
 
-          assert expected_clients.issubset(verified_clients), (
-              f"Expected verified/aggregated clients {expected_clients}, "
-              f"got {verified_clients}"
-          )
-
-          confirmed_transactions = [
-              item
-              for item in transaction_data
-              if item.get("status") == "CONFIRMED"
+          confirmed = [
+              t for t in transactions.get("data", []) if t.get("status") == "CONFIRMED"
           ]
+          if not confirmed:
+              sys.exit("No CONFIRMED blockchain transaction found")
 
-          assert confirmed_transactions, (
-              "No CONFIRMED blockchain transaction found"
-          )
-
-          print(
-              f"Finalized rounds: {sorted(finalized_rounds)}"
-          )
-          print(
-              f"Verified/aggregated clients: "
-              f"{sorted(verified_clients)}"
-          )
-          print(
-              "Confirmed blockchain transactions: "
-              f"{len(confirmed_transactions)}"
-          )
+          print(f"Finalized rounds: {sorted(finalized)}")
+          print(f"Verified/aggregated clients: {sorted(clients)}")
+          print(f"Confirmed blockchain transactions: {len(confirmed)}")
           PY
-            then
-              lifecycle_passed=true
-              echo "Signed FL lifecycle completed successfully."
-              break
+          }
+
+          echo "Starting Compose stack..."
+          docker compose up --build -d
+
+          echo "Waiting for services..."
+          wait_for_url "http://localhost:8000/health/"
+          wait_for_url "http://localhost:3000/"
+          wait_for_coordinator
+
+          docker compose exec -T db pg_isready \
+            -U "${POSTGRES_USER:-trustfl}" -d "${POSTGRES_DB:-trustfl}"
+
+          docker compose exec -T ipfs \
+            wget -qO- --post-data= http://localhost:5001/api/v0/id >/dev/null
+
+          docker compose exec -T hardhat node -e "
+            fetch('http://localhost:8545', {
+              method: 'POST',
+              headers: {'content-type': 'application/json'},
+              body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'net_version', params: []})
+            })
+              .then(r => process.exit(r.ok ? 0 : 1))
+              .catch(() => process.exit(1));
+          "
+
+          echo "Waiting for signed FL lifecycle..."
+          deadline=$((SECONDS + 600))
+          until check_lifecycle; do
+            if (( SECONDS >= deadline )); then
+              echo "FL lifecycle timed out"
+              exit 1
             fi
-
-            if (( attempt % 10 == 0 )); then
-              echo "=================================================="
-              echo "FL lifecycle diagnostic at attempt ${attempt}"
-              echo "=================================================="
-
-              echo "=== Compose status ==="
-              docker compose ps --all || true
-
-              echo "--- Coordinator logs ---"
-              docker compose logs \
-                --no-color \
-                --tail=100 \
-                coordinator || true
-
-              echo "--- Client logs ---"
-              docker compose logs \
-                --no-color \
-                --tail=100 \
-                client-1 \
-                client-2 || true
-
-              echo "--- API logs ---"
-              docker compose logs \
-                --no-color \
-                --tail=100 \
-                api || true
-            fi
-
             sleep 5
           done
 
-          if [[ "$lifecycle_passed" != true ]]; then
-            echo "=================================================="
-            echo "FL lifecycle timed out"
-            echo "=================================================="
-
-            docker compose ps --all
-
-            docker compose logs \
-              --no-color \
-              --tail=500 \
-              coordinator \
-              client-1 \
-              client-2 \
-              api
-
-            exit 1
-          fi
-
-          echo "=================================================="
-          echo "Verifying dashboard visibility"
-          echo "=================================================="
-
-          dashboard="$(
-            fetch_json \
-              "http://localhost:3000/api/dashboard/federations/"
-          )"
+          echo "Verifying dashboard..."
+          dashboard="$(http_get "http://localhost:3000/api/dashboard/federations/")"
 
           python - "$dashboard" <<'PY'
           import json
           import sys
 
           payload = json.loads(sys.argv[1])
-
-          assert payload.get("success") is True, (
-              f"Dashboard API unsuccessful: {payload!r}"
-          )
-
           data = payload.get("data")
 
-          assert isinstance(data, list), (
-              f"Dashboard federation data is not a list: {data!r}"
-          )
-
-          assert any(
-              item.get("id") == "fed-default"
-              for item in data
-              if isinstance(item, dict)
-          ), (
-              "fed-default federation not visible in dashboard data: "
-              f"{data!r}"
-          )
+          if payload.get("success") is not True:
+              sys.exit(f"Dashboard API unsuccessful: {payload!r}")
+          if not isinstance(data, list):
+              sys.exit(f"Dashboard federation data is not a list: {data!r}")
+          if not any(isinstance(i, dict) and i.get("id") == "fed-default" for i in data):
+              sys.exit(f"fed-default not visible in dashboard data: {data!r}")
 
           print("Dashboard federation visibility verified.")
           PY
 
-          echo "=================================================="
-          echo "Verifying final lifecycle state"
-          echo "=================================================="
-
-          final_rounds="$(
-            fetch_json \
-              "http://localhost:8000/rounds/federation/fed-default"
-          )"
-
-          final_updates="$(
-            fetch_json \
-              "http://localhost:8000/updates/federation/fed-default"
-          )"
-
-          final_transactions="$(
-            fetch_json \
-              "http://localhost:8000/blockchain/transactions?limit=100"
-          )"
-
-          python - \
-            "$final_rounds" \
-            "$final_updates" \
-            "$final_transactions" <<'PY'
-          import json
-          import sys
-
-          rounds, updates, transactions = map(json.loads, sys.argv[1:])
-
-          finalized_rounds = {
-              int(item["round_number"])
-              for item in rounds.get("data", [])
-              if item.get("status") == "FINALIZED"
-          }
-
-          expected_rounds = {1, 2, 3}
-
-          assert expected_rounds.issubset(finalized_rounds), (
-              "Final state missing rounds: "
-              f"{expected_rounds - finalized_rounds}"
-          )
-
-          valid_updates = [
-              item
-              for item in updates.get("data", [])
-              if item.get("status") in {"VERIFIED", "AGGREGATED"}
-          ]
-
-          expected_clients = {"client_001", "client_002"}
-
-          valid_clients = {
-              item.get("client_id")
-              for item in valid_updates
-              if item.get("client_id")
-          }
-
-          assert expected_clients.issubset(valid_clients), (
-              f"Expected client updates from {expected_clients}, "
-              f"got {valid_clients}"
-          )
-
-          confirmed_transactions = [
-              item
-              for item in transactions.get("data", [])
-              if item.get("status") == "CONFIRMED"
-          ]
-
-          assert confirmed_transactions, (
-              "No confirmed blockchain transaction found"
-          )
-
-          print(
-              f"Finalized rounds: {sorted(finalized_rounds)}"
-          )
-          print(
-              f"Verified/aggregated updates: {len(valid_updates)}"
-          )
-          print(
-              f"Participating clients: {sorted(valid_clients)}"
-          )
-          print(
-              "Confirmed blockchain transactions: "
-              f"{len(confirmed_transactions)}"
-          )
-          PY
-
-          echo "=================================================="
           echo "TrustFL Compose E2E PASSED"
-          echo "=================================================="
