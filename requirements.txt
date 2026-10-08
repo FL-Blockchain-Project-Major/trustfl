@@ -107,6 +107,8 @@ multidict==6.9.1
     #   yarl
 opentelemetry-api==1.45.1
     # via fastapi
+Pillow==10.3.0
+    # via trustfl (pyproject.toml)
 parsimonious==0.10.0
     # via eth-abi
 propcache==0.5.4
