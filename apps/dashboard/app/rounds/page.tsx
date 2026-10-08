@@ -12,10 +12,7 @@ export default async function RoundsPage() {
       const fedId = federations[0].id;
       rounds = await fetchAPI(`/rounds/federation/${fedId}`);
       
-      for (const r of rounds) {
-        const rUpdates = await fetchAPI(`/updates/round/${r.id}`);
-        updates.push(...rUpdates);
-      }
+      updates = await fetchAPI(`/updates/federation/${fedId}`);
 
       bctx = await fetchAPI('/blockchain/transactions');
     }

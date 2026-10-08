@@ -41,9 +41,12 @@ services:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8545', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'net_version',params:[]})}).then(r=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 90s
 
   contract-deployer:
+    environment:
+      HARDHAT_RPC_URL: http://hardhat:8545
     image: node:22.13-alpine
     working_dir: /app
     volumes:
@@ -98,7 +101,7 @@ services:
       - BLOCKCHAIN_ENABLED=true
       - BLOCKCHAIN_RPC_URL=http://hardhat:8545
       - BLOCKCHAIN_CONTRACTS_JSON=/contracts-deployments/localhost/contracts.json
-      - COORDINATOR_PRIVATE_KEY=${COORDINATOR_PRIVATE_KEY:-ac0974bec39e6ba9a2c7e2f6b8f5b2f6a3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e}
+      - COORDINATOR_PRIVATE_KEY=${COORDINATOR_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
     volumes:
       - contract_deployments:/contracts-deployments
     ports:

@@ -22,6 +22,13 @@ def list_updates(round_id: str, service: UpdateService = Depends(get_service)): 
     upds = service.list_by_round(round_id)
     return APIResponse(data=upds)
 
+@router.get("/federation/{federation_id}", response_model=APIResponse[list[UpdateOut]])
+def list_federation_updates(
+    federation_id: str,
+    service: UpdateService = Depends(get_service),  # noqa: B008
+):
+    return APIResponse(data=service.list_by_federation(federation_id))
+
 @router.put("/{update_id}/status", response_model=APIResponse[UpdateOut])
 def update_status(update_id: str, payload: UpdateStatusChange, service: UpdateService = Depends(get_service)):  # noqa: B008
     upd = service.update_status(update_id, payload)

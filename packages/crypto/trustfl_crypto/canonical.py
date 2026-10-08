@@ -99,6 +99,35 @@ def generate_nonce(client_id: str, round_id: int) -> str:
     return f"{client_id}:{round_id}:{random_part}"
 
 
+def canonical_artifact_bytes(
+    parameters: list,
+    num_examples: int,
+    metrics: dict[str, float],
+) -> bytes:
+    """Return the canonical bytes persisted for a signed update artifact."""
+    return json.dumps(
+        {
+            "metrics": metrics,
+            "num_examples": num_examples,
+            "parameters": parameters,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def hash_artifact(
+    parameters: list,
+    num_examples: int,
+    metrics: dict[str, float],
+) -> str:
+    """Hash the exact canonical artifact payload used by storage."""
+    digest = hashlib.sha256(
+        canonical_artifact_bytes(parameters, num_examples, metrics)
+    ).hexdigest()
+    return f"sha256:{digest}"
+
+
 def hash_parameters(parameters: list) -> str:
     """
     Compute a stable SHA-256 hash of model parameters.
@@ -119,6 +148,8 @@ def build_metadata(
     model_version: str,
     update_id: str,
     parameters: list,
+    num_examples: int | None = None,
+    metrics: dict[str, float] | None = None,
     timestamp: int | None = None,
 ) -> UpdateMetadata:
     """
@@ -132,7 +163,11 @@ def build_metadata(
         client_id=client_id,
         model_version=model_version,
         update_id=update_id,
-        artifact_hash=hash_parameters(parameters),
+        artifact_hash=(
+            hash_artifact(parameters, num_examples, metrics or {})
+            if num_examples is not None
+            else hash_parameters(parameters)
+        ),
         timestamp=timestamp if timestamp is not None else int(time.time()),
         nonce=generate_nonce(client_id, round_id),
     )

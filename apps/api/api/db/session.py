@@ -26,6 +26,8 @@ elif DATABASE_URL.startswith("postgresql"):
             "psycopg2/psycopg3 is required for PostgreSQL support. "
             "Install with: pip install psycopg[binary]"
         ) from None
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
     connect_args = {}
 else:
     raise RuntimeError(

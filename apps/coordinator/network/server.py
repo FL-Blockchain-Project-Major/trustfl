@@ -24,6 +24,10 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
+from packages.crypto.trustfl_crypto.canonical import (
+    canonical_artifact_bytes,
+    hash_parameters,
+)
 from packages.crypto.trustfl_crypto.keys import PublicKeyRegistry
 from packages.crypto.trustfl_crypto.signer import SignedUpdate
 from packages.crypto.trustfl_crypto.verifier import UpdateVerifier
@@ -261,10 +265,7 @@ class CoordinatorState:
 
             update_id = f"update_{cid}_{round_id}"
             try:
-                artifact_data = json.dumps(
-                    {"parameters": parameters, "num_examples": num_examples, "metrics": metrics},
-                    separators=(",", ":"),
-                ).encode()
+                artifact_data = canonical_artifact_bytes(parameters, num_examples, metrics)
                 stored_artifact = (
                     self.storage_client.save_artifact(
                         artifact_data, str(self.current_round), round_id, cid, update_id
@@ -397,7 +398,10 @@ class CoordinatorState:
             self.current_round = 1
             self.round_start_time = time.time()
             if self.require_signatures:
-                self.update_verifier.set_round(self.current_round)
+                self.update_verifier.set_round(
+                    self.current_round,
+                    accepted_model_versions=set(),
+                )
 
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
@@ -452,7 +456,12 @@ class CoordinatorState:
         else:
             self.round_start_time = time.time()
             if self.require_signatures:
-                self.update_verifier.set_round(self.current_round)
+                self.update_verifier.set_round(
+                    self.current_round,
+                    accepted_model_versions={hash_parameters(self.global_parameters)}
+                    if self.global_parameters
+                    else set(),
+                )
             if self.blockchain_client:
                 bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
                 if not bc_ok:
@@ -484,6 +493,7 @@ def _avg_metrics(metrics_list: list[dict[str, float]]) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 class _Handler(BaseHTTPRequestHandler):
+    MAX_BODY_BYTES = 1_048_576
     """Minimal HTTP handler wired to CoordinatorState."""
 
     state: CoordinatorState  # injected by server factory
@@ -539,7 +549,17 @@ class _Handler(BaseHTTPRequestHandler):
     # ---- helpers ----------------------------------------------------------
 
     def _read_body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0))
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            self._respond_json(413, {"error": "chunked request bodies are not supported"})
+            raise ValueError("chunked request body rejected")
+        raw_length = self.headers.get("Content-Length")
+        if raw_length is None or not raw_length.isdigit():
+            self._respond_json(400, {"error": "valid Content-Length is required"})
+            raise ValueError("invalid Content-Length")
+        length = int(raw_length)
+        if length > self.MAX_BODY_BYTES:
+            self._respond_json(413, {"error": "request body too large"})
+            raise ValueError("request body too large")
         raw = self.rfile.read(length) if length else b"{}"
         return json.loads(raw)
 
@@ -578,6 +598,8 @@ class CoordinatorServer:
         heartbeat_timeout_seconds: float = 30.0,
         monitor_interval_seconds: float = 0.5,
         blockchain_client = None,
+        require_signatures: bool | None = None,
+        storage_client = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -590,6 +612,8 @@ class CoordinatorServer:
             round_timeout_seconds=round_timeout_seconds,
             heartbeat_timeout_seconds=heartbeat_timeout_seconds,
             blockchain_client=self.blockchain_client,
+            require_signatures=require_signatures,
+            storage_client=storage_client,
         )
 
         # Build the HTTP server with the state injected via closure

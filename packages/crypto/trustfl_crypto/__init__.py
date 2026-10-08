@@ -24,7 +24,9 @@ Verification flow (coordinator):
 from .canonical import (
     UpdateMetadata,
     build_metadata,
+    canonical_artifact_bytes,
     generate_nonce,
+    hash_artifact,
     hash_parameters,
 )
 from .keys import ClientIdentity, PublicKeyRegistry
@@ -40,6 +42,8 @@ __all__ = [
     # canonical
     "UpdateMetadata",
     "build_metadata",
+    "canonical_artifact_bytes",
+    "hash_artifact",
     "generate_nonce",
     "hash_parameters",
     # keys

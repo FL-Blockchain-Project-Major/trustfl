@@ -16,9 +16,9 @@ TrustFL provides a verifiable, privacy-preserving, and auditable Federated Learn
 | `apps/dashboard/` | Next.js frontend application. Visualizes ongoing training rounds, participant nodes, performance metrics, IPFS storage integrity, and on-chain audit trails. |
 | `packages/schemas/` | Core data schemas and protocol interfaces (built with Pydantic). Standardizes message interchange formats across coordinator, client, API, and storage layers. |
 | `packages/crypto/` | Cryptographic primitives including ECDSA/Ed25519 digital signatures, Merkle hash trees, commitment schemes, and key management helpers. |
-| `packages/blockchain-sdk/`| Abstraction and client drivers for EVM / smart contract interaction (Web3). Provides client wrappers for model registry, round progression, and participant verification contracts. |
+| `packages/blockchain/`| Abstraction and client drivers for EVM / smart contract interaction (Web3). Provides client wrappers for model registry, round progression, and participant verification contracts. |
 | `packages/storage/` | Unified storage abstraction layer providing adapters for decentralized storage (IPFS / Pinata) and object stores (MinIO / AWS S3) for model weight serialization and retrieval. |
-| `contracts/` | Smart contracts (Solidity) implementing the on-chain audit log, client staking/slashing, and verifiable global model state updates. |
+| `packages/contracts/` | Smart contracts (Solidity) implementing the on-chain audit log, client registration, round progression, and update verification state. |
 | `packages/zkp/` | Independently implemented and tested zero-knowledge proof runtime. ZKP verification is an optional/deferred coordinator boundary; signed metadata and artifact hashes are the current mandatory update checks. |
 | `datasets/tools/` | Tooling for synthetic dataset generation, Dirichlet non-IID data partitioning, and data format validation. |
 | `infrastructure/` | Deployment definitions, Docker Compose setups for local development (IPFS node, local Ethereum testnet, MinIO), and Kubernetes/Helm charts. |

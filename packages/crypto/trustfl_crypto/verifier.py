@@ -24,7 +24,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from .canonical import hash_parameters
+from .canonical import hash_artifact, hash_parameters
 from .keys import PublicKeyRegistry
 from .signer import SignedUpdate
 
@@ -210,7 +210,17 @@ class UpdateVerifier:
             )
 
         # 6. Artifact hash — recompute over submitted parameters
-        expected_hash = hash_parameters(signed_update.parameters)
+        expected_hash = hash_artifact(
+            signed_update.parameters,
+            signed_update.num_examples,
+            signed_update.metrics,
+        )
+        # Accept legacy envelopes created before artifact metadata included
+        # example counts and metrics; new signed updates always use hash_artifact.
+        if meta.artifact_hash != expected_hash and meta.artifact_hash == hash_parameters(
+            signed_update.parameters
+        ):
+            expected_hash = meta.artifact_hash
         if meta.artifact_hash != expected_hash:
             return VerificationResult(
                 VerificationStatus.ARTIFACT_HASH_MISMATCH,

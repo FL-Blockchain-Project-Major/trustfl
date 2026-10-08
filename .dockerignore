@@ -13,3 +13,6 @@ scratch/playwright-test/screenshots
 packages/contracts/artifacts
 packages/contracts/cache
 packages/zkp/artifacts
+tests/output
+bandit_report.json
+packages/contracts/deployments

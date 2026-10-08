@@ -120,6 +120,8 @@ class UpdateSigner:
             model_version=model_version,
             update_id=update_id,
             parameters=parameters,
+            num_examples=num_examples,
+            metrics=metrics,
         )
 
         # Sign the canonical hash (32 bytes) — deterministic, fast

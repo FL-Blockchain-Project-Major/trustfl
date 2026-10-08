@@ -14,12 +14,7 @@ export default async function Dashboard() {
       clients = await fetchAPI(`/clients/federation/${fedId}`);
       rounds = await fetchAPI(`/rounds/federation/${fedId}`);
       
-      // Fetch updates and txs for all rounds
-      for (const r of rounds) {
-        const rUpdates = await fetchAPI(`/updates/round/${r.id}`);
-        updates.push(...rUpdates);
-      }
-      
+      updates = await fetchAPI(`/updates/federation/${fedId}`);
       bctx = await fetchAPI('/blockchain/transactions');
     }
   } catch (err) {

@@ -68,6 +68,9 @@ class UpdateService:
     def list_by_round(self, round_id: str) -> list[Update]:
         return self.repo.get_by_round(round_id)
 
+    def list_by_federation(self, federation_id: str) -> list[Update]:
+        return self.repo.get_by_federation(federation_id)
+
     def update_status(self, update_id: str, payload: UpdateStatusChange) -> Update:
         upd = self.get_or_404(update_id)
         upd.status = payload.status

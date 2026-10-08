@@ -10,11 +10,7 @@ export default async function SecurityPage() {
     federations = await fetchAPI('/federations/');
     if (federations.length > 0) {
       const fedId = federations[0].id;
-      const rounds = await fetchAPI(`/rounds/federation/${fedId}`);
-      for (const r of rounds) {
-        const rUpdates = await fetchAPI(`/updates/round/${r.id}`);
-        updates.push(...rUpdates);
-      }
+      updates = await fetchAPI(`/updates/federation/${fedId}`);
       for (const u of updates) {
         const uProofs = await fetchAPI(`/proofs/update/${u.id}`);
         proofs.push(...uProofs);
