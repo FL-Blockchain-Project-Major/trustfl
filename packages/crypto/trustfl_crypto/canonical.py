@@ -163,11 +163,9 @@ def build_metadata(
         client_id=client_id,
         model_version=model_version,
         update_id=update_id,
-        artifact_hash=(
-            hash_artifact(parameters, num_examples, metrics or {})
-            if num_examples is not None
-            else hash_parameters(parameters)
-        ),
+        # An update envelope must commit to every value that affects FedAvg.
+        # There is deliberately no parameter-only compatibility envelope.
+        artifact_hash=hash_artifact(parameters, num_examples or 0, metrics or {}),
         timestamp=timestamp if timestamp is not None else int(time.time()),
         nonce=generate_nonce(client_id, round_id),
     )

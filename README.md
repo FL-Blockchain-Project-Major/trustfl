@@ -40,6 +40,10 @@ For dashboard usage, consult [docs/DASHBOARD.md](docs/DASHBOARD.md). For operati
 and production boundaries, consult [docs/OPERATIONS.md](docs/OPERATIONS.md) and
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
+Compose credentials and services are development-only. Coordinator endpoints except
+`/health` require an authenticated, registered client; production enrollment should
+use per-client mTLS or identity-provider credentials.
+
 ---
 
 ## 🔒 Security & Privacy Policy: Zero-Git Principle

@@ -9,6 +9,7 @@ from trustfl_crypto.canonical import (
     UpdateMetadata,
     build_metadata,
     generate_nonce,
+    hash_artifact,
     hash_parameters,
 )
 
@@ -157,7 +158,7 @@ class TestBuildMetadata(unittest.TestCase):
         self.assertIn("c1", meta.nonce)
         self.assertGreater(meta.timestamp, 0)
 
-    def test_build_metadata_artifact_hash_matches_params(self):
+    def test_build_metadata_artifact_hash_commits_to_all_aggregation_inputs(self):
         meta = build_metadata(
             federation_id="f",
             round_id=2,
@@ -166,7 +167,7 @@ class TestBuildMetadata(unittest.TestCase):
             update_id="u",
             parameters=PARAMS,
         )
-        self.assertEqual(meta.artifact_hash, hash_parameters(PARAMS))
+        self.assertEqual(meta.artifact_hash, hash_artifact(PARAMS, 0, {}))
 
 
 if __name__ == "__main__":

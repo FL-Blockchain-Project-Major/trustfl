@@ -45,6 +45,7 @@ from .protocol import (
 logger = logging.getLogger(__name__)
 
 MAX_NUM_EXAMPLES = int(os.getenv("FL_MAX_NUM_EXAMPLES_PER_UPDATE", "1000000"))
+MAX_WEIGHT_RATIO = float(os.getenv("FL_MAX_CLIENT_WEIGHT_RATIO", "2.0"))
 INITIAL_MODEL_VERSION = "initial"
 INITIAL_MODEL_VERSIONS = frozenset(
     value.strip() for value in os.getenv("FL_INITIAL_MODEL_VERSIONS", "initial,model-v1").split(",") if value.strip()
@@ -148,6 +149,7 @@ class CoordinatorState:
 
         # History of completed rounds
         self.round_history: list[dict[str, Any]] = []
+        self._finalization_pending = False
 
         self._done_event = threading.Event()
         if self.persistence:
@@ -192,8 +194,12 @@ class CoordinatorState:
 
     def register_client(self, cid: str, capabilities: dict[str, Any]) -> bool:
         with self.lock:
+            pubkey = capabilities.get("pubkey") or capabilities.get("public_key")
+            existing = self.registered_clients.get(cid)
+            if existing and existing.get("pubkey") != pubkey:
+                logger.warning("Rejecting key substitution for enrolled client %s", cid)
+                return False
             if cid not in self.registered_clients:
-                pubkey = capabilities.get("pubkey") or capabilities.get("public_key")
                 if self.require_signatures and not pubkey:
                     logger.warning("Rejecting client %s without a public key", cid)
                     return False
@@ -250,6 +256,8 @@ class CoordinatorState:
 
     def get_round_instructions(self, cid: str) -> dict[str, Any]:
         with self.lock:
+            if cid not in self.registered_clients:
+                raise PermissionError("client is not registered")
             is_active = (
                 self.current_round > 0
                 and self.current_round <= self.num_rounds
@@ -408,14 +416,21 @@ class CoordinatorState:
             or any(len(layer) != len(expected) for layer, expected in zip(parameters, self.global_parameters, strict=True))
         ):
             return False
+        # No single self-reported sample count may outweigh every other
+        # accepted update combined by more than this documented ratio.
+        others = [u["num_examples"] for u in self.pending_updates.values()]
+        if others and num_examples > max(1, int(sum(others) * MAX_WEIGHT_RATIO)):
+            return False
         return True
 
     # ------------------------------------------------------------------
     # Status
     # ------------------------------------------------------------------
 
-    def get_status(self) -> dict[str, Any]:
+    def get_status(self, detailed: bool = True) -> dict[str, Any]:
         with self.lock:
+            if not detailed:
+                return {"status": self._status_label()}
             return {
                 "status": self._status_label(),
                 "current_round": self.current_round,
@@ -453,6 +468,10 @@ class CoordinatorState:
                     self.current_round, now - self.round_start_time,
                 )
                 self._aggregate_round_locked(timed_out=True)
+            elif self._finalization_pending:
+                # Aggregation already succeeded; only reconcile its durable
+                # finalization.  Do not create a second history record.
+                self._advance_round_locked()
 
     # ------------------------------------------------------------------
     # Internal (must be called while holding self.lock)
@@ -470,7 +489,7 @@ class CoordinatorState:
                 self.update_verifier.set_round(self.current_round, set(INITIAL_MODEL_VERSIONS))
 
             if self.blockchain_client:
-                bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
+                bc_ok = self.blockchain_client.create_round(self.current_round, INITIAL_MODEL_VERSION)
                 if not bc_ok:
                     logger.error("Blockchain round 1 creation failed")
                 else:
@@ -529,17 +548,22 @@ class CoordinatorState:
         self._advance_round_locked()
 
     def _advance_round_locked(self, finalize: bool = True) -> None:
-        self.pending_updates.clear()
-
         # Finalize the current round
         chain_finalized = True
         if finalize and self.blockchain_client:
-            chain_finalized = self.blockchain_client.finalize_round(self.current_round, f"model_v{self.current_round+1}")
+            chain_finalized = self.blockchain_client.finalize_round(self.current_round, hash_parameters(self.global_parameters))
         if finalize and chain_finalized and self.persistence:
             self.persistence.finalize_round(self.current_round)
         elif finalize and not chain_finalized:
+            # Keep the already aggregated update set and freeze the timer.  A
+            # later monitor tick retries finalization; it never aggregates it again.
+            self.round_start_time = None
+            self._finalization_pending = True
             logger.error("Round %d remains unfinalized because blockchain finalization failed", self.current_round)
             return
+
+        self._finalization_pending = False
+        self.pending_updates.clear()
 
         self.current_round += 1
         if self.current_round > self.num_rounds:
@@ -555,7 +579,7 @@ class CoordinatorState:
                     else {INITIAL_MODEL_VERSION},
                 )
             if self.blockchain_client:
-                bc_ok = self.blockchain_client.create_round(self.current_round, f"model_v{self.current_round}")
+                bc_ok = self.blockchain_client.create_round(self.current_round, hash_parameters(self.global_parameters) if self.global_parameters else INITIAL_MODEL_VERSION)
                 if not bc_ok:
                     logger.error("Blockchain round %d creation failed", self.current_round)
                 else:
@@ -564,7 +588,7 @@ class CoordinatorState:
             if self.persistence:
                 self.persistence.start_round(
                     self.current_round,
-                    f"model_v{self.current_round}",
+                    hash_parameters(self.global_parameters) if self.global_parameters else INITIAL_MODEL_VERSION,
                 )
             logger.info("Round %d started.", self.current_round)
 
@@ -602,11 +626,20 @@ class _Handler(BaseHTTPRequestHandler):
     # ---- routing ----------------------------------------------------------
 
     def do_GET(self) -> None:
-        if self.path == "/status" or self.path == "/health":
+        if self.path == "/health":
+            self._respond_json(200, {"status": "ok"})
+            return
+        cid = self.headers.get("X-TrustFL-Client-ID", "")
+        if not self._authorized({}) or not cid or cid not in self.state.registered_clients:
+            self._respond_json(401, {"error": "authentication required"})
+        elif self.path == "/status":
             self._respond_json(200, self.state.get_status())
         elif self.path.startswith("/round/instructions/"):
-            cid = self.path.split("/")[-1]
-            self._respond_json(200, self.state.get_round_instructions(cid))
+            requested_cid = self.path.split("/")[-1]
+            if requested_cid != cid:
+                self._respond_json(403, {"error": "client identity mismatch"})
+            else:
+                self._respond_json(200, self.state.get_round_instructions(cid))
         else:
             self._respond_json(404, {"error": "not found"})
 

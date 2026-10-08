@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustfl}
       POSTGRES_DB: ${POSTGRES_DB:-trustfl}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,8 +18,7 @@ services:
   ipfs:
     image: ipfs/kubo:v0.32.1
     ports:
-      - "5001:5001"
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     volumes:
       - ipfs_data:/data/ipfs
     healthcheck:
@@ -36,7 +35,7 @@ services:
     command: >
       sh -c "npm ci && npx hardhat node --hostname 0.0.0.0"
     ports:
-      - "8545:8545"
+      - "127.0.0.1:8545:8545"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8545', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'net_version',params:[]})}).then(r=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
@@ -76,7 +75,7 @@ services:
       - WEB3_PROVIDER_URI=http://hardhat:8545
       - CORS_ALLOWED_ORIGINS=http://localhost:3000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -112,7 +111,7 @@ services:
     volumes:
       - contract_deployments:/contracts-deployments
     ports:
-      - "${COORDINATOR_HOST_PORT:-8100}:8100"
+      - "127.0.0.1:${COORDINATOR_HOST_PORT:-8100}:8100"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=2)"]
       interval: 5s
@@ -173,7 +172,7 @@ services:
       - API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
       - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy

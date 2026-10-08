@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from apps.api.api.db.session import create_all_tables
@@ -57,17 +58,6 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-@app.middleware("http")
-async def enforce_rate_limit(request: Request, call_next):
-    """Apply SlowAPI's global limit, including routes without decorators."""
-    if request.method != "OPTIONS":
-        try:
-            limiter._check_request_limit(request, None, in_middleware=True)
-        except RateLimitExceeded as exc:
-            return _rate_limit_exceeded_handler(request, exc)
-    return await call_next(request)
-
 
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
@@ -131,6 +121,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(SlowAPIMiddleware)
 
 # Include routers
 app.include_router(health.router)

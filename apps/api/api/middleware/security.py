@@ -20,6 +20,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger("trustfl.audit")
 
+def _client_ip(request: Request) -> str:
+    trusted = {item.strip() for item in __import__("os").environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
+    peer = request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    return forwarded if peer in trusted and forwarded else peer
+
 # 1 MB limit on request bodies
 MAX_BODY_BYTES = 1 * 1024 * 1024
 
@@ -45,13 +51,10 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                     status_code=413,
                     content={"detail": "Request body too large. Maximum allowed: 1 MB."},
                 )
+            # ASGI servers stream a body in chunks.  Do not call request.body()
+            # here: it buffers an attacker-controlled unbounded stream.
             if not content_length:
-                body = await request.body()
-                if len(body) > MAX_BODY_BYTES:
-                    return JSONResponse(
-                        status_code=413,
-                        content={"detail": "Request body too large. Maximum allowed: 1 MB."},
-                    )
+                return JSONResponse(status_code=411, content={"detail": "Content-Length is required."})
         return await call_next(request)
 
 
@@ -65,7 +68,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _client_ip(request)
 
         log_entry = {
             "event": "api_request",

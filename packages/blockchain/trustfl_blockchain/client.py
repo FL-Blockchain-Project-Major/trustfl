@@ -34,6 +34,8 @@ class BlockchainClient:
         self.w3.eth.default_account = self.account.address
         self.max_retries = max_retries
         self.transaction_recorder = transaction_recorder
+        # Serialise allocation, build/sign/send.  A receipt wait happens after
+        # send, so independent transactions can still confirm concurrently.
         self._nonce_lock = threading.Lock()
         self._next_nonce: int | None = None
 
@@ -62,23 +64,14 @@ class BlockchainClient:
     ) -> bool:
         """Helper to send a transaction with retry logic and receipt handling."""
         for attempt in range(self.max_retries):
-            with self._nonce_lock:
-                if self._next_nonce is None:
-                    self._next_nonce = self.w3.eth.get_transaction_count(
-                        self.account.address, "pending"
-                    )
-                nonce = self._next_nonce
             try:
-
-                # Build transaction
-                tx = contract_func.build_transaction({
-                    'from': self.account.address,
-                    "nonce": nonce,
-                })
-
-                signed_tx = self.account.sign_transaction(tx)
-                tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
                 with self._nonce_lock:
+                    if self._next_nonce is None:
+                        self._next_nonce = self.w3.eth.get_transaction_count(self.account.address, "pending")
+                    nonce = self._next_nonce
+                    tx = contract_func.build_transaction({'from': self.account.address, "nonce": nonce})
+                    signed_tx = self.account.sign_transaction(tx)
+                    tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
                     self._next_nonce = nonce + 1
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
 
@@ -185,6 +178,13 @@ class BlockchainClient:
 
     def finalize_round(self, round_id: int, new_global_model_version: str) -> bool:
         """Finalize a training round with new global model hash."""
+        existing = self.round_registry.functions.getRound(round_id).call()
+        status = int(existing[1])
+        if status == 3:
+            return existing[0] == new_global_model_version
+        if status != 2:
+            logger.error("Cannot finalize round %d with on-chain status %d", round_id, status)
+            return False
         logger.info(f"Finalizing round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.finalizeRound(round_id, new_global_model_version),

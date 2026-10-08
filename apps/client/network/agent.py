@@ -94,6 +94,7 @@ class DistributedClientAgent:
             Path(identity_path) if identity_path else default_identity_path,
         )
         self.signer = UpdateSigner(self.identity, federation_id)
+        self.enrollment_token = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
 
         self._stop_event = threading.Event()
         self._bg_thread: threading.Thread | None = None
@@ -276,8 +277,8 @@ class DistributedClientAgent:
     ) -> dict[str, Any] | None:
         url = self.coordinator_url + path
         data = json.dumps(payload).encode() if payload is not None else None
-        headers = {"Content-Type": "application/json"}
-        token = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
+        headers = {"Content-Type": "application/json", "X-TrustFL-Client-ID": self.client_id}
+        token = self.enrollment_token
         if token:
             headers["Authorization"] = f"Bearer {token}"
 

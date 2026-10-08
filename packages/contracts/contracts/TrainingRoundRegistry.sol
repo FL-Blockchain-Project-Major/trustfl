@@ -43,6 +43,7 @@ contract TrainingRoundRegistry is AccessControl {
     function finalizeRound(uint256 roundId, string memory newGlobalModelVersion) external onlyRole(COORDINATOR_ROLE) {
         require(_rounds[roundId].status == RoundStatus.Active, "RoundRegistry: invalid status for finalization");
         _rounds[roundId].status = RoundStatus.Finalized;
+        _rounds[roundId].globalModelVersion = newGlobalModelVersion;
         emit RoundFinalized(roundId, newGlobalModelVersion);
     }
 

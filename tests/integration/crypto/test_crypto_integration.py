@@ -71,8 +71,12 @@ def _post(port, path, body):
         return json.loads(r.read())
 
 
-def _get(port, path):
-    with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
+def _get(port, path, client_id=None):
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        headers={"X-TrustFL-Client-ID": client_id} if client_id else {},
+    )
+    with urllib.request.urlopen(request, timeout=5) as r:
         return json.loads(r.read())
 
 
@@ -133,7 +137,7 @@ class TestCryptoIntegration(unittest.TestCase):
             # Wait for round to start
             deadline = time.time() + 5
             while time.time() < deadline:
-                status = _get(port, "/status")
+                status = _get(port, "/status", "c0")
                 if status["current_round"] == 1:
                     break
                 time.sleep(0.1)
@@ -144,7 +148,7 @@ class TestCryptoIntegration(unittest.TestCase):
 
             # Each client fetches instructions, signs, submits
             for cid, signer in signers.items():
-                instructions = _get(port, f"/round/instructions/{cid}")
+                instructions = _get(port, f"/round/instructions/{cid}", cid)
                 self.assertTrue(instructions["is_active"])
                 round_id = instructions["round_id"]
 

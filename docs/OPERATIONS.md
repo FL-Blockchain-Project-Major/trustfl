@@ -21,7 +21,8 @@ Services and local ports:
 
 The Compose stack is a development/integration environment. It uses a local
 Hardhat chain, development credentials, a single coordinator, and local
-persistence volumes. Do not expose it to the public internet.
+persistence volumes. Published ports are loopback-only; IPFS's API is container-internal.
+Do not expose it to the public internet. Production TLS ingress must enforce HTTPS and HSTS.
 
 ## Checks
 
