@@ -3,7 +3,7 @@
 /* eslint-disable */
 import type { BaseContract, BigNumberish, BytesLike, FunctionFragment, Result, Interface, EventFragment, AddressLike, ContractRunner, ContractMethod, Listener } from "ethers"
 import type { TypedContractEvent, TypedDeferredTopicFilter, TypedEventLog, TypedLogDescription, TypedListener, TypedContractMethod } from "../common.js"
-
+  
 export declare namespace UpdateRegistry {
       
     export type UpdateStruct = {roundId: BigNumberish, clientId: string, artifactHash: string, nonce: string, status: BigNumberish}
@@ -124,13 +124,13 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
   
 
   export interface UpdateRegistry extends BaseContract {
-
+    
     connect(runner?: ContractRunner | null): UpdateRegistry;
     waitForDeployment(): Promise<this>;
 
     interface: UpdateRegistryInterface;
 
-
+    
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,
     fromBlockOrBlockhash?: string | number | undefined,
@@ -155,7 +155,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
   removeAllListeners<TCEvent extends TypedContractEvent>(event?: TCEvent): Promise<this>
 
 
-
+    
     
     COORDINATOR_ROLE: TypedContractMethod<
       [],
