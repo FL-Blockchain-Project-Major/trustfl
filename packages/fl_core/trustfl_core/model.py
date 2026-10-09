@@ -41,9 +41,7 @@ class TinyLinearModel:
         if len(parameters) != 2:
             raise ValueError(f"Expected 2 parameter tensors [w, b], got {len(parameters)}")
         if len(parameters[0]) != self.in_features:
-            raise ValueError(
-                f"Expected weight size {self.in_features}, got {len(parameters[0])}"
-            )
+            raise ValueError(f"Expected weight size {self.in_features}, got {len(parameters[0])}")
         if len(parameters[1]) != 1:
             raise ValueError(f"Expected bias size 1, got {len(parameters[1])}")
 
@@ -100,9 +98,7 @@ class TinyLinearModel:
 
         return total_loss / n
 
-    def evaluate(
-        self, test_x: list[list[float]], test_y: list[float]
-    ) -> tuple[float, float]:
+    def evaluate(self, test_x: list[list[float]], test_y: list[float]) -> tuple[float, float]:
         """
         Computes (loss, accuracy) over dataset.
         """

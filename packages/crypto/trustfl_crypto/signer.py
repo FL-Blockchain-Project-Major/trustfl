@@ -10,6 +10,7 @@ parameters, because:
   2. artifact_hash inside the metadata already commits to the parameters.
   3. The canonical hash can be logged in an audit trail independently.
 """
+
 from __future__ import annotations
 
 import base64
@@ -23,6 +24,7 @@ from .keys import ClientIdentity
 # ---------------------------------------------------------------------------
 # SignedUpdate — the wire object sent from client to coordinator
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SignedUpdate:
@@ -42,7 +44,7 @@ class SignedUpdate:
     """
 
     metadata: UpdateMetadata
-    signature: bytes                 # 64-byte Ed25519 sig
+    signature: bytes  # 64-byte Ed25519 sig
     parameters: list[list[float]]
     num_examples: int
     metrics: dict[str, float]
@@ -76,6 +78,7 @@ class SignedUpdate:
 # ---------------------------------------------------------------------------
 # Signer
 # ---------------------------------------------------------------------------
+
 
 class UpdateSigner:
     """

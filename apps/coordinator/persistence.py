@@ -1,4 +1,5 @@
 """Coordinator persistence adapter for the API control-plane database."""
+
 from __future__ import annotations
 
 import json
@@ -144,8 +145,13 @@ class CoordinatorPersistence:
             db.commit()
 
     def record_rejection(
-        self, update_id: str, client_id: str, round_number: int, nonce: str,
-        artifact_hash: str, reason: str,
+        self,
+        update_id: str,
+        client_id: str,
+        round_number: int,
+        nonce: str,
+        artifact_hash: str,
+        reason: str,
     ) -> None:
         """Persist rejection metadata only; payloads are never copied to the DB."""
         with self._session() as db:
@@ -160,7 +166,9 @@ class CoordinatorPersistence:
             row.rejection_reason = reason[:128]
             db.commit()
 
-    def record_global_model(self, round_number: int, uri: str, sha256_hash: str, model_version: str) -> None:
+    def record_global_model(
+        self, round_number: int, uri: str, sha256_hash: str, model_version: str
+    ) -> None:
         """Persist the aggregate artifact pointer used for restart validation."""
         with self._session() as db:
             artifact_id = f"{self.federation_id}_global_{round_number}"
@@ -212,22 +220,39 @@ class CoordinatorPersistence:
                 .order_by(self.Round.round_number.desc())
                 .all()
             )
-            clients = db.query(self.Client).filter(self.Client.federation_id == self.federation_id).all()
+            clients = (
+                db.query(self.Client).filter(self.Client.federation_id == self.federation_id).all()
+            )
             active = next((r for r in rounds if r.status == self.RoundStatus.ACTIVE), None)
             latest = rounds[0] if rounds else None
             artifact = None
             if latest and latest.global_model_artifact_id:
                 artifact = db.get(self.ModelArtifact, latest.global_model_artifact_id)
             return {
-                "current_round": active.round_number if active else ((latest.round_number + 1) if latest else 0),
+                "current_round": active.round_number
+                if active
+                else ((latest.round_number + 1) if latest else 0),
                 "registered_clients": {
-                    c.id: {"status": "ONLINE" if c.is_active else "OFFLINE", "last_heartbeat": (c.last_seen_at or c.registered_at).timestamp(), "registered_at": c.registered_at.timestamp(), "capabilities": json.loads(c.capabilities or "{}"), "pubkey": c.public_key_b64}
+                    c.id: {
+                        "status": "ONLINE" if c.is_active else "OFFLINE",
+                        "last_heartbeat": (c.last_seen_at or c.registered_at).timestamp(),
+                        "registered_at": c.registered_at.timestamp(),
+                        "capabilities": json.loads(c.capabilities or "{}"),
+                        "pubkey": c.public_key_b64,
+                    }
                     for c in clients
                 },
-                "model_version": active.model_version if active else (latest.model_version if latest else None),
+                "model_version": active.model_version
+                if active
+                else (latest.model_version if latest else None),
                 "recovery_state": json.loads(active.recovery_state or "{}") if active else {},
                 "global_artifact": (
-                    {"uri": artifact.uri, "sha256_hash": artifact.sha256_hash, "model_version": artifact.model_version}
-                    if artifact else None
+                    {
+                        "uri": artifact.uri,
+                        "sha256_hash": artifact.sha256_hash,
+                        "model_version": artifact.model_version,
+                    }
+                    if artifact
+                    else None
                 ),
             }

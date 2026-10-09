@@ -1,4 +1,5 @@
 """Unit tests for replay protection mechanisms."""
+
 from __future__ import annotations
 
 import unittest
@@ -29,7 +30,6 @@ def _make_verifier(client_id="c1", round_id=1):
 
 
 class TestNonceStore(unittest.TestCase):
-
     def test_fresh_nonce_is_accepted(self):
         store = NonceStore()
         nonce = generate_nonce("c1", 1)
@@ -63,6 +63,7 @@ class TestNonceStore(unittest.TestCase):
 
     def test_concurrent_nonce_checks_are_safe(self):
         import threading
+
         store = NonceStore()
         results = []
         nonce = generate_nonce("c1", 1)
@@ -80,27 +81,34 @@ class TestNonceStore(unittest.TestCase):
 
 
 class TestReplayProtection(unittest.TestCase):
-
     def test_replayed_update_rejected(self):
         """Submit the same signed update twice; second must be rejected."""
         _, signer, verifier = _make_verifier()
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         r1 = verifier.verify(signed, expected_client_id="c1")
         self.assertTrue(r1.ok, f"First submission should succeed: {r1}")
         r2 = verifier.verify(signed, expected_client_id="c1")
-        self.assertEqual(r2.status, VerificationStatus.REUSED_NONCE,
-                         f"Second submission should be rejected as replay: {r2}")
+        self.assertEqual(
+            r2.status,
+            VerificationStatus.REUSED_NONCE,
+            f"Second submission should be rejected as replay: {r2}",
+        )
 
     def test_each_new_sign_produces_different_nonce(self):
         """Two fresh sign() calls produce different nonces → both accepted."""
         _, signer, verifier = _make_verifier()
-        s1 = signer.sign(round_id=1, model_version=MODEL_VER,
-                         parameters=PARAMS, num_examples=10, metrics={})
-        s2 = signer.sign(round_id=1, model_version=MODEL_VER,
-                         parameters=PARAMS, num_examples=10, metrics={})
+        s1 = signer.sign(
+            round_id=1, model_version=MODEL_VER, parameters=PARAMS, num_examples=10, metrics={}
+        )
+        s2 = signer.sign(
+            round_id=1, model_version=MODEL_VER, parameters=PARAMS, num_examples=10, metrics={}
+        )
         self.assertNotEqual(s1.metadata.nonce, s2.metadata.nonce)
         r1 = verifier.verify(s1, expected_client_id="c1")
         r2 = verifier.verify(s2, expected_client_id="c1")
@@ -119,12 +127,14 @@ class TestReplayProtection(unittest.TestCase):
         verifier = UpdateVerifier(registry, clock_skew_seconds=60.0)
         verifier.set_round(1, accepted_model_versions={MODEL_VER})
 
-        s1 = signer1.sign(round_id=1, model_version=MODEL_VER,
-                          parameters=PARAMS, num_examples=10, metrics={})
-        signer2.sign(round_id=1, model_version=MODEL_VER,
-                          parameters=PARAMS, num_examples=10, metrics={})
+        s1 = signer1.sign(
+            round_id=1, model_version=MODEL_VER, parameters=PARAMS, num_examples=10, metrics={}
+        )
+        signer2.sign(
+            round_id=1, model_version=MODEL_VER, parameters=PARAMS, num_examples=10, metrics={}
+        )
 
-        verifier.verify(s1, expected_client_id="c1")   # accepted
+        verifier.verify(s1, expected_client_id="c1")  # accepted
 
         # Try to re-submit s1 as if it were from c2 → WRONG_CLIENT (meta says c1)
         result = verifier.verify(s1, expected_client_id="c2")
@@ -134,8 +144,11 @@ class TestReplayProtection(unittest.TestCase):
         """After round advances, old nonces are evicted but stale round check fires."""
         _, signer, verifier = _make_verifier(round_id=1)
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         verifier.verify(signed, expected_client_id="c1")  # accepted round 1
 
@@ -147,7 +160,6 @@ class TestReplayProtection(unittest.TestCase):
 
 
 class TestNonceWellFormed(unittest.TestCase):
-
     def test_valid_nonce(self):
         nonce = generate_nonce("c1", 3)
         self.assertTrue(_nonce_well_formed(nonce, "c1", 3))
@@ -172,8 +184,11 @@ class TestNonceWellFormed(unittest.TestCase):
     def test_malformed_nonce_rejected_by_verifier(self):
         _, signer, verifier = _make_verifier()
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         # Overwrite with a malformed nonce
         bad_meta = UpdateMetadata(
@@ -193,8 +208,11 @@ class TestNonceWellFormed(unittest.TestCase):
         v2.set_round(1, accepted_model_versions={MODEL_VER})
         bad_sig = identity.sign(bad_meta.canonical_bytes())
         bad = SignedUpdate(
-            metadata=bad_meta, signature=bad_sig,
-            parameters=PARAMS, num_examples=10, metrics={},
+            metadata=bad_meta,
+            signature=bad_sig,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         result = v2.verify(bad, expected_client_id="c1")
         self.assertEqual(result.status, VerificationStatus.NONCE_MALFORMED)

@@ -7,25 +7,23 @@ from apps.api.main import app
 
 client = TestClient(app)
 
+
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
 
+
 def test_health():
     response = client.get("/health/")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
 def test_federation_lifecycle():
     # 1. Create Federation
-    payload = {
-        "id": "fed_test_1",
-        "name": "Test Federation",
-        "min_clients": 2,
-        "max_rounds": 10
-    }
+    payload = {"id": "fed_test_1", "name": "Test Federation", "min_clients": 2, "max_rounds": 10}
     response = client.post("/federations/", json=payload)
     assert response.status_code == 200
     data = response.json()["data"]
@@ -41,7 +39,7 @@ def test_federation_lifecycle():
         "id": "client_1",
         "federation_id": "fed_test_1",
         "public_key_b64": "pubkey_b64_string",
-        "capabilities": {"gpu": True}
+        "capabilities": {"gpu": True},
     }
     response = client.post("/clients/", json=client_payload)
     assert response.status_code == 200
@@ -49,11 +47,7 @@ def test_federation_lifecycle():
     assert data["id"] == "client_1"
 
     # 4. Create Round
-    round_payload = {
-        "federation_id": "fed_test_1",
-        "round_number": 1,
-        "model_version": "v1.0"
-    }
+    round_payload = {"federation_id": "fed_test_1", "round_number": 1, "model_version": "v1.0"}
     response = client.post("/rounds/", json=round_payload)
     assert response.status_code == 200
     round_id = response.json()["data"]["id"]
@@ -65,7 +59,7 @@ def test_federation_lifecycle():
         "round_id": round_id,
         "client_id": "client_1",
         "artifact_hash": "hash_123",
-        "nonce": "nonce_123"
+        "nonce": "nonce_123",
     }
     response = client.post("/updates/", json=update_payload)
     assert response.status_code == 200
@@ -77,7 +71,7 @@ def test_federation_lifecycle():
         "client_id": "client_1",
         "federation_id": "fed_test_1",
         "round_id": round_id,
-        "public_commitment": "commit_123"
+        "public_commitment": "commit_123",
     }
     response = client.post("/proofs/", json=proof_payload)
     assert response.status_code == 200
@@ -104,11 +98,7 @@ def test_federation_lifecycle():
     assert client.get("/artifacts/missing-artifact").status_code == 404
 
     # 7. Record Blockchain Tx
-    tx_payload = {
-        "id": "tx_1",
-        "contract_name": "UpdateRegistry",
-        "function_name": "submitUpdate"
-    }
+    tx_payload = {"id": "tx_1", "contract_name": "UpdateRegistry", "function_name": "submitUpdate"}
     response = client.post("/blockchain/transactions", json=tx_payload)
     assert response.status_code == 200
     response = client.post(

@@ -12,6 +12,7 @@ Lifecycle per step():
 
 Retry logic wraps every HTTP call (max_retries with exponential back-off).
 """
+
 from __future__ import annotations
 
 import base64
@@ -34,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 # Type alias for the local training function
 TrainFn = Callable[
-    [int, list[list[float]], dict[str, Any]],   # round_id, params, config
-    tuple,                                        # (new_params, num_examples, metrics)
+    [int, list[list[float]], dict[str, Any]],  # round_id, params, config
+    tuple,  # (new_params, num_examples, metrics)
 ]
 
 
@@ -112,9 +113,14 @@ class DistributedClientAgent:
     def register(self) -> bool:
         """POST /register; returns True on success."""
         nonce = uuid.uuid4().hex
-        proof = b"|".join((
-            b"trustfl-registration-v1", self.client_id.encode(), self.identity.public_key_b64.encode(), nonce.encode(),
-        ))
+        proof = b"|".join(
+            (
+                b"trustfl-registration-v1",
+                self.client_id.encode(),
+                self.identity.public_key_b64.encode(),
+                nonce.encode(),
+            )
+        )
         payload = {
             "client_id": self.client_id,
             "capabilities": {
@@ -183,7 +189,7 @@ class DistributedClientAgent:
             for attempt in range(self.max_retries):
                 if self.register():
                     break
-                time.sleep(self.retry_delay * (2 ** attempt))
+                time.sleep(self.retry_delay * (2**attempt))
             else:
                 logger.error("[%s] Could not register; giving up.", self.client_id)
                 return
@@ -289,9 +295,16 @@ class DistributedClientAgent:
         data = json.dumps(payload).encode() if payload is not None else None
         timestamp = str(int(time.time()))
         nonce = uuid.uuid4().hex
-        proof = b"|".join((
-            b"trustfl-request-v1", self.client_id.encode(), method.encode(), path.encode(), timestamp.encode(), nonce.encode(),
-        ))
+        proof = b"|".join(
+            (
+                b"trustfl-request-v1",
+                self.client_id.encode(),
+                method.encode(),
+                path.encode(),
+                timestamp.encode(),
+                nonce.encode(),
+            )
+        )
         headers = {
             "Content-Type": "application/json",
             "X-TrustFL-Client-ID": self.client_id,
@@ -311,10 +324,14 @@ class DistributedClientAgent:
             except urllib.error.URLError as exc:
                 logger.debug(
                     "[%s] %s %s attempt %d failed: %s",
-                    self.client_id, method, path, attempt + 1, exc,
+                    self.client_id,
+                    method,
+                    path,
+                    attempt + 1,
+                    exc,
                 )
                 if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay * (2 ** attempt))
+                    time.sleep(self.retry_delay * (2**attempt))
             except Exception as exc:
                 logger.debug("[%s] Request error: %s", self.client_id, exc)
                 break

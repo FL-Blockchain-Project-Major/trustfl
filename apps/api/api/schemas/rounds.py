@@ -12,9 +12,11 @@ class RoundCreate(BaseModel):
     round_number: int = Field(..., ge=1)
     model_version: str | None = None
 
+
 class RoundStatusUpdate(BaseModel):
     status: RoundStatus
     global_model_artifact_id: str | None = None
+
 
 class RoundOut(BaseModel):
     id: str

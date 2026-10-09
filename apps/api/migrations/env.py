@@ -16,7 +16,7 @@ import os  # noqa: E402
 import sys  # noqa: E402
 
 # Add project root to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from apps.api.api.db.models import Base  # noqa: E402
 from apps.api.api.db.session import DATABASE_URL  # noqa: E402
@@ -67,9 +67,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

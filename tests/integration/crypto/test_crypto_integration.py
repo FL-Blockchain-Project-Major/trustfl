@@ -10,6 +10,7 @@ This test proves end-to-end that:
   - Valid signed updates are accepted and aggregated
   - Tampered, replayed, or wrong-client updates are rejected at the server
 """
+
 from __future__ import annotations
 
 import json
@@ -84,8 +85,8 @@ def _get(port, path, client_id=None):
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestCryptoIntegration(unittest.TestCase):
 
+class TestCryptoIntegration(unittest.TestCase):
     def setUp(self):
         self._old_insecure = os.environ.get("COORDINATOR_INSECURE_DEV_AUTH")
         os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = "true"
@@ -130,16 +131,19 @@ class TestCryptoIntegration(unittest.TestCase):
                 "c1": ClientIdentity.generate("c1"),
             }
             signers = {
-                cid: UpdateSigner(identity, "fed-test")
-                for cid, identity in identities.items()
+                cid: UpdateSigner(identity, "fed-test") for cid, identity in identities.items()
             }
 
             # Register clients (key + standard FL registration)
             for cid, identity in identities.items():
-                resp = _post(port, "/register", {
-                    "client_id": cid,
-                    "capabilities": {"public_key": identity.public_key_b64},
-                })
+                resp = _post(
+                    port,
+                    "/register",
+                    {
+                        "client_id": cid,
+                        "capabilities": {"public_key": identity.public_key_b64},
+                    },
+                )
                 self.assertTrue(resp["accepted"], f"Registration failed for {cid}")
                 # Register public key in verifier
                 server.state.key_registry.register(cid, identity.public_key_b64)
@@ -152,9 +156,7 @@ class TestCryptoIntegration(unittest.TestCase):
                     break
                 time.sleep(0.1)
 
-            server.state.update_verifier.set_round(
-                1, accepted_model_versions={MODEL_VER}
-            )
+            server.state.update_verifier.set_round(1, accepted_model_versions={MODEL_VER})
 
             # Each client fetches instructions, signs, submits
             for cid, signer in signers.items():
@@ -180,15 +182,19 @@ class TestCryptoIntegration(unittest.TestCase):
 
                 # Submit the signed envelope.  Local preflight never authorizes
                 # an unsigned request at the coordinator.
-                resp = _post(port, "/submit", {
-                    "client_id": cid,
-                    "round_id": round_id,
-                    "parameters": signed.parameters,
-                    "num_examples": signed.num_examples,
-                    "metrics": signed.metrics,
-                    "metadata": signed.metadata.to_dict(),
-                    "signature": signed.signature_b64,
-                })
+                resp = _post(
+                    port,
+                    "/submit",
+                    {
+                        "client_id": cid,
+                        "round_id": round_id,
+                        "parameters": signed.parameters,
+                        "num_examples": signed.num_examples,
+                        "metrics": signed.metrics,
+                        "metadata": signed.metadata.to_dict(),
+                        "signature": signed.signature_b64,
+                    },
+                )
                 self.assertTrue(resp["accepted"], f"Submit rejected for {cid}")
 
             server.state.wait_until_done(timeout=5)
@@ -213,8 +219,11 @@ class TestCryptoIntegration(unittest.TestCase):
         verifier.set_round(1, accepted_model_versions={MODEL_VER})
 
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
 
         # Tamper parameters
@@ -241,8 +250,11 @@ class TestCryptoIntegration(unittest.TestCase):
         verifier.set_round(1, accepted_model_versions={MODEL_VER})
 
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
 
         r1 = verifier.verify(signed, expected_client_id="c0")
@@ -267,8 +279,11 @@ class TestCryptoIntegration(unittest.TestCase):
         verifier.set_round(1, accepted_model_versions={MODEL_VER})
 
         signed_by_c1 = signer_c1.sign(
-            round_id=1, model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
 
         # c1 tries to impersonate c0 by claiming expected_client_id="c0"
@@ -291,7 +306,9 @@ class TestCryptoIntegration(unittest.TestCase):
         signed = signer.sign(
             round_id=2,  # wrong round
             model_version=MODEL_VER,
-            parameters=PARAMS, num_examples=5, metrics={},
+            parameters=PARAMS,
+            num_examples=5,
+            metrics={},
         )
         result = verifier.verify(signed, expected_client_id="c0")
         self.assertEqual(result.status, VerificationStatus.WRONG_ROUND)

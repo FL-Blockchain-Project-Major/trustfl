@@ -13,6 +13,7 @@ class ClientRegister(BaseModel):
     public_key_b64: str
     capabilities: dict[str, Any] | None = None
 
+
 class ClientOut(BaseModel):
     id: str
     federation_id: str
@@ -32,8 +33,11 @@ class ClientOut(BaseModel):
             except Exception:
                 caps = None
         return cls(
-            id=obj.id, federation_id=obj.federation_id,
-            public_key_b64=obj.public_key_b64, is_active=obj.is_active,
-            capabilities=caps, registered_at=obj.registered_at,
-            last_seen_at=obj.last_seen_at
+            id=obj.id,
+            federation_id=obj.federation_id,
+            public_key_b64=obj.public_key_b64,
+            is_active=obj.is_active,
+            capabilities=caps,
+            registered_at=obj.registered_at,
+            last_seen_at=obj.last_seen_at,
         )

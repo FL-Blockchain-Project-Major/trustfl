@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 ModelT = TypeVar("ModelT")
 
+
 class BaseRepository(Generic[ModelT]):
     model: type[ModelT]
 

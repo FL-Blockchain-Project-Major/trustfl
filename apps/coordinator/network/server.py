@@ -13,6 +13,7 @@ A background monitor thread fires every 0.5 s to:
   • detect round timeouts (aggregate with whatever is available)
   • evict clients that have missed heartbeats
 """
+
 from __future__ import annotations
 
 import base64
@@ -51,7 +52,9 @@ FINALIZE_MAX_RETRIES = int(os.getenv("FL_FINALIZE_MAX_RETRIES", "5"))
 FINALIZE_RETRY_BASE_SECONDS = float(os.getenv("FL_FINALIZE_RETRY_BASE_SECONDS", "1"))
 INITIAL_MODEL_VERSION = "initial"
 INITIAL_MODEL_VERSIONS = frozenset(
-    value.strip() for value in os.getenv("FL_INITIAL_MODEL_VERSIONS", "initial,model-v1").split(",") if value.strip()
+    value.strip()
+    for value in os.getenv("FL_INITIAL_MODEL_VERSIONS", "initial,model-v1").split(",")
+    if value.strip()
 )
 
 
@@ -79,6 +82,7 @@ def _verify_public_key_signature(public_key_b64: str, message: bytes, signature_
 # FedAvg helper (inline — no external dep)
 # ---------------------------------------------------------------------------
 
+
 def _fedavg(
     updates: list[dict[str, Any]],
 ) -> list[list[float]]:
@@ -101,7 +105,9 @@ def _fedavg(
         for expected, layer in zip(reference, parameters, strict=True):
             if len(layer) != len(expected):
                 raise ValueError("All update layers must have matching shapes")
-            if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in layer):
+            if any(
+                not isinstance(value, (int, float)) or not math.isfinite(value) for value in layer
+            ):
                 raise ValueError("Update parameters must be finite numbers")
 
     if not 0 < MAX_CLIENT_WEIGHT_SHARE <= 1:
@@ -113,7 +119,11 @@ def _fedavg(
     effective = []
     for examples in claimed:
         other_total = sum(claimed) - examples
-        cap = (MAX_CLIENT_WEIGHT_SHARE / (1 - MAX_CLIENT_WEIGHT_SHARE)) * other_total if MAX_CLIENT_WEIGHT_SHARE < 1 else examples
+        cap = (
+            (MAX_CLIENT_WEIGHT_SHARE / (1 - MAX_CLIENT_WEIGHT_SHARE)) * other_total
+            if MAX_CLIENT_WEIGHT_SHARE < 1
+            else examples
+        )
         effective.append(min(examples, max(1, int(cap))))
     total_examples = sum(effective)
 
@@ -134,6 +144,7 @@ def _fedavg(
 # Coordinator state (thread-safe FSM)
 # ---------------------------------------------------------------------------
 
+
 class CoordinatorState:
     """
     Thread-safe state container.
@@ -150,7 +161,7 @@ class CoordinatorState:
         num_rounds: int = 3,
         round_timeout_seconds: float = 60.0,
         heartbeat_timeout_seconds: float = 30.0,
-        blockchain_client = None,
+        blockchain_client=None,
         require_signatures: bool | None = None,
         storage_client=None,
         persistence=None,
@@ -171,7 +182,7 @@ class CoordinatorState:
         self.update_verifier = UpdateVerifier(self.key_registry)
 
         self.lock = threading.Lock()
-        self.current_round: int = 0          # 0 = not started
+        self.current_round: int = 0  # 0 = not started
         self.round_start_time: float | None = None
         self.global_parameters: list[list[float]] = []
 
@@ -210,22 +221,34 @@ class CoordinatorState:
                     self.pending_updates = recovery.get("pending_updates", {})
                 artifact = restored.get("global_artifact")
                 if artifact and self.storage_client:
-                    raw = self.storage_client.load_artifact(artifact["uri"], artifact["sha256_hash"])
+                    raw = self.storage_client.load_artifact(
+                        artifact["uri"], artifact["sha256_hash"]
+                    )
                     restored_parameters = json.loads(raw)
                     if hash_parameters(restored_parameters) != artifact["model_version"]:
                         raise ValueError("stored global-model version does not match artifact")
                     self.global_parameters = restored_parameters
                 if 0 < self.current_round <= self.num_rounds and self.require_signatures:
-                    verifier_state = recovery.get("verifier", {}) if isinstance(recovery, dict) else {}
+                    verifier_state = (
+                        recovery.get("verifier", {}) if isinstance(recovery, dict) else {}
+                    )
                     if verifier_state:
                         self.update_verifier.restore_state(verifier_state)
                     else:
-                        self.update_verifier.set_round(self.current_round, set(INITIAL_MODEL_VERSIONS))
+                        self.update_verifier.set_round(
+                            self.current_round, set(INITIAL_MODEL_VERSIONS)
+                        )
                 if self.current_round > self.num_rounds:
                     self._done_event.set()
-                logger.info("Restored coordinator state at round %d (%d clients)", self.current_round, len(self.registered_clients))
+                logger.info(
+                    "Restored coordinator state at round %d (%d clients)",
+                    self.current_round,
+                    len(self.registered_clients),
+                )
             except Exception:
-                logger.exception("Coordinator state recovery failed; refusing to infer lifecycle state")
+                logger.exception(
+                    "Coordinator state recovery failed; refusing to infer lifecycle state"
+                )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -234,11 +257,7 @@ class CoordinatorState:
     @property
     def active_clients(self) -> list[str]:
         """Clients that are ONLINE (heartbeat OK)."""
-        return [
-            cid
-            for cid, info in self.registered_clients.items()
-            if info["status"] != "OFFLINE"
-        ]
+        return [cid for cid, info in self.registered_clients.items() if info["status"] != "OFFLINE"]
 
     def _status_label(self) -> str:
         if self.current_round == 0:
@@ -289,13 +308,18 @@ class CoordinatorState:
                 if cid in self.registered_clients:
                     return False
                 self.registered_clients[cid] = {
-                    "status": "ONLINE", "last_heartbeat": time.time(), "registered_at": time.time(),
-                    "capabilities": capabilities, "pubkey": pubkey,
+                    "status": "ONLINE",
+                    "last_heartbeat": time.time(),
+                    "registered_at": time.time(),
+                    "capabilities": capabilities,
+                    "pubkey": pubkey,
                 }
                 self._inflight_registrations.discard(cid)
                 before_round = self.current_round
                 self._start_next_round_if_ready_locked()
-                started_round = self.current_round if before_round == 0 and self.current_round == 1 else 0
+                started_round = (
+                    self.current_round if before_round == 0 and self.current_round == 1 else 0
+                )
             logger.info("Client registered: %s", cid)
             if started_round:
                 self._start_round_durable(started_round, INITIAL_MODEL_VERSION)
@@ -373,7 +397,9 @@ class CoordinatorState:
             if round_id != self.current_round:
                 logger.warning(
                     "Stale update from %s: round %d (current %d)",
-                    cid, round_id, self.current_round,
+                    cid,
+                    round_id,
+                    self.current_round,
                 )
                 return False
             if cid in self.pending_updates or cid in self._inflight_updates:
@@ -392,10 +418,15 @@ class CoordinatorState:
                     logger.warning("Rejecting unsigned update from %s", cid)
                     return False
                 try:
-                    signed_update = SignedUpdate.from_dict({
-                        "metadata": metadata, "signature": signature,
-                        "parameters": parameters, "num_examples": num_examples, "metrics": metrics,
-                    })
+                    signed_update = SignedUpdate.from_dict(
+                        {
+                            "metadata": metadata,
+                            "signature": signature,
+                            "parameters": parameters,
+                            "num_examples": num_examples,
+                            "metrics": metrics,
+                        }
+                    )
                 except (KeyError, TypeError, ValueError):
                     logger.warning("Rejecting malformed signed update from %s", cid)
                     return False
@@ -403,13 +434,25 @@ class CoordinatorState:
                 verification = self.update_verifier.verify(signed_update, cid, consume_nonce=False)
                 if not verification.ok:
                     logger.warning("Rejected update from %s: %s", cid, verification.status.value)
-                    rejection = (update_id, nonce, metadata.get("artifact_hash", "sha256:rejected"), verification.status.value)
+                    rejection = (
+                        update_id,
+                        nonce,
+                        metadata.get("artifact_hash", "sha256:rejected"),
+                        verification.status.value,
+                    )
                 else:
                     verified = True
             if rejection:
                 pass
             elif nonce in self._inflight_nonces:
-                rejection = (update_id, nonce, metadata.get("artifact_hash", "sha256:rejected") if metadata else "sha256:rejected", "REUSED_NONCE")
+                rejection = (
+                    update_id,
+                    nonce,
+                    metadata.get("artifact_hash", "sha256:rejected")
+                    if metadata
+                    else "sha256:rejected",
+                    "REUSED_NONCE",
+                )
             else:
                 self._inflight_updates.add(cid)
                 self._inflight_nonces.add(nonce)
@@ -419,23 +462,42 @@ class CoordinatorState:
         try:
             artifact_data = canonical_artifact_bytes(parameters, num_examples, metrics)
             stored_artifact = (
-                self.storage_client.save_artifact(artifact_data, str(round_id), round_id, cid, update_id)
-                if self.storage_client else None
+                self.storage_client.save_artifact(
+                    artifact_data, str(round_id), round_id, cid, update_id
+                )
+                if self.storage_client
+                else None
             )
-            artifact_hash = stored_artifact.sha256_hash if stored_artifact else (
-                metadata["artifact_hash"] if metadata else "0x_dummy_hash"
+            artifact_hash = (
+                stored_artifact.sha256_hash
+                if stored_artifact
+                else (metadata["artifact_hash"] if metadata else "0x_dummy_hash")
             )
-            if metadata and metadata.get("artifact_hash") and stored_artifact and metadata["artifact_hash"] != artifact_hash:
+            if (
+                metadata
+                and metadata.get("artifact_hash")
+                and stored_artifact
+                and metadata["artifact_hash"] != artifact_hash
+            ):
                 raise ValueError("ARTIFACT_HASH_MISMATCH")
             if self.blockchain_client:
-                if not self.blockchain_client.submit_update(update_id, round_id, cid, artifact_hash, nonce):
+                if not self.blockchain_client.submit_update(
+                    update_id, round_id, cid, artifact_hash, nonce
+                ):
                     raise OSError("BLOCKCHAIN_SUBMIT_FAILED")
                 if verified and not self.blockchain_client.mark_verification_state(update_id, True):
                     raise OSError("BLOCKCHAIN_VERIFICATION_FAILED")
             if self.persistence:
                 self.persistence.record_update(
-                    update_id, cid, round_id, stored_artifact.uri if stored_artifact else None,
-                    artifact_hash, num_examples, metrics, nonce, verified,
+                    update_id,
+                    cid,
+                    round_id,
+                    stored_artifact.uri if stored_artifact else None,
+                    artifact_hash,
+                    num_examples,
+                    metrics,
+                    nonce,
+                    verified,
                 )
         except (TypeError, ValueError, OSError) as exc:
             reason = str(exc) if str(exc).isupper() else "DURABLE_WRITE_FAILED"
@@ -454,8 +516,11 @@ class CoordinatorState:
                 self._inflight_nonces.discard(nonce)
                 return False
             self.pending_updates[cid] = {
-                "parameters": parameters, "num_examples": num_examples, "metrics": metrics,
-                "update_id": update_id, "artifact_uri": stored_artifact.uri if stored_artifact else None,
+                "parameters": parameters,
+                "num_examples": num_examples,
+                "metrics": metrics,
+                "update_id": update_id,
+                "artifact_uri": stored_artifact.uri if stored_artifact else None,
                 "artifact_hash": artifact_hash,
             }
             self._inflight_updates.discard(cid)
@@ -466,23 +531,39 @@ class CoordinatorState:
             self._aggregate_round(timed_out=False)
         return True
 
-    def _valid_update_parameters(
-        self, parameters: Any, num_examples: Any, metrics: Any
-    ) -> bool:
+    def _valid_update_parameters(self, parameters: Any, num_examples: Any, metrics: Any) -> bool:
         """Validate untrusted numerical data before storage, chain, or aggregation I/O."""
-        if not isinstance(num_examples, int) or isinstance(num_examples, bool) or not 0 < num_examples <= MAX_NUM_EXAMPLES:
+        if (
+            not isinstance(num_examples, int)
+            or isinstance(num_examples, bool)
+            or not 0 < num_examples <= MAX_NUM_EXAMPLES
+        ):
             return False
-        if not isinstance(parameters, list) or not parameters or any(not isinstance(layer, list) for layer in parameters):
+        if (
+            not isinstance(parameters, list)
+            or not parameters
+            or any(not isinstance(layer, list) for layer in parameters)
+        ):
             return False
-        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value)
-               for layer in parameters for value in layer):
+        if any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+            for layer in parameters
+            for value in layer
+        ):
             return False
-        if not isinstance(metrics, dict) or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in metrics.values()):
+        if not isinstance(metrics, dict) or any(
+            not isinstance(v, (int, float)) or not math.isfinite(v) for v in metrics.values()
+        ):
             return False
         # Once a global model exists every submitted layer must match it exactly.
         if self.global_parameters and (
             len(parameters) != len(self.global_parameters)
-            or any(len(layer) != len(expected) for layer, expected in zip(parameters, self.global_parameters, strict=True))
+            or any(
+                len(layer) != len(expected)
+                for layer, expected in zip(parameters, self.global_parameters, strict=True)
+            )
         ):
             return False
         return True
@@ -499,7 +580,9 @@ class CoordinatorState:
             if self.blockchain_client.submit_update(update_id, round_id, cid, artifact_hash, nonce):
                 self.blockchain_client.mark_verification_state(update_id, False, reason)
         if self.persistence:
-            self.persistence.record_rejection(update_id, cid, round_id, nonce, artifact_hash, reason)
+            self.persistence.record_rejection(
+                update_id, cid, round_id, nonce, artifact_hash, reason
+            )
 
     def _save_recovery_locked(self) -> None:
         if self.persistence and self.current_round > 0:
@@ -559,7 +642,9 @@ class CoordinatorState:
             if not info or not info.get("pubkey"):
                 return False
             valid = _verify_public_key_signature(
-                info["pubkey"], _wire_message("trustfl-request-v1", cid, method, path, timestamp, nonce), signature
+                info["pubkey"],
+                _wire_message("trustfl-request-v1", cid, method, path, timestamp, nonce),
+                signature,
             )
             if valid:
                 self._request_nonces[nonce] = now + 120
@@ -596,7 +681,8 @@ class CoordinatorState:
             ):
                 logger.warning(
                     "Round %d timed out after %.1f s",
-                    self.current_round, now - self.round_start_time,
+                    self.current_round,
+                    now - self.round_start_time,
                 )
                 aggregate_timeout = True
             elif self._finalization_pending and (
@@ -628,7 +714,15 @@ class CoordinatorState:
                     self.persistence.fail_round(round_id)
                 with self.lock:
                     if self.current_round == round_id:
-                        self.round_history.append({"round": round_id, "num_successful_clients": len(updates), "timed_out": timed_out, "status": "FAILED", "metrics": _avg_metrics([u["metrics"] for u in updates])})
+                        self.round_history.append(
+                            {
+                                "round": round_id,
+                                "num_successful_clients": len(updates),
+                                "timed_out": timed_out,
+                                "status": "FAILED",
+                                "metrics": _avg_metrics([u["metrics"] for u in updates]),
+                            }
+                        )
                         self.pending_updates.clear()
                         self.current_round += 1
                 return
@@ -637,29 +731,50 @@ class CoordinatorState:
             if self.storage_client:
                 global_artifact = self.storage_client.save_artifact(
                     json.dumps(parameters, separators=(",", ":")).encode(),
-                    hash_parameters(parameters), round_id, None, None,
+                    hash_parameters(parameters),
+                    round_id,
+                    None,
+                    None,
                 )
                 if self.persistence:
                     self.persistence.record_global_model(
-                        round_id, global_artifact.uri, global_artifact.sha256_hash, hash_parameters(parameters)
+                        round_id,
+                        global_artifact.uri,
+                        global_artifact.sha256_hash,
+                        hash_parameters(parameters),
                     )
             for update in updates:
                 if self.blockchain_client and update.get("update_id"):
                     self.blockchain_client.record_aggregation(update["update_id"])
-            finalized = not self.blockchain_client or self.blockchain_client.finalize_round(round_id, hash_parameters(parameters))
+            finalized = not self.blockchain_client or self.blockchain_client.finalize_round(
+                round_id, hash_parameters(parameters)
+            )
             if finalized and self.persistence:
                 self.persistence.finalize_round(round_id)
             with self.lock:
                 if self.current_round != round_id:
                     return
                 self.global_parameters = parameters
-                self.round_history.append({"round": round_id, "num_successful_clients": len(updates), "timed_out": timed_out, "metrics": _avg_metrics([u["metrics"] for u in updates])})
+                self.round_history.append(
+                    {
+                        "round": round_id,
+                        "num_successful_clients": len(updates),
+                        "timed_out": timed_out,
+                        "metrics": _avg_metrics([u["metrics"] for u in updates]),
+                    }
+                )
                 if not finalized:
                     self.round_start_time = None
                     self._finalization_attempts += 1
                     self._finalization_pending = self._finalization_attempts < FINALIZE_MAX_RETRIES
-                    self._next_finalization_retry = time.time() + FINALIZE_RETRY_BASE_SECONDS * (2 ** (self._finalization_attempts - 1))
-                    self._terminal_error = None if self._finalization_pending else "blockchain finalization retry budget exhausted"
+                    self._next_finalization_retry = time.time() + FINALIZE_RETRY_BASE_SECONDS * (
+                        2 ** (self._finalization_attempts - 1)
+                    )
+                    self._terminal_error = (
+                        None
+                        if self._finalization_pending
+                        else "blockchain finalization retry budget exhausted"
+                    )
                     self._save_recovery_locked()
                     return
                 self.pending_updates.clear()
@@ -669,7 +784,9 @@ class CoordinatorState:
                     return
                 self.round_start_time = time.time()
                 if self.require_signatures:
-                    self.update_verifier.set_round(self.current_round, {hash_parameters(self.global_parameters)})
+                    self.update_verifier.set_round(
+                        self.current_round, {hash_parameters(self.global_parameters)}
+                    )
                 next_round = self.current_round
                 model_version = hash_parameters(self.global_parameters)
             self._start_round_durable(next_round, model_version)
@@ -683,7 +800,9 @@ class CoordinatorState:
             if not self._finalization_pending:
                 return
             round_id, model_version = self.current_round, hash_parameters(self.global_parameters)
-        succeeded = not self.blockchain_client or self.blockchain_client.finalize_round(round_id, model_version)
+        succeeded = not self.blockchain_client or self.blockchain_client.finalize_round(
+            round_id, model_version
+        )
         if succeeded and self.persistence:
             self.persistence.finalize_round(round_id)
         with self.lock:
@@ -704,7 +823,9 @@ class CoordinatorState:
             else:
                 self._finalization_attempts += 1
                 self._finalization_pending = self._finalization_attempts < FINALIZE_MAX_RETRIES
-                self._next_finalization_retry = time.time() + FINALIZE_RETRY_BASE_SECONDS * (2 ** (self._finalization_attempts - 1))
+                self._next_finalization_retry = time.time() + FINALIZE_RETRY_BASE_SECONDS * (
+                    2 ** (self._finalization_attempts - 1)
+                )
                 if not self._finalization_pending:
                     self._terminal_error = "blockchain finalization retry budget exhausted"
             self._save_recovery_locked()
@@ -713,18 +834,13 @@ class CoordinatorState:
 
     def _start_next_round_if_ready_locked(self) -> None:
         """Start round 1 when enough clients have registered."""
-        if (
-            self.current_round == 0
-            and len(self.active_clients) >= self.min_clients
-        ):
+        if self.current_round == 0 and len(self.active_clients) >= self.min_clients:
             self.current_round = 1
             self.round_start_time = time.time()
             if self.require_signatures:
                 self.update_verifier.set_round(self.current_round, set(INITIAL_MODEL_VERSIONS))
 
-            logger.info(
-                "Round 1 started with %d clients", len(self.active_clients)
-            )
+            logger.info("Round 1 started with %d clients", len(self.active_clients))
 
     def _start_round_durable(self, round_id: int, model_version: str) -> None:
         """Chain and DB transition performed after the in-memory start commit."""
@@ -743,8 +859,21 @@ class CoordinatorState:
         updates = list(self.pending_updates.values())
         quorum_met = len(updates) >= self.min_clients
         if not quorum_met:
-            logger.error("Round %d failed quorum: %d < %d", self.current_round, len(updates), self.min_clients)
-            self.round_history.append({"round": self.current_round, "num_successful_clients": len(updates), "timed_out": timed_out, "status": "FAILED", "metrics": _avg_metrics([u["metrics"] for u in updates])})
+            logger.error(
+                "Round %d failed quorum: %d < %d",
+                self.current_round,
+                len(updates),
+                self.min_clients,
+            )
+            self.round_history.append(
+                {
+                    "round": self.current_round,
+                    "num_successful_clients": len(updates),
+                    "timed_out": timed_out,
+                    "status": "FAILED",
+                    "metrics": _avg_metrics([u["metrics"] for u in updates]),
+                }
+            )
             if self.persistence:
                 self.persistence.fail_round(self.current_round)
             self._advance_round_locked(finalize=False)
@@ -754,13 +883,20 @@ class CoordinatorState:
         except (TypeError, ValueError, OverflowError) as exc:
             # Defense in depth: malformed in-memory data can never wedge monitor_tick.
             logger.exception("Round %d aggregation rejected: %s", self.current_round, exc)
-            self.round_history.append({"round": self.current_round, "num_successful_clients": 0, "timed_out": timed_out, "status": "FAILED", "metrics": {}})
+            self.round_history.append(
+                {
+                    "round": self.current_round,
+                    "num_successful_clients": 0,
+                    "timed_out": timed_out,
+                    "status": "FAILED",
+                    "metrics": {},
+                }
+            )
             if self.persistence:
                 self.persistence.fail_round(self.current_round)
             self._advance_round_locked(finalize=False)
             return
         if updates:
-
             if self.blockchain_client:
                 for u in updates:
                     update_id = u.get("update_id")
@@ -778,7 +914,9 @@ class CoordinatorState:
         self.round_history.append(record)
         logger.info(
             "Round %d aggregated: %d clients, timed_out=%s",
-            self.current_round, len(updates), timed_out,
+            self.current_round,
+            len(updates),
+            timed_out,
         )
 
         self._advance_round_locked()
@@ -787,7 +925,9 @@ class CoordinatorState:
         # Finalize the current round
         chain_finalized = True
         if finalize and self.blockchain_client:
-            chain_finalized = self.blockchain_client.finalize_round(self.current_round, hash_parameters(self.global_parameters))
+            chain_finalized = self.blockchain_client.finalize_round(
+                self.current_round, hash_parameters(self.global_parameters)
+            )
         if finalize and chain_finalized and self.persistence:
             self.persistence.finalize_round(self.current_round)
         elif finalize and not chain_finalized:
@@ -798,13 +938,23 @@ class CoordinatorState:
             if self._finalization_attempts >= FINALIZE_MAX_RETRIES:
                 self._finalization_pending = False
                 self._terminal_error = "blockchain finalization retry budget exhausted"
-                logger.critical("Round %d finalization is terminally blocked after %d attempts; operator recovery required", self.current_round, self._finalization_attempts)
+                logger.critical(
+                    "Round %d finalization is terminally blocked after %d attempts; operator recovery required",
+                    self.current_round,
+                    self._finalization_attempts,
+                )
                 self._save_recovery_locked()
                 return
             delay = FINALIZE_RETRY_BASE_SECONDS * (2 ** (self._finalization_attempts - 1))
             self._next_finalization_retry = time.time() + delay
             self._finalization_pending = True
-            logger.error("Round %d remains unfinalized; retry %d/%d in %.1fs", self.current_round, self._finalization_attempts, FINALIZE_MAX_RETRIES, delay)
+            logger.error(
+                "Round %d remains unfinalized; retry %d/%d in %.1fs",
+                self.current_round,
+                self._finalization_attempts,
+                FINALIZE_MAX_RETRIES,
+                delay,
+            )
             self._save_recovery_locked()
             return
 
@@ -828,7 +978,12 @@ class CoordinatorState:
                     else {INITIAL_MODEL_VERSION},
                 )
             if self.blockchain_client:
-                bc_ok = self.blockchain_client.create_round(self.current_round, hash_parameters(self.global_parameters) if self.global_parameters else INITIAL_MODEL_VERSION)
+                bc_ok = self.blockchain_client.create_round(
+                    self.current_round,
+                    hash_parameters(self.global_parameters)
+                    if self.global_parameters
+                    else INITIAL_MODEL_VERSION,
+                )
                 if not bc_ok:
                     logger.error("Blockchain round %d creation failed", self.current_round)
                 else:
@@ -837,7 +992,9 @@ class CoordinatorState:
             if self.persistence:
                 self.persistence.start_round(
                     self.current_round,
-                    hash_parameters(self.global_parameters) if self.global_parameters else INITIAL_MODEL_VERSION,
+                    hash_parameters(self.global_parameters)
+                    if self.global_parameters
+                    else INITIAL_MODEL_VERSION,
                 )
             logger.info("Round %d started.", self.current_round)
 
@@ -853,15 +1010,13 @@ def _avg_metrics(metrics_list: list[dict[str, float]]) -> dict[str, float]:
     if not metrics_list:
         return {}
     keys = metrics_list[0].keys()
-    return {
-        k: sum(m.get(k, 0.0) for m in metrics_list) / len(metrics_list)
-        for k in keys
-    }
+    return {k: sum(m.get(k, 0.0) for m in metrics_list) / len(metrics_list) for k in keys}
 
 
 # ---------------------------------------------------------------------------
 # HTTP request handler
 # ---------------------------------------------------------------------------
+
 
 class _Handler(BaseHTTPRequestHandler):
     MAX_BODY_BYTES = 1_048_576
@@ -980,7 +1135,9 @@ class _Handler(BaseHTTPRequestHandler):
         signature = str(capabilities.get("registration_signature", ""))
         if not cid or not pubkey or not nonce or not signature:
             return False
-        if not _verify_public_key_signature(pubkey, _wire_message("trustfl-registration-v1", cid, pubkey, nonce), signature):
+        if not _verify_public_key_signature(
+            pubkey, _wire_message("trustfl-registration-v1", cid, pubkey, nonce), signature
+        ):
             return False
         try:
             allowlist = json.loads(os.getenv("COORDINATOR_ENROLLMENT_ALLOWLIST", "{}"))
@@ -1010,7 +1167,9 @@ class _Handler(BaseHTTPRequestHandler):
         expected = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
         if not expected:
             return True
-        supplied = self.headers.get("Authorization", "").removeprefix("Bearer ").strip() or str(data.get("credential", ""))
+        supplied = self.headers.get("Authorization", "").removeprefix("Bearer ").strip() or str(
+            data.get("credential", "")
+        )
         return hmac.compare_digest(supplied, expected)
 
     def _respond_json(self, code: int, body: dict[str, Any]) -> None:
@@ -1025,6 +1184,7 @@ class _Handler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
+
 
 class CoordinatorServer:
     """
@@ -1047,9 +1207,9 @@ class CoordinatorServer:
         round_timeout_seconds: float = 60.0,
         heartbeat_timeout_seconds: float = 30.0,
         monitor_interval_seconds: float = 0.5,
-        blockchain_client = None,
+        blockchain_client=None,
         require_signatures: bool | None = None,
-        storage_client = None,
+        storage_client=None,
         persistence=None,
     ) -> None:
         self.host = host
@@ -1075,15 +1235,17 @@ class CoordinatorServer:
             pass
 
         BoundHandler.state = state
+
         class TimeoutThreadingHTTPServer(ThreadingHTTPServer):
             daemon_threads = True
+
             def get_request(self):  # type: ignore[no-untyped-def]
                 sock, address = super().get_request()
                 sock.settimeout(float(os.getenv("COORDINATOR_CONNECTION_TIMEOUT_SECONDS", "10")))
                 return sock, address
 
         self._httpd = TimeoutThreadingHTTPServer((host, port), BoundHandler)
-        self._httpd.timeout = 0.5   # so serve_forever can be interrupted quickly
+        self._httpd.timeout = 0.5  # so serve_forever can be interrupted quickly
 
         self._http_thread: threading.Thread | None = None
         self._monitor_thread: threading.Thread | None = None

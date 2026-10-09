@@ -28,7 +28,9 @@ class _FlakyChain:
 
 def test_failed_finalization_retries_without_reaggregating():
     chain = _FlakyChain([False, True])
-    state = CoordinatorState(min_clients=1, num_rounds=2, blockchain_client=chain, require_signatures=False)
+    state = CoordinatorState(
+        min_clients=1, num_rounds=2, blockchain_client=chain, require_signatures=False
+    )
     assert state.register_client("client", {})
     assert state.submit_update("client", 1, [[1.0]], 1, {})
     assert state.current_round == 1
@@ -42,7 +44,9 @@ def test_failed_finalization_retries_without_reaggregating():
 
 def test_permanently_failed_finalization_does_not_mark_round_failed_or_duplicate_history():
     chain = _FlakyChain([False, False])
-    state = CoordinatorState(min_clients=1, num_rounds=1, blockchain_client=chain, require_signatures=False)
+    state = CoordinatorState(
+        min_clients=1, num_rounds=1, blockchain_client=chain, require_signatures=False
+    )
     assert state.register_client("client", {})
     assert state.submit_update("client", 1, [[1.0]], 1, {})
     state.monitor_tick()

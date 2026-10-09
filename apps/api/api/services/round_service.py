@@ -11,6 +11,7 @@ from apps.api.api.schemas.rounds import RoundCreate, RoundStatusUpdate
 
 logger = logging.getLogger(__name__)
 
+
 class RoundService:
     def __init__(self, db: Session):
         self.repo = RoundRepository(db)
@@ -18,7 +19,9 @@ class RoundService:
 
     def create(self, payload: RoundCreate) -> Round:
         if not self.fed_repo.get(payload.federation_id):
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Federation '{payload.federation_id}' not found")
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"Federation '{payload.federation_id}' not found"
+            )
         round_id = f"{payload.federation_id}_round{payload.round_number}"
         if self.repo.get(round_id):
             raise HTTPException(status.HTTP_409_CONFLICT, f"Round {round_id} already exists")

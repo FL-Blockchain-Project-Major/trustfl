@@ -1,4 +1,5 @@
 """Unit tests for UpdateSigner and UpdateVerifier."""
+
 from __future__ import annotations
 
 import time
@@ -29,7 +30,6 @@ def _setup(
 
 
 class TestSignerAndVerifier(unittest.TestCase):
-
     # ------------------------------------------------------------------
     # Happy path
 
@@ -66,8 +66,11 @@ class TestSignerAndVerifier(unittest.TestCase):
     def test_tampered_signature_rejected(self):
         _, signer, _, verifier = _setup()
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER, parameters=PARAMS,
-            num_examples=50, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=50,
+            metrics={},
         )
         bad_sig = bytearray(signed.signature)
         bad_sig[0] ^= 0xFF
@@ -87,8 +90,11 @@ class TestSignerAndVerifier(unittest.TestCase):
         identity2 = ClientIdentity.generate("c1")
         signer2 = UpdateSigner(identity2, FED_ID)
         signed = signer2.sign(
-            round_id=1, model_version=MODEL_VER, parameters=PARAMS,
-            num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         # registry still has the original key → verify fails
         result = verifier.verify(signed, expected_client_id="c1")
@@ -100,8 +106,11 @@ class TestSignerAndVerifier(unittest.TestCase):
     def test_wrong_client_in_request_rejected(self):
         _, signer, _, verifier = _setup(client_id="c1")
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER, parameters=PARAMS,
-            num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         result = verifier.verify(signed, expected_client_id="c2")  # mismatch
         self.assertEqual(result.status, VerificationStatus.WRONG_CLIENT)
@@ -112,7 +121,7 @@ class TestSignerAndVerifier(unittest.TestCase):
     def test_wrong_round_in_metadata_rejected(self):
         _, signer, _, verifier = _setup(round_id=1)
         signed = signer.sign(
-            round_id=2,           # metadata says 2, server is at 1
+            round_id=2,  # metadata says 2, server is at 1
             model_version=MODEL_VER,
             parameters=PARAMS,
             num_examples=10,
@@ -132,8 +141,11 @@ class TestSignerAndVerifier(unittest.TestCase):
         verifier = UpdateVerifier(registry)
         verifier.set_round(1)
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER, parameters=PARAMS,
-            num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         result = verifier.verify(signed, expected_client_id="unknown")
         self.assertEqual(result.status, VerificationStatus.UNKNOWN_CLIENT)
@@ -144,14 +156,17 @@ class TestSignerAndVerifier(unittest.TestCase):
     def test_changed_parameters_rejected(self):
         _, signer, _, verifier = _setup()
         signed = signer.sign(
-            round_id=1, model_version=MODEL_VER, parameters=PARAMS,
-            num_examples=10, metrics={},
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         # Tamper with parameters after signing
         bad = SignedUpdate(
             metadata=signed.metadata,
             signature=signed.signature,
-            parameters=[[9.9, 9.9]],   # different from what was signed
+            parameters=[[9.9, 9.9]],  # different from what was signed
             num_examples=signed.num_examples,
             metrics=signed.metrics,
         )
@@ -178,8 +193,9 @@ class TestSignerAndVerifier(unittest.TestCase):
 
     def test_future_timestamp_rejected(self):
         _, signer, _, verifier = _setup(clock_skew=5.0)
-        future_ts = int(time.time()) + 3600   # 1 hour in the future
+        future_ts = int(time.time()) + 3600  # 1 hour in the future
         from trustfl_crypto.canonical import UpdateMetadata, generate_nonce, hash_parameters
+
         meta = UpdateMetadata(
             federation_id=FED_ID,
             round_id=1,
@@ -197,8 +213,11 @@ class TestSignerAndVerifier(unittest.TestCase):
         verifier2.set_round(1)
         sig = identity.sign(meta.canonical_bytes())
         signed = SignedUpdate(
-            metadata=meta, signature=sig, parameters=PARAMS,
-            num_examples=10, metrics={},
+            metadata=meta,
+            signature=sig,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         result = verifier2.verify(signed, expected_client_id="c1")
         self.assertEqual(result.status, VerificationStatus.TIMESTAMP_DRIFT)
@@ -207,6 +226,7 @@ class TestSignerAndVerifier(unittest.TestCase):
         _, signer, _, verifier = _setup(clock_skew=5.0)
         old_ts = int(time.time()) - 3600
         from trustfl_crypto.canonical import UpdateMetadata, generate_nonce, hash_parameters
+
         meta = UpdateMetadata(
             federation_id=FED_ID,
             round_id=1,
@@ -224,8 +244,11 @@ class TestSignerAndVerifier(unittest.TestCase):
         verifier2.set_round(1)
         sig = identity.sign(meta.canonical_bytes())
         signed = SignedUpdate(
-            metadata=meta, signature=sig, parameters=PARAMS,
-            num_examples=10, metrics={},
+            metadata=meta,
+            signature=sig,
+            parameters=PARAMS,
+            num_examples=10,
+            metrics={},
         )
         result = verifier2.verify(signed, expected_client_id="c1")
         self.assertEqual(result.status, VerificationStatus.TIMESTAMP_DRIFT)

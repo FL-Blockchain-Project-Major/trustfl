@@ -21,6 +21,7 @@ Verification flow (coordinator):
   4. verifier.verify(signed_update, expected_client_id)
      → VerificationResult(.ok / .status / .detail)
 """
+
 from .canonical import (
     UpdateMetadata,
     build_metadata,

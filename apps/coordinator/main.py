@@ -10,6 +10,7 @@ Environment variables (override CLI):
     COORDINATOR_HOST, COORDINATOR_PORT, FL_MIN_CLIENTS,
     FL_NUM_ROUNDS, FL_ROUND_TIMEOUT_SECONDS, FL_HEARTBEAT_TIMEOUT_SECONDS
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,12 +88,14 @@ def main() -> None:
         )
 
     from packages.storage.trustfl_storage.client import IPFSStorageClient, LocalStorageClient
+
     storage_client = (
         IPFSStorageClient(os.environ["IPFS_API_URL"])
         if os.getenv("STORAGE_BACKEND", "local").lower() == "ipfs"
         else LocalStorageClient(os.getenv("STORAGE_LOCAL_DIR", "/tmp/trustfl-artifacts"))
     )
     from apps.coordinator.persistence import CoordinatorPersistence
+
     persistence = CoordinatorPersistence()
     persistence.ensure_federation(args.min_clients, args.num_rounds)
 
@@ -106,7 +109,8 @@ def main() -> None:
         require_signatures=os.getenv(
             "COORDINATOR_REQUIRE_SIGNATURES",
             "true" if os.getenv("ENVIRONMENT", "production").lower() == "production" else "false",
-        ).lower() == "true",
+        ).lower()
+        == "true",
         blockchain_client=blockchain_client,
         storage_client=storage_client,
         persistence=persistence,
@@ -123,7 +127,10 @@ def main() -> None:
     server.start()
     logger.info(
         "Coordinator running: %s:%d  min_clients=%d  num_rounds=%d",
-        args.host, args.port, args.min_clients, args.num_rounds,
+        args.host,
+        args.port,
+        args.min_clients,
+        args.num_rounds,
     )
 
     server.state.wait_until_done(timeout=None)

@@ -1,4 +1,5 @@
 """Unit tests for canonical update metadata."""
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,6 @@ PARAMS = [[0.1, 0.2, 0.3], [0.9]]
 
 
 class TestUpdateMetadata(unittest.TestCase):
-
     def _make(self, **overrides) -> UpdateMetadata:
         defaults = {
             "federation_id": "fed-001",
@@ -104,7 +104,6 @@ class TestUpdateMetadata(unittest.TestCase):
 
 
 class TestHashParameters(unittest.TestCase):
-
     def test_returns_sha256_prefix(self):
         result = hash_parameters(PARAMS)
         self.assertTrue(result.startswith("sha256:"))
@@ -127,7 +126,6 @@ class TestHashParameters(unittest.TestCase):
 
 
 class TestGenerateNonce(unittest.TestCase):
-
     def test_nonce_format(self):
         nonce = generate_nonce("c1", 3)
         parts = nonce.split(":")
@@ -141,7 +139,6 @@ class TestGenerateNonce(unittest.TestCase):
 
 
 class TestBuildMetadata(unittest.TestCase):
-
     def test_build_metadata_fills_all_fields(self):
         meta = build_metadata(
             federation_id="fed-001",

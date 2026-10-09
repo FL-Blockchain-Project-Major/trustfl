@@ -23,6 +23,7 @@ from trustfl_core.model import Parameters, TinyLinearModel
 @dataclass
 class FitIns:
     """Parameters and configuration sent from server to client for training."""
+
     parameters: Parameters
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -30,6 +31,7 @@ class FitIns:
 @dataclass
 class FitRes:
     """Updated parameters and training metrics returned from client to server."""
+
     parameters: Parameters
     num_examples: int
     metrics: dict[str, Any] = field(default_factory=dict)
@@ -39,6 +41,7 @@ class FitRes:
 @dataclass
 class EvaluateIns:
     """Parameters and configuration sent from server to client for evaluation."""
+
     parameters: Parameters
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -46,6 +49,7 @@ class EvaluateIns:
 @dataclass
 class EvaluateRes:
     """Evaluation loss and metrics returned from client to server."""
+
     loss: float
     num_examples: int
     metrics: dict[str, Any] = field(default_factory=dict)
@@ -193,9 +197,7 @@ class FedAvg(Strategy):
         if num_available < self.min_available_clients:
             return []
 
-        sample_size = max(
-            int(num_available * self.fraction_evaluate), self.min_evaluate_clients
-        )
+        sample_size = max(int(num_available * self.fraction_evaluate), self.min_evaluate_clients)
         sample_size = min(sample_size, num_available)
         sampled_clients = self.rng.sample(client_manager, sample_size)
 
@@ -223,9 +225,7 @@ class FedAvg(Strategy):
             for _, res in results
             if "accuracy" in res.metrics
         ]
-        avg_accuracy = (
-            sum(accuracies) / total_examples if accuracies else 0.0
-        )
+        avg_accuracy = sum(accuracies) / total_examples if accuracies else 0.0
 
         metrics = {
             "accuracy": avg_accuracy,

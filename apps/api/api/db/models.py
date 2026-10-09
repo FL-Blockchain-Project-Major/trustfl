@@ -2,6 +2,7 @@
 SQLAlchemy ORM models for TrustFL API control plane.
 All tables store system metadata only — no weights, no private data.
 """
+
 from __future__ import annotations
 
 import enum
@@ -26,14 +27,17 @@ from sqlalchemy.orm import DeclarativeBase, relationship
 class Base(DeclarativeBase):
     pass
 
+
 def _utcnow():
     return datetime.now(UTC)
+
 
 class FederationStatus(enum.StrEnum):
     ACTIVE = "ACTIVE"
     PAUSED = "PAUSED"
     COMPLETED = "COMPLETED"
     ARCHIVED = "ARCHIVED"
+
 
 class RoundStatus(enum.StrEnum):
     CREATED = "CREATED"
@@ -42,11 +46,13 @@ class RoundStatus(enum.StrEnum):
     FINALIZED = "FINALIZED"
     FAILED = "FAILED"
 
+
 class UpdateStatus(enum.StrEnum):
     SUBMITTED = "SUBMITTED"
     VERIFIED = "VERIFIED"
     AGGREGATED = "AGGREGATED"
     REJECTED = "REJECTED"
+
 
 class Federation(Base):
     __tablename__ = "federations"
@@ -61,10 +67,13 @@ class Federation(Base):
     clients = relationship("Client", back_populates="federation", cascade="all, delete-orphan")
     rounds = relationship("Round", back_populates="federation", cascade="all, delete-orphan")
 
+
 class Client(Base):
     __tablename__ = "clients"
     id = Column(String(64), primary_key=True)
-    federation_id = Column(String(64), ForeignKey("federations.id", ondelete="CASCADE"), nullable=False)
+    federation_id = Column(
+        String(64), ForeignKey("federations.id", ondelete="CASCADE"), nullable=False
+    )
     public_key_b64 = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     capabilities = Column(Text, nullable=True)  # JSON string
@@ -74,10 +83,13 @@ class Client(Base):
     updates = relationship("Update", back_populates="client")
     __table_args__ = (Index("ix_clients_federation_id", "federation_id"),)
 
+
 class Round(Base):
     __tablename__ = "rounds"
     id = Column(String(64), primary_key=True)  # e.g. "fed1_round3"
-    federation_id = Column(String(64), ForeignKey("federations.id", ondelete="CASCADE"), nullable=False)
+    federation_id = Column(
+        String(64), ForeignKey("federations.id", ondelete="CASCADE"), nullable=False
+    )
     round_number = Column(Integer, nullable=False)
     status = Column(SAEnum(RoundStatus), default=RoundStatus.CREATED, nullable=False)
     model_version = Column(String(128), nullable=True)
@@ -89,6 +101,7 @@ class Round(Base):
     federation = relationship("Federation", back_populates="rounds")
     updates = relationship("Update", back_populates="round")
     __table_args__ = (Index("ix_rounds_federation_id", "federation_id"),)
+
 
 class Update(Base):
     __tablename__ = "updates"
@@ -106,7 +119,11 @@ class Update(Base):
     rejection_reason = Column(String(128), nullable=True)
     round = relationship("Round", back_populates="updates")
     client = relationship("Client", back_populates="updates")
-    __table_args__ = (Index("ix_updates_round_id", "round_id"), Index("ix_updates_client_id", "client_id"),)
+    __table_args__ = (
+        Index("ix_updates_round_id", "round_id"),
+        Index("ix_updates_client_id", "client_id"),
+    )
+
 
 class ModelArtifact(Base):
     __tablename__ = "model_artifacts"
@@ -121,6 +138,7 @@ class ModelArtifact(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     __table_args__ = (Index("ix_artifacts_federation_id", "federation_id"),)
 
+
 class Proof(Base):
     __tablename__ = "proofs"
     id = Column(String(128), primary_key=True)
@@ -134,6 +152,7 @@ class Proof(Base):
     is_valid = Column(Boolean, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     __table_args__ = (Index("ix_proofs_update_id", "update_id"),)
+
 
 class BlockchainTransaction(Base):
     __tablename__ = "blockchain_transactions"

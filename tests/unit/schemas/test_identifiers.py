@@ -17,7 +17,9 @@ from trustfl_schemas.identifiers import (
 
 class TestIdentifiers(unittest.TestCase):
     def test_valid_identifiers(self) -> None:
-        self.assertEqual(validate_federation_id("fed_cancer_detection_01"), "fed_cancer_detection_01")
+        self.assertEqual(
+            validate_federation_id("fed_cancer_detection_01"), "fed_cancer_detection_01"
+        )
         self.assertEqual(validate_round_id("rnd_0001"), "rnd_0001")
         self.assertEqual(validate_client_id("cli_hospital_alpha"), "cli_hospital_alpha")
         self.assertEqual(validate_model_version_id("mod_resnet18_v1"), "mod_resnet18_v1")

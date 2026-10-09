@@ -17,9 +17,7 @@ def test_coordinator_rejects_unsigned_and_tampered_updates():
         metrics={"loss": 0.1},
     )
 
-    assert not state.submit_update(
-        "client-1", 1, signed.parameters, 1, signed.metrics, None, None
-    )
+    assert not state.submit_update("client-1", 1, signed.parameters, 1, signed.metrics, None, None)
     assert state.submit_update(
         "client-1",
         1,

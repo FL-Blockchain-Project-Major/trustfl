@@ -15,6 +15,7 @@ class ProofSubmit(BaseModel):
     public_commitment: str
     protocol: str = "poseidon_commitment_v1"
 
+
 class ProofOut(BaseModel):
     id: str
     update_id: str

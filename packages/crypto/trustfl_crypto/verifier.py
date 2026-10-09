@@ -17,6 +17,7 @@ TIMESTAMP_DRIFT       |metadata.timestamp - now| > clock_skew_seconds
 NONCE_MALFORMED       nonce does not follow <client>:<round>:<hex> format
 OK                    all checks passed
 """
+
 from __future__ import annotations
 
 import enum
@@ -31,6 +32,7 @@ from .signer import SignedUpdate
 # ---------------------------------------------------------------------------
 # Result enum
 # ---------------------------------------------------------------------------
+
 
 class VerificationStatus(enum.Enum):
     OK = "OK"
@@ -64,6 +66,7 @@ _OK = VerificationResult(VerificationStatus.OK)
 # ---------------------------------------------------------------------------
 # Nonce store (thread-safe, round-scoped)
 # ---------------------------------------------------------------------------
+
 
 class NonceStore:
     """
@@ -120,6 +123,7 @@ class NonceStore:
 # ---------------------------------------------------------------------------
 # Verifier
 # ---------------------------------------------------------------------------
+
 
 class UpdateVerifier:
     """
@@ -286,6 +290,7 @@ class UpdateVerifier:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _nonce_well_formed(nonce: str, client_id: str, round_id: int) -> bool:
     """

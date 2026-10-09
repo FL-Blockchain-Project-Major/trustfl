@@ -16,25 +16,43 @@ class ArtifactMetadata:
     client_id: str | None = None  # None for global model
     update_id: str | None = None  # None for global model
 
+
 class StorageClient(ABC):
     @abstractmethod
-    def save_artifact(self, data: bytes, model_version: str, round_id: int, client_id: str | None = None, update_id: str | None = None) -> ArtifactMetadata:
+    def save_artifact(
+        self,
+        data: bytes,
+        model_version: str,
+        round_id: int,
+        client_id: str | None = None,
+        update_id: str | None = None,
+    ) -> ArtifactMetadata:
         pass
 
     @abstractmethod
     def load_artifact(self, uri: str, expected_hash: str) -> bytes:
         pass
 
+
 def compute_sha256(data: bytes) -> str:
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
+
 class LocalStorageClient(StorageClient):
     """Local filesystem for development."""
+
     def __init__(self, base_dir: str):
         self.base_dir = base_dir
         os.makedirs(self.base_dir, exist_ok=True)
 
-    def save_artifact(self, data: bytes, model_version: str, round_id: int, client_id: str | None = None, update_id: str | None = None) -> ArtifactMetadata:
+    def save_artifact(
+        self,
+        data: bytes,
+        model_version: str,
+        round_id: int,
+        client_id: str | None = None,
+        update_id: str | None = None,
+    ) -> ArtifactMetadata:
         sha256_hash = compute_sha256(data)
         size = len(data)
 
@@ -51,14 +69,14 @@ class LocalStorageClient(StorageClient):
             model_version=model_version,
             round_id=round_id,
             client_id=client_id,
-            update_id=update_id
+            update_id=update_id,
         )
 
     def load_artifact(self, uri: str, expected_hash: str) -> bytes:
         if not uri.startswith("file://"):
             raise ValueError("Invalid URI for LocalStorageClient")
 
-        filepath = uri[len("file://"):]
+        filepath = uri[len("file://") :]
         with open(filepath, "rb") as f:
             data = f.read()
 
@@ -68,8 +86,10 @@ class LocalStorageClient(StorageClient):
 
         return data
 
+
 class IPFSStorageClient(StorageClient):
     """IPFS-compatible storage for model artifacts."""
+
     def __init__(self, api_url: str = "http://127.0.0.1:5001"):
         self.api_url = api_url.rstrip("/")
         self.timeout = (
@@ -77,14 +97,19 @@ class IPFSStorageClient(StorageClient):
             float(os.getenv("IPFS_READ_TIMEOUT_SECONDS", "30")),
         )
 
-    def save_artifact(self, data: bytes, model_version: str, round_id: int, client_id: str | None = None, update_id: str | None = None) -> ArtifactMetadata:
+    def save_artifact(
+        self,
+        data: bytes,
+        model_version: str,
+        round_id: int,
+        client_id: str | None = None,
+        update_id: str | None = None,
+    ) -> ArtifactMetadata:
         sha256_hash = compute_sha256(data)
         size = len(data)
 
         # IPFS HTTP API: POST /api/v0/add
-        files = {
-            'file': ('artifact.bin', data, 'application/octet-stream')
-        }
+        files = {"file": ("artifact.bin", data, "application/octet-stream")}
         resp = requests.post(f"{self.api_url}/api/v0/add", files=files, timeout=self.timeout)
         resp.raise_for_status()
 
@@ -98,14 +123,14 @@ class IPFSStorageClient(StorageClient):
             model_version=model_version,
             round_id=round_id,
             client_id=client_id,
-            update_id=update_id
+            update_id=update_id,
         )
 
     def load_artifact(self, uri: str, expected_hash: str) -> bytes:
         if not uri.startswith("ipfs://"):
             raise ValueError("Invalid URI for IPFSStorageClient")
 
-        cid = uri[len("ipfs://"):]
+        cid = uri[len("ipfs://") :]
 
         # IPFS HTTP API: POST /api/v0/cat?arg=<cid>
         resp = requests.post(f"{self.api_url}/api/v0/cat?arg={cid}", timeout=self.timeout)

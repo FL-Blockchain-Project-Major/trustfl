@@ -29,14 +29,17 @@ try:
     from pydantic import (
         ValidationError as PydanticValidationError,
     )
+
     HAVE_REAL_PYDANTIC = True
 except ImportError:
     HAVE_REAL_PYDANTIC = False
 
 
 if not HAVE_REAL_PYDANTIC:
+
     class PydanticValidationError(ValueError):
         """Mock ValidationError matching pydantic interface."""
+
         pass
 
     class ConfigDict(dict):
@@ -60,6 +63,7 @@ if not HAVE_REAL_PYDANTIC:
             func.__field_validator_fields__ = fields
             func.__field_validator_mode__ = mode
             return func
+
         return decorator
 
     T = TypeVar("T", bound="BaseModel")
@@ -175,13 +179,19 @@ if not HAVE_REAL_PYDANTIC:
                             )
                     if "ge" in field_def.kwargs and val is not None:
                         if val < field_def.kwargs["ge"]:
-                            raise PydanticValidationError(f"Field '{field_name}' must be >= {field_def.kwargs['ge']}")
+                            raise PydanticValidationError(
+                                f"Field '{field_name}' must be >= {field_def.kwargs['ge']}"
+                            )
                     if "gt" in field_def.kwargs and val is not None:
                         if val <= field_def.kwargs["gt"]:
-                            raise PydanticValidationError(f"Field '{field_name}' must be > {field_def.kwargs['gt']}")
+                            raise PydanticValidationError(
+                                f"Field '{field_name}' must be > {field_def.kwargs['gt']}"
+                            )
                     if "le" in field_def.kwargs and val is not None:
                         if val > field_def.kwargs["le"]:
-                            raise PydanticValidationError(f"Field '{field_name}' must be <= {field_def.kwargs['le']}")
+                            raise PydanticValidationError(
+                                f"Field '{field_name}' must be <= {field_def.kwargs['le']}"
+                            )
 
                 object.__setattr__(self, field_name, val)
 
@@ -201,7 +211,12 @@ if not HAVE_REAL_PYDANTIC:
                 if isinstance(v, BaseModel):
                     res[k] = v.model_dump(mode=mode)
                 elif isinstance(v, list):
-                    res[k] = [item.model_dump(mode=mode) if isinstance(item, BaseModel) else (item.value if isinstance(item, Enum) else item) for item in v]
+                    res[k] = [
+                        item.model_dump(mode=mode)
+                        if isinstance(item, BaseModel)
+                        else (item.value if isinstance(item, Enum) else item)
+                        for item in v
+                    ]
                 elif isinstance(v, Enum):
                     res[k] = v.value
                 elif isinstance(v, datetime) and mode == "json":
@@ -236,7 +251,9 @@ if not HAVE_REAL_PYDANTIC:
             return cls.model_validate(data)
 
         def __repr__(self) -> str:
-            attrs = ", ".join(f"{k}={getattr(self, k)!r}" for k in getattr(self.__class__, "__annotations__", {}))
+            attrs = ", ".join(
+                f"{k}={getattr(self, k)!r}" for k in getattr(self.__class__, "__annotations__", {})
+            )
             return f"{self.__class__.__name__}({attrs})"
 
         def __eq__(self, other: Any) -> bool:

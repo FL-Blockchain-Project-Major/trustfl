@@ -5,6 +5,7 @@ Exposes the Poseidon-based commitment scheme and metadata extraction to Python.
 Uses the ctypes-free approach: we run the node zkp.js module as a subprocess
 so no circomlibjs Python bindings are needed.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -23,9 +24,7 @@ def _run_node(script: str) -> str:
         cwd=ZKP_DIR,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Node.js ZKP error:\n{result.stderr.decode()}"
-        )
+        raise RuntimeError(f"Node.js ZKP error:\n{result.stderr.decode()}")
     return result.stdout.decode().strip()
 
 

@@ -9,6 +9,7 @@ from apps.api.api.schemas.artifacts import ArtifactCreate
 
 logger = logging.getLogger(__name__)
 
+
 class ArtifactService:
     def __init__(self, db: Session):
         self.repo = ArtifactRepository(db)

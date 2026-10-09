@@ -1,4 +1,5 @@
 """Regression tests for coordinator admission and quorum safety."""
+
 from apps.coordinator.network.server import CoordinatorState
 
 
@@ -32,10 +33,12 @@ def test_timeout_without_quorum_records_failed_not_finalized():
     with state.lock:
         state._aggregate_round_locked(timed_out=True)
 
-    assert state.round_history == [{
-        "round": 1,
-        "num_successful_clients": 1,
-        "timed_out": True,
-        "status": "FAILED",
-        "metrics": {},
-    }]
+    assert state.round_history == [
+        {
+            "round": 1,
+            "num_successful_clients": 1,
+            "timed_out": True,
+            "status": "FAILED",
+            "metrics": {},
+        }
+    ]

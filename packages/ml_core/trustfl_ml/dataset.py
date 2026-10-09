@@ -45,6 +45,7 @@ VISDRONE_CLASSES: dict[int, str] = {
 
 class DatasetValidationError(ValueError):
     """Raised when dataset structure, images or annotations fail validation."""
+
     pass
 
 
@@ -143,7 +144,9 @@ class VisDroneParser:
             try:
                 content = ann_path.read_text(encoding="utf-8")
             except Exception as e:
-                raise DatasetValidationError(f"Failed to read annotation file {ann_path}: {e}") from e
+                raise DatasetValidationError(
+                    f"Failed to read annotation file {ann_path}: {e}"
+                ) from e
 
             for line in content.splitlines():
                 parsed = cls.parse_annotation_line(line, w, h)
@@ -153,7 +156,9 @@ class VisDroneParser:
             valid_pairs += 1
 
         if valid_pairs == 0:
-            raise DatasetValidationError(f"No matching image-annotation pairs between {img_dir} and {ann_dir}")
+            raise DatasetValidationError(
+                f"No matching image-annotation pairs between {img_dir} and {ann_dir}"
+            )
 
         return {
             "total_images": len(image_files),
@@ -218,6 +223,7 @@ class VisDroneParser:
                     os.link(str(img_path), str(out_image))
                 except OSError:
                     import shutil
+
                     shutil.copy2(str(img_path), str(out_image))
 
             converted_count += 1

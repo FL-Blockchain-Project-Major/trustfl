@@ -1,4 +1,3 @@
-
 from apps.api.api.db.models import Proof
 
 from .base import BaseRepository

@@ -6,6 +6,7 @@ Provides:
   - Structured audit log on every mutating request
   - Security headers (X-Content-Type-Options, X-Frame-Options, etc.)
 """
+
 from __future__ import annotations
 
 import json
@@ -22,11 +23,15 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger("trustfl.audit")
 
+
 def _client_ip(request: Request) -> str:
-    trusted = {item.strip() for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
+    trusted = {
+        item.strip() for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()
+    }
     peer = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
     return forwarded if peer in trusted and forwarded else peer
+
 
 # 1 MB limit on request bodies
 MAX_BODY_BYTES = 1 * 1024 * 1024
@@ -60,7 +65,10 @@ class RequestSizeLimitMiddleware:
         headers = dict(scope.get("headers", []))
         raw_length = headers.get(b"content-length", b"")
         if raw_length.isdigit() and int(raw_length) > MAX_BODY_BYTES:
-            response = JSONResponse(status_code=413, content={"detail": "Request body too large. Maximum allowed: 1 MB."})
+            response = JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large. Maximum allowed: 1 MB."},
+            )
             await response(scope, receive, send)
             return
         size = 0
@@ -89,7 +97,10 @@ class RequestSizeLimitMiddleware:
             if not exceeded:
                 raise
         if exceeded:
-            response = JSONResponse(status_code=413, content={"detail": "Request body too large. Maximum allowed: 1 MB."})
+            response = JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large. Maximum allowed: 1 MB."},
+            )
             await response(scope, receive, send)
 
 
@@ -126,7 +137,11 @@ class GlobalRateLimitMiddleware:
             now = time.monotonic()
             peer = (scope.get("client") or ("unknown", 0))[0]
             headers = dict(scope.get("headers", []))
-            trusted = {item.strip() for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if item.strip()}
+            trusted = {
+                item.strip()
+                for item in os.environ.get("TRUSTED_PROXY_IPS", "").split(",")
+                if item.strip()
+            }
             forwarded = headers.get(b"x-forwarded-for", b"").decode("latin-1").split(",")[0].strip()
             key = forwarded if peer in trusted and forwarded else peer
             with self._lock:

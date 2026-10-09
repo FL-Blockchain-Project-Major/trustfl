@@ -40,17 +40,22 @@ VALID_TRANSITIONS: dict[RoundState, set[RoundState]] = {
     RoundState.AGGREGATED: {RoundState.MODEL_PUBLISHED, RoundState.ROUND_FAILED},
     RoundState.MODEL_PUBLISHED: {RoundState.ROUND_FINALIZED, RoundState.ROUND_FAILED},
     RoundState.ROUND_FINALIZED: set(),  # Terminal state
-    RoundState.ROUND_FAILED: set(),     # Terminal error state
+    RoundState.ROUND_FAILED: set(),  # Terminal error state
 }
 
 
 class InvalidStateTransitionError(ValueError):
     """Raised when an illegal lifecycle state transition is attempted."""
 
-    def __init__(self, current_state: RoundState, new_state: RoundState, message: str | None = None):
+    def __init__(
+        self, current_state: RoundState, new_state: RoundState, message: str | None = None
+    ):
         self.current_state = current_state
         self.new_state = new_state
-        msg = message or f"Illegal lifecycle transition: cannot move from {current_state.value} to {new_state.value}."
+        msg = (
+            message
+            or f"Illegal lifecycle transition: cannot move from {current_state.value} to {new_state.value}."
+        )
         super().__init__(msg)
 
 

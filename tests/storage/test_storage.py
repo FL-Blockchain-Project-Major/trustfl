@@ -18,7 +18,7 @@ class TestStorage(unittest.TestCase):
                 model_version="v1.0",
                 round_id=1,
                 client_id="clientA",
-                update_id="update1"
+                update_id="update1",
             )
             self.assertEqual(meta.sha256_hash, expected_hash)
             self.assertTrue(meta.uri.startswith("file://"))
@@ -33,7 +33,7 @@ class TestStorage(unittest.TestCase):
                 client.load_artifact(meta.uri, "wrong_hash_123")
 
             # 4. Corruption Detection
-            filepath = meta.uri[len("file://"):]
+            filepath = meta.uri[len("file://") :]
             with open(filepath, "wb") as f:
                 f.write(b"corrupted_weights")
 
@@ -48,7 +48,11 @@ class TestStorage(unittest.TestCase):
 
         # Mock IPFS add
         mock_resp_add = MagicMock()
-        mock_resp_add.json.return_value = {"Hash": "QmTest123", "Name": "artifact.bin", "Size": "22"}
+        mock_resp_add.json.return_value = {
+            "Hash": "QmTest123",
+            "Name": "artifact.bin",
+            "Size": "22",
+        }
         mock_resp_add.raise_for_status = MagicMock()
 
         # Mock IPFS cat
@@ -66,11 +70,7 @@ class TestStorage(unittest.TestCase):
         mock_post.side_effect = mock_post_impl
 
         # 1. Upload
-        meta = client.save_artifact(
-            data=data,
-            model_version="v1.0",
-            round_id=2
-        )
+        meta = client.save_artifact(data=data, model_version="v1.0", round_id=2)
         self.assertEqual(meta.uri, "ipfs://QmTest123")
         self.assertEqual(meta.sha256_hash, expected_hash)
 
@@ -92,6 +92,7 @@ class TestStorage(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Hash mismatch"):
             client.load_artifact(meta.uri, expected_hash)
+
 
 if __name__ == "__main__":
     unittest.main()

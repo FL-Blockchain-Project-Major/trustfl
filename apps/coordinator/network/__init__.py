@@ -1,4 +1,5 @@
 """Coordinator network package."""
+
 from .protocol import (
     HeartbeatRequest,
     HeartbeatResponse,

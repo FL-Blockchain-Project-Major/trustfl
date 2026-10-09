@@ -283,7 +283,9 @@ class BlockchainRecord(BaseModel):
     @classmethod
     def validate_tx_hash(cls, v: str) -> str:
         if not re.match(r"^0x[a-fA-F0-9]{64}$", v):
-            raise ValueError(f"transaction_hash must be a 66-character '0x' prefixed hex string, got '{v}'")
+            raise ValueError(
+                f"transaction_hash must be a 66-character '0x' prefixed hex string, got '{v}'"
+            )
         return v
 
 

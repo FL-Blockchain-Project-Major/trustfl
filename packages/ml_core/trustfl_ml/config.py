@@ -12,6 +12,7 @@ from typing import Any
 @dataclass
 class DatasetConfig:
     """Dataset paths and parameters for a training or validation node."""
+
     images_dir: str
     annotations_dir: str
     dataset_name: str = "VisDrone"
@@ -41,6 +42,7 @@ class DatasetConfig:
 @dataclass
 class TrainingConfig:
     """Hyperparameters and execution configuration for YOLO training."""
+
     model_name: str = "yolov8n"
     epochs: int = 1
     batch_size: int = 4
@@ -63,6 +65,7 @@ class TrainingConfig:
 @dataclass
 class ClientNodeConfig:
     """Identity and data configuration for an edge client node."""
+
     client_id: str
     federation_id: str
     dataset_config: DatasetConfig

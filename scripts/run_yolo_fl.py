@@ -27,6 +27,7 @@ def main() -> None:
     if not (partitions_base / "client_0").exists():
         print("Partitioning VisDrone dataset for clients...")
         from datasets.tools.visdrone_prep.prepare import partition_dataset
+
         partition_dataset(
             images_dir="datasets/raw/visdrone/images",
             annotations_dir="datasets/raw/visdrone/annotations",
@@ -78,7 +79,9 @@ def main() -> None:
         initial_parameters=initial_params,
     )
 
-    print(f"\nInitialized Global YOLO model with {len(initial_params[0]) + len(initial_params[1]) + len(initial_params[2])} parameters.")
+    print(
+        f"\nInitialized Global YOLO model with {len(initial_params[0]) + len(initial_params[1]) + len(initial_params[2])} parameters."
+    )
     print(f"Executing Federated Learning rounds with {len(client_ids)} participating clients...")
 
     # 4. Execute Federated Rounds

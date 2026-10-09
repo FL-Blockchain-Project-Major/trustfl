@@ -10,13 +10,16 @@ from apps.api.api.schemas.federations import FederationCreate, FederationUpdate
 
 logger = logging.getLogger(__name__)
 
+
 class FederationService:
     def __init__(self, db: Session):
         self.repo = FederationRepository(db)
 
     def create(self, payload: FederationCreate) -> Federation:
         if self.repo.get(payload.id):
-            raise HTTPException(status.HTTP_409_CONFLICT, f"Federation '{payload.id}' already exists")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"Federation '{payload.id}' already exists"
+            )
         fed = Federation(**payload.model_dump())
         logger.info("Creating federation %s", payload.id)
         return self.repo.create(fed)
@@ -24,7 +27,9 @@ class FederationService:
     def get_or_404(self, federation_id: str) -> Federation:
         fed = self.repo.get(federation_id)
         if not fed:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Federation '{federation_id}' not found")
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"Federation '{federation_id}' not found"
+            )
         return fed
 
     def list_all(self, skip: int = 0, limit: int = 100) -> list[Federation]:

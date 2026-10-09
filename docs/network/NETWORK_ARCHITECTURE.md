@@ -118,6 +118,7 @@ The HTTP server uses Python's `http.server.HTTPServer`.  To enable TLS:
 
 ```python
 import ssl
+
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 ctx.load_cert_chain("/certs/server.crt", "/certs/server.key")
 httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)

@@ -16,6 +16,7 @@ Key files recommended layout (NOT in the repo):
   ~/.trustfl/keys/<client_id>/private.pem
   ~/.trustfl/keys/<client_id>/public.pem
 """
+
 from __future__ import annotations
 
 import base64
@@ -32,6 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 # ---------------------------------------------------------------------------
 # Serialisation helpers
 # ---------------------------------------------------------------------------
+
 
 def _priv_to_pem(private_key: Ed25519PrivateKey) -> bytes:
     return private_key.private_bytes(
@@ -71,6 +73,7 @@ def _pub_from_b64(b64: str) -> Ed25519PublicKey:
 # ---------------------------------------------------------------------------
 # ClientIdentity — holds the key-pair for a single FL client
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ClientIdentity:
@@ -161,6 +164,7 @@ class ClientIdentity:
 # PublicKeyRegistry — coordinator-side store of client public keys
 # ---------------------------------------------------------------------------
 
+
 class PublicKeyRegistry:
     """
     Thread-safe in-memory registry mapping client_id → Ed25519PublicKey.
@@ -169,6 +173,7 @@ class PublicKeyRegistry:
 
     def __init__(self) -> None:
         import threading
+
         self._store: dict[str, Ed25519PublicKey] = {}
         self._lock = threading.Lock()
 

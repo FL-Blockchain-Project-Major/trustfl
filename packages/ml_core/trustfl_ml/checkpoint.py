@@ -26,11 +26,7 @@ class ParameterSerialization:
     def parameters_to_bytes(parameters: list[list[float]]) -> bytes:
         """Serializes parameter list into deterministic byte sequence."""
         # Clean rounding to avoid floating point cross-platform drift
-        payload = {
-            "parameters": [
-                [float(f"{v:.8f}") for v in layer] for layer in parameters
-            ]
-        }
+        payload = {"parameters": [[float(f"{v:.8f}") for v in layer] for layer in parameters]}
         return json.dumps(payload, sort_keys=True).encode("utf-8")
 
     @staticmethod
@@ -72,7 +68,9 @@ class ParameterSerialization:
         return path, file_hash
 
     @classmethod
-    def load_checkpoint(cls, checkpoint_path: Path | str) -> tuple[list[list[float]], dict[str, Any]]:
+    def load_checkpoint(
+        cls, checkpoint_path: Path | str
+    ) -> tuple[list[list[float]], dict[str, Any]]:
         """
         Loads and verifies parameter checkpoint from disk.
         """

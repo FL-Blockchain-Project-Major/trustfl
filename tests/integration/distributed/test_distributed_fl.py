@@ -10,6 +10,7 @@ test_03  one client fails (never submits)  — timeout aggregation
 test_04  client reconnect                  — re-registration
 test_05  round timeout with partial update — timed_out flag
 """
+
 from __future__ import annotations
 
 import os
@@ -66,6 +67,7 @@ def _wait_for_server(port: int, timeout: float = 5.0) -> bool:
     """Block until the server is accepting connections."""
     import urllib.error
     import urllib.request
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -80,8 +82,8 @@ def _wait_for_server(port: int, timeout: float = 5.0) -> bool:
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestDistributedFL(unittest.TestCase):
 
+class TestDistributedFL(unittest.TestCase):
     def setUp(self):
         self._old_insecure = os.environ.get("COORDINATOR_INSECURE_DEV_AUTH")
         os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = "true"
@@ -207,7 +209,7 @@ class TestDistributedFL(unittest.TestCase):
             port=port,
             min_clients=2,
             num_rounds=1,
-            round_timeout_seconds=2.0,      # short timeout to make test fast
+            round_timeout_seconds=2.0,  # short timeout to make test fast
             heartbeat_timeout_seconds=30.0,
         )
         server.start()
@@ -222,7 +224,7 @@ class TestDistributedFL(unittest.TestCase):
 
             deadline = time.time() + 6.0
             while time.time() < deadline and server.state.current_round <= server.state.num_rounds:
-                c0.step()         # c0 trains and submits
+                c0.step()  # c0 trains and submits
                 # c1 deliberately does NOT step (simulates crash)
                 time.sleep(0.2)
 
@@ -272,7 +274,8 @@ class TestDistributedFL(unittest.TestCase):
                 time.sleep(0.1)
 
             self.assertEqual(
-                len(server.state.round_history), 1,
+                len(server.state.round_history),
+                1,
                 "Round 1 should be done before reconnect test",
             )
 
@@ -300,8 +303,9 @@ class TestDistributedFL(unittest.TestCase):
         self.assertEqual(len(server.state.round_history), 2)
         rh2 = server.state.round_history[1]
         self.assertEqual(rh2["round"], 2)
-        self.assertEqual(rh2["num_successful_clients"], 2,
-                         "Reconnected client should participate in round 2")
+        self.assertEqual(
+            rh2["num_successful_clients"], 2, "Reconnected client should participate in round 2"
+        )
 
     # ── test_05: round timeout — partial submission, timed_out=True ─────────
 
@@ -315,7 +319,7 @@ class TestDistributedFL(unittest.TestCase):
         server = CoordinatorServer(
             host="127.0.0.1",
             port=port,
-            min_clients=1,          # round starts when the first client registers
+            min_clients=1,  # round starts when the first client registers
             num_rounds=1,
             round_timeout_seconds=1.5,
             heartbeat_timeout_seconds=30.0,
@@ -326,13 +330,13 @@ class TestDistributedFL(unittest.TestCase):
         c0 = _make_agent("c0", port)
         c1 = _make_agent("c1", port)
         try:
-            self.assertTrue(c0.register())   # triggers round 1
-            self.assertTrue(c1.register())   # joins but won't submit
+            self.assertTrue(c0.register())  # triggers round 1
+            self.assertTrue(c1.register())  # joins but won't submit
 
             # c0 submits its update; c1 never steps
             deadline = time.time() + 3.0
             while time.time() < deadline:
-                c0.step()   # c0 trains and submits for round 1
+                c0.step()  # c0 trains and submits for round 1
                 time.sleep(0.1)
 
             # Wait for timeout to fire and aggregate
@@ -342,8 +346,9 @@ class TestDistributedFL(unittest.TestCase):
             c0.stop()
             c1.stop()
 
-        self.assertEqual(len(server.state.round_history), 1,
-                         "Round should have completed (via timeout)")
+        self.assertEqual(
+            len(server.state.round_history), 1, "Round should have completed (via timeout)"
+        )
         rh = server.state.round_history[0]
         self.assertTrue(rh["timed_out"], "Expected timed_out=True")
         # c0 submitted; c1 never did — at least 1 successful client

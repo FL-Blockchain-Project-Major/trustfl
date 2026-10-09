@@ -10,6 +10,7 @@ Environment variables (override CLI):
     FL_CLIENT_ID, FL_COORDINATOR_URL, FL_IMAGES_DIR, FL_ANNOTATIONS_DIR,
     FL_LOCAL_EPOCHS, FL_MAX_SAMPLES, FL_POLL_INTERVAL_SECONDS
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,8 +51,12 @@ def _build_train_fn(
     Build a training callable compatible with DistributedClientAgent.
     Falls back to a synthetic train fn if the ML layer is unavailable.
     """
-    if not (images_dir and annotations_dir and
-            Path(images_dir).is_dir() and Path(annotations_dir).is_dir()):
+    if not (
+        images_dir
+        and annotations_dir
+        and Path(images_dir).is_dir()
+        and Path(annotations_dir).is_dir()
+    ):
         logger.info("Training data is not configured — using synthetic train fn.")
 
         def synthetic_train_fn(
@@ -60,6 +65,7 @@ def _build_train_fn(
             _config: dict[str, Any],
         ):
             import random
+
             params = global_params if global_params else [[random.gauss(0, 0.1) for _ in range(10)]]
             updated = [[v + random.gauss(0, 0.01) for v in layer] for layer in params]
             return updated, 50, {"loss": random.uniform(0.3, 0.7)}
@@ -106,6 +112,7 @@ def _build_train_fn(
             _config: dict[str, Any],
         ):
             import random
+
             params = global_params if global_params else [[random.gauss(0, 0.1) for _ in range(10)]]
             updated = [[v + random.gauss(0, 0.01) for v in layer] for layer in params]
             return updated, 50, {"loss": random.uniform(0.3, 0.7)}
@@ -116,9 +123,7 @@ def _build_train_fn(
 def main() -> None:
     parser = argparse.ArgumentParser(description="TrustFL Client")
     parser.add_argument("--client-id", default=_env("FL_CLIENT_ID", "client_001"))
-    parser.add_argument(
-        "--federation-id", default=_env("FL_FEDERATION_ID", "fed-default")
-    )
+    parser.add_argument("--federation-id", default=_env("FL_FEDERATION_ID", "fed-default"))
     parser.add_argument("--identity-path", default=_env("FL_IDENTITY_PATH", ""))
     parser.add_argument(
         "--coordinator", default=_env("FL_COORDINATOR_URL", "http://127.0.0.1:8100")
@@ -163,7 +168,8 @@ def main() -> None:
     agent.start_background_loop()
     logger.info(
         "Client %s connected to %s",
-        args.client_id, args.coordinator,
+        args.client_id,
+        args.coordinator,
     )
 
     # Keep main thread alive

@@ -26,7 +26,7 @@ class TestMLCore(unittest.TestCase):
         self.assertEqual(len(params), 3)
         self.assertEqual(len(params[0]), 40)  # 10 classes * 4 coordinates
         self.assertEqual(len(params[1]), 16)  # 16 features
-        self.assertEqual(len(params[2]), 1)   # 1 bias
+        self.assertEqual(len(params[2]), 1)  # 1 bias
 
     def test_parameter_round_trips(self) -> None:
         model = YOLOModelWrapper(model_name="yolov8n", num_classes=10, seed=123)

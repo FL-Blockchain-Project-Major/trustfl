@@ -23,6 +23,7 @@ artifact_hash   : SHA-256 of the serialised parameter tensor ("sha256:<hex>")
 timestamp       : Unix epoch seconds at signing time (±clock_skew_seconds accepted)
 nonce           : <client_id>:<round_id>:<16 random hex bytes>  (replay guard)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -36,6 +37,7 @@ from typing import Any
 # UpdateMetadata
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class UpdateMetadata:
     federation_id: str
@@ -43,9 +45,9 @@ class UpdateMetadata:
     client_id: str
     model_version: str
     update_id: str
-    artifact_hash: str          # "sha256:<64 hex chars>"
-    timestamp: int              # Unix epoch seconds
-    nonce: str                  # replay-guard token
+    artifact_hash: str  # "sha256:<64 hex chars>"
+    timestamp: int  # Unix epoch seconds
+    nonce: str  # replay-guard token
 
     # ------------------------------------------------------------------
 
@@ -88,6 +90,7 @@ class UpdateMetadata:
 # Factory helpers
 # ---------------------------------------------------------------------------
 
+
 def generate_nonce(client_id: str, round_id: int) -> str:
     """
     Nonce format: <client_id>:<round_id>:<16 random hex bytes>
@@ -122,9 +125,7 @@ def hash_artifact(
     metrics: dict[str, float],
 ) -> str:
     """Hash the exact canonical artifact payload used by storage."""
-    digest = hashlib.sha256(
-        canonical_artifact_bytes(parameters, num_examples, metrics)
-    ).hexdigest()
+    digest = hashlib.sha256(canonical_artifact_bytes(parameters, num_examples, metrics)).hexdigest()
     return f"sha256:{digest}"
 
 

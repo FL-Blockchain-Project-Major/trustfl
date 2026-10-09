@@ -1,4 +1,3 @@
-
 from apps.api.api.db.models import Client
 
 from .base import BaseRepository
@@ -11,7 +10,8 @@ class ClientRepository(BaseRepository[Client]):
         return self.db.query(Client).filter(Client.federation_id == federation_id).all()
 
     def get_active_by_federation(self, federation_id: str) -> list[Client]:
-        return self.db.query(Client).filter(
-            Client.federation_id == federation_id,
-            Client.is_active
-        ).all()
+        return (
+            self.db.query(Client)
+            .filter(Client.federation_id == federation_id, Client.is_active)
+            .all()
+        )

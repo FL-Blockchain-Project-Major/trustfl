@@ -4,6 +4,7 @@ Update submission service with:
 - Duplicate client+round submission rejection (400)
 - Nonce replay detection (400)
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +27,9 @@ class UpdateService:
     def submit(self, payload: UpdateSubmit) -> Update:
         # 1. Reject duplicate update ID
         if self.repo.get(payload.id):
-            raise HTTPException(status.HTTP_409_CONFLICT, f"Update '{payload.id}' already submitted")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"Update '{payload.id}' already submitted"
+            )
 
         # 2. Reject a second update from the same client in the same round
         existing = self.repo.get_by_client_and_round(payload.client_id, payload.round_id)

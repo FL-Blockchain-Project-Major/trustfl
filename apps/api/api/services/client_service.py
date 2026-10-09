@@ -12,6 +12,7 @@ from apps.api.api.schemas.clients import ClientRegister
 
 logger = logging.getLogger(__name__)
 
+
 class ClientService:
     def __init__(self, db: Session):
         self.repo = ClientRepository(db)
@@ -19,9 +20,13 @@ class ClientService:
 
     def register(self, payload: ClientRegister) -> Client:
         if not self.fed_repo.get(payload.federation_id):
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Federation '{payload.federation_id}' not found")
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"Federation '{payload.federation_id}' not found"
+            )
         if self.repo.get(payload.id):
-            raise HTTPException(status.HTTP_409_CONFLICT, f"Client '{payload.id}' already registered")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"Client '{payload.id}' already registered"
+            )
         client = Client(
             id=payload.id,
             federation_id=payload.federation_id,

@@ -9,6 +9,7 @@ from apps.api.api.schemas.proofs import ProofSubmit
 
 logger = logging.getLogger(__name__)
 
+
 class ProofService:
     def __init__(self, db: Session):
         self.repo = ProofRepository(db)

@@ -14,12 +14,14 @@ class FederationCreate(BaseModel):
     min_clients: int = Field(default=2, ge=1)
     max_rounds: int = Field(default=10, ge=1)
 
+
 class FederationUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     status: FederationStatus | None = None
     min_clients: int | None = Field(default=None, ge=1)
     max_rounds: int | None = Field(default=None, ge=1)
+
 
 class FederationOut(BaseModel):
     id: str

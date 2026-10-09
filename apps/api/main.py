@@ -27,13 +27,16 @@ from apps.api.api.routers import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from apps.api.api.db.session import check_config
+
     check_config(app)
     if os.getenv("ENVIRONMENT", "development").lower() == "development":
         create_all_tables()
     yield
+
 
 app = FastAPI(
     title="TrustFL Control Plane API",
@@ -41,6 +44,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
 
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
@@ -55,8 +59,10 @@ async def require_production_api_key(request: Request, call_next):
     if auth_required and not is_public:
         authorization = request.headers.get("Authorization", "")
         supplied = authorization.removeprefix("Bearer ").strip()
-        role = "admin" if request.method == "DELETE" else (
-            "read" if request.method in {"GET", "HEAD"} else "write"
+        role = (
+            "admin"
+            if request.method == "DELETE"
+            else ("read" if request.method in {"GET", "HEAD"} else "write")
         )
         keys = {
             "read": os.getenv("API_READ_KEY", ""),
@@ -70,8 +76,7 @@ async def require_production_api_key(request: Request, call_next):
             for key_role, expected in keys.items()
         )
         if not valid and (
-            os.getenv("API_LEGACY_AUTH_COMPAT", "false").lower() == "true"
-            or not any(keys.values())
+            os.getenv("API_LEGACY_AUTH_COMPAT", "false").lower() == "true" or not any(keys.values())
         ):
             legacy = os.getenv("API_SECRET_KEY", "")
             valid = bool(legacy and hmac.compare_digest(supplied, legacy))
@@ -81,6 +86,7 @@ async def require_production_api_key(request: Request, call_next):
                 content={"success": False, "message": "Authentication required.", "data": None},
             )
     return await call_next(request)
+
 
 def configured_cors_origins() -> list[str]:
     """Return the explicitly configured browser origins."""
@@ -116,10 +122,11 @@ app.include_router(artifacts.router)
 app.include_router(proofs.router)
 app.include_router(blockchain.router)
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, _exc: Exception):
     logger.exception("Unhandled exception while processing %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"success": False, "message": "An internal server error occurred.", "data": None}
+        content={"success": False, "message": "An internal server error occurred.", "data": None},
     )

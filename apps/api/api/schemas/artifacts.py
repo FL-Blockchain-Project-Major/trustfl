@@ -15,6 +15,7 @@ class ArtifactCreate(BaseModel):
     size_bytes: int | None = None
     model_version: str | None = None
 
+
 class ArtifactOut(BaseModel):
     id: str
     federation_id: str

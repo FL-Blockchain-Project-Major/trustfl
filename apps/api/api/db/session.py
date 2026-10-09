@@ -2,6 +2,7 @@
 Database session factory.
 Supports SQLite (dev) and PostgreSQL (prod) via DATABASE_URL env var.
 """
+
 from __future__ import annotations
 
 import os
@@ -51,6 +52,7 @@ def get_db() -> Generator[Session, None, None]:
 def create_all_tables() -> None:
     """Create all tables (dev/test use). Production uses Alembic migrations."""
     from apps.api.api.db.models import Base
+
     Base.metadata.create_all(bind=engine)
 
 
@@ -66,6 +68,7 @@ def check_config(_app: FastAPI) -> None:
     elif db_url.startswith("sqlite") and db_url == "sqlite:///./trustfl.db":
         # Dev mode: check that SQLite file is writable
         import pathlib
+
         db_path = pathlib.Path("./trustfl.db")
         if db_path.exists() and not os.access(db_path, os.W_OK):
             errors.append("SQLite database file is not writable")
@@ -80,10 +83,10 @@ def check_config(_app: FastAPI) -> None:
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")
-    if ENVIRONMENT == "production" and (
-        not coord_key or coord_key == "0xYOUR_PRIVATE_KEY_HERE"
-    ):
-        errors.append("COORDINATOR_PRIVATE_KEY is using placeholder value. Set a real private key in .env.")
+    if ENVIRONMENT == "production" and (not coord_key or coord_key == "0xYOUR_PRIVATE_KEY_HERE"):
+        errors.append(
+            "COORDINATOR_PRIVATE_KEY is using placeholder value. Set a real private key in .env."
+        )
 
     if errors:
         raise RuntimeError("Configuration errors:\n  " + "\n  ".join(errors))

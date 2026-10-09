@@ -1,4 +1,5 @@
 """Unit tests for cryptographic key management."""
+
 from __future__ import annotations
 
 import os
@@ -10,7 +11,6 @@ from trustfl_crypto.keys import ClientIdentity, PublicKeyRegistry
 
 
 class TestClientIdentity(unittest.TestCase):
-
     def test_generate_produces_unique_keys(self):
         id1 = ClientIdentity.generate("c1")
         id2 = ClientIdentity.generate("c1")
@@ -65,7 +65,6 @@ class TestClientIdentity(unittest.TestCase):
 
 
 class TestPublicKeyRegistry(unittest.TestCase):
-
     def _make_pair(self, cid: str):
         identity = ClientIdentity.generate(cid)
         return identity, identity.public_key_b64
@@ -113,7 +112,7 @@ class TestPublicKeyRegistry(unittest.TestCase):
         identity, pub = self._make_pair("c1")
         registry.register("c1", pub)
         sig = bytearray(identity.sign(b"msg"))
-        sig[0] ^= 0xFF          # flip first byte
+        sig[0] ^= 0xFF  # flip first byte
         self.assertFalse(registry.verify("c1", b"msg", bytes(sig)))
 
     def test_register_overwrites_old_key(self):
@@ -121,7 +120,7 @@ class TestPublicKeyRegistry(unittest.TestCase):
         id1, pub1 = self._make_pair("c1")
         id2, pub2 = self._make_pair("c1")
         registry.register("c1", pub1)
-        registry.register("c1", pub2)           # overwrites
+        registry.register("c1", pub2)  # overwrites
         msg = b"hello"
         # Only id2's sig should verify now
         self.assertTrue(registry.verify("c1", msg, id2.sign(msg)))

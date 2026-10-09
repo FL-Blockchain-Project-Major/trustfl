@@ -39,7 +39,9 @@ def partition_dataset(
 
     print(f"==> Validating source dataset at {img_dir} and {ann_dir}...")
     stats = VisDroneParser.validate_dataset(img_dir, ann_dir, check_images_readable=False)
-    print(f"Source verified: {stats['valid_pairs']} valid image-annotation pairs ({stats['total_boxes']} bounding boxes).")
+    print(
+        f"Source verified: {stats['valid_pairs']} valid image-annotation pairs ({stats['total_boxes']} bounding boxes)."
+    )
 
     image_files = sorted(
         [f for f in img_dir.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png"}]
@@ -105,9 +107,17 @@ def partition_dataset(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TrustFL VisDrone Dataset Preparation Tool")
-    parser.add_argument("--images", default="datasets/raw/visdrone/images", help="Path to raw images")
-    parser.add_argument("--annotations", default="datasets/raw/visdrone/annotations", help="Path to raw annotations")
-    parser.add_argument("--output", default="datasets/processed/partitions", help="Output path for client partitions")
+    parser.add_argument(
+        "--images", default="datasets/raw/visdrone/images", help="Path to raw images"
+    )
+    parser.add_argument(
+        "--annotations", default="datasets/raw/visdrone/annotations", help="Path to raw annotations"
+    )
+    parser.add_argument(
+        "--output",
+        default="datasets/processed/partitions",
+        help="Output path for client partitions",
+    )
     parser.add_argument("--clients", type=int, default=3, help="Number of clients")
     parser.add_argument("--samples-per-client", type=int, default=30, help="Samples per client")
     args = parser.parse_args()

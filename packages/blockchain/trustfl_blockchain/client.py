@@ -11,6 +11,7 @@ from web3.exceptions import ContractLogicError
 
 logger = logging.getLogger(__name__)
 
+
 class BlockchainClient:
     """
     Abstraction layer for TrustFL blockchain operations.
@@ -46,22 +47,25 @@ class BlockchainClient:
         contracts = data.get("contracts", {})
 
         self.client_registry = self.w3.eth.contract(
-            address=contracts["ClientRegistry"]["address"],
-            abi=contracts["ClientRegistry"]["abi"]
+            address=contracts["ClientRegistry"]["address"], abi=contracts["ClientRegistry"]["abi"]
         )
         self.round_registry = self.w3.eth.contract(
             address=contracts["TrainingRoundRegistry"]["address"],
-            abi=contracts["TrainingRoundRegistry"]["abi"]
+            abi=contracts["TrainingRoundRegistry"]["abi"],
         )
         self.update_registry = self.w3.eth.contract(
-            address=contracts["UpdateRegistry"]["address"],
-            abi=contracts["UpdateRegistry"]["abi"]
+            address=contracts["UpdateRegistry"]["address"], abi=contracts["UpdateRegistry"]["abi"]
         )
 
     def _send_tx_with_retry(
-        self, contract_func, error_context: str = "", *,
-        contract_name: str, function_name: str,
-        entity_id: str | None = None, entity_type: str | None = None,
+        self,
+        contract_func,
+        error_context: str = "",
+        *,
+        contract_name: str,
+        function_name: str,
+        entity_id: str | None = None,
+        entity_type: str | None = None,
     ) -> bool:
         """Helper to send a transaction with retry logic and receipt handling."""
         entity_key = f"{contract_name}:{function_name}:{entity_type}:{entity_id}"
@@ -76,9 +80,13 @@ class BlockchainClient:
             try:
                 with self._nonce_lock:
                     if self._next_nonce is None:
-                        self._next_nonce = self.w3.eth.get_transaction_count(self.account.address, "pending")
+                        self._next_nonce = self.w3.eth.get_transaction_count(
+                            self.account.address, "pending"
+                        )
                     nonce = self._next_nonce
-                    tx = contract_func.build_transaction({'from': self.account.address, "nonce": nonce})
+                    tx = contract_func.build_transaction(
+                        {"from": self.account.address, "nonce": nonce}
+                    )
                     signed_tx = self.account.sign_transaction(tx)
                     tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
                     self._next_nonce = nonce + 1
@@ -86,15 +94,25 @@ class BlockchainClient:
 
                 if receipt.status == 1:
                     self._record_transaction(
-                        contract_name, function_name, entity_id, entity_type,
-                        tx_hash.hex(), "CONFIRMED", None,
+                        contract_name,
+                        function_name,
+                        entity_id,
+                        entity_type,
+                        tx_hash.hex(),
+                        "CONFIRMED",
+                        None,
                     )
                     logger.debug(f"{error_context} succeeded (tx: {tx_hash.hex()})")
                     return True
                 else:
                     self._record_transaction(
-                        contract_name, function_name, entity_id, entity_type,
-                        tx_hash.hex(), "FAILED", "Transaction reverted on-chain",
+                        contract_name,
+                        function_name,
+                        entity_id,
+                        entity_type,
+                        tx_hash.hex(),
+                        "FAILED",
+                        "Transaction reverted on-chain",
                     )
                     logger.error(f"{error_context} failed on-chain (tx: {tx_hash.hex()})")
                     # If it failed on-chain (reverted), retrying exactly won't help unless state changes
@@ -102,24 +120,38 @@ class BlockchainClient:
 
             except ContractLogicError as e:
                 self._record_transaction(
-                    contract_name, function_name, entity_id, entity_type,
-                    None, "FAILED", str(e),
+                    contract_name,
+                    function_name,
+                    entity_id,
+                    entity_type,
+                    None,
+                    "FAILED",
+                    str(e),
                 )
                 logger.error(f"{error_context} reverted: {e}")
                 return False
             except Exception as e:
-                logger.warning(f"{error_context} exception on attempt {attempt+1}: {e}")
+                logger.warning(f"{error_context} exception on attempt {attempt + 1}: {e}")
                 if "tx_hash" in locals():
                     self._pending_transactions[entity_key] = {
-                        "tx_hash": tx_hash.hex(), "contract_name": contract_name,
-                        "function_name": function_name, "entity_id": entity_id,
+                        "tx_hash": tx_hash.hex(),
+                        "contract_name": contract_name,
+                        "function_name": function_name,
+                        "entity_id": entity_id,
                         "entity_type": entity_type,
                     }
                     self._record_transaction(
-                        contract_name, function_name, entity_id, entity_type,
-                        tx_hash.hex(), "PENDING", f"Receipt unavailable: {e}",
+                        contract_name,
+                        function_name,
+                        entity_id,
+                        entity_type,
+                        tx_hash.hex(),
+                        "PENDING",
+                        f"Receipt unavailable: {e}",
                     )
-                    logger.error("%s broadcast succeeded but confirmation is uncertain", error_context)
+                    logger.error(
+                        "%s broadcast succeeded but confirmation is uncertain", error_context
+                    )
                     return False
                 with self._nonce_lock:
                     self._next_nonce = None
@@ -127,8 +159,13 @@ class BlockchainClient:
 
         logger.error(f"{error_context} failed after {self.max_retries} attempts")
         self._record_transaction(
-            contract_name, function_name, entity_id, entity_type,
-            None, "FAILED", f"Failed after {self.max_retries} attempts",
+            contract_name,
+            function_name,
+            entity_id,
+            entity_type,
+            None,
+            "FAILED",
+            f"Failed after {self.max_retries} attempts",
         )
         return False
 
@@ -147,8 +184,12 @@ class BlockchainClient:
                 continue
             status = "CONFIRMED" if receipt.status == 1 else "FAILED"
             self._record_transaction(
-                event["contract_name"], event["function_name"], event["entity_id"],
-                event["entity_type"], event["tx_hash"], status,
+                event["contract_name"],
+                event["function_name"],
+                event["entity_id"],
+                event["entity_type"],
+                event["tx_hash"],
+                status,
                 None if status == "CONFIRMED" else "Transaction reverted on-chain",
             )
             del self._pending_transactions[key]
@@ -156,18 +197,30 @@ class BlockchainClient:
         return resolved
 
     def _record_transaction(
-        self, contract_name: str, function_name: str, entity_id: str | None,
-        entity_type: str | None, tx_hash: str | None, status: str, error: str | None,
+        self,
+        contract_name: str,
+        function_name: str,
+        entity_id: str | None,
+        entity_type: str | None,
+        tx_hash: str | None,
+        status: str,
+        error: str | None,
     ) -> None:
         if self.transaction_recorder:
-            self.transaction_recorder({
-                "id": sha256(
-                    f"{contract_name}:{function_name}:{entity_type}:{entity_id}".encode()
-                ).hexdigest(),
-                "contract_name": contract_name, "function_name": function_name,
-                "entity_id": entity_id, "entity_type": entity_type,
-                "tx_hash": tx_hash, "status": status, "error": error,
-            })
+            self.transaction_recorder(
+                {
+                    "id": sha256(
+                        f"{contract_name}:{function_name}:{entity_type}:{entity_id}".encode()
+                    ).hexdigest(),
+                    "contract_name": contract_name,
+                    "function_name": function_name,
+                    "entity_id": entity_id,
+                    "entity_type": entity_type,
+                    "tx_hash": tx_hash,
+                    "status": status,
+                    "error": error,
+                }
+            )
 
     def register_client(self, client_id: str, pubkey: str) -> bool:
         """Register a new client."""
@@ -177,8 +230,11 @@ class BlockchainClient:
         logger.info(f"Registering client {client_id} on-chain...")
         return self._send_tx_with_retry(
             self.client_registry.functions.registerClient(client_id, pubkey),
-            f"register_client({client_id})", contract_name="ClientRegistry",
-            function_name="registerClient", entity_id=client_id, entity_type="client",
+            f"register_client({client_id})",
+            contract_name="ClientRegistry",
+            function_name="registerClient",
+            entity_id=client_id,
+            entity_type="client",
         )
 
     def create_round(self, round_id: int, global_model_version: str) -> bool:
@@ -189,8 +245,11 @@ class BlockchainClient:
         logger.info(f"Creating round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.createRound(round_id, global_model_version),
-            f"create_round({round_id})", contract_name="TrainingRoundRegistry",
-            function_name="createRound", entity_id=str(round_id), entity_type="round",
+            f"create_round({round_id})",
+            contract_name="TrainingRoundRegistry",
+            function_name="createRound",
+            entity_id=str(round_id),
+            entity_type="round",
         )
 
     def activate_round(self, round_id: int) -> bool:
@@ -209,8 +268,11 @@ class BlockchainClient:
         logger.info(f"Activating round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.activateRound(round_id),
-            f"activate_round({round_id})", contract_name="TrainingRoundRegistry",
-            function_name="activateRound", entity_id=str(round_id), entity_type="round",
+            f"activate_round({round_id})",
+            contract_name="TrainingRoundRegistry",
+            function_name="activateRound",
+            entity_id=str(round_id),
+            entity_type="round",
         )
 
     def finalize_round(self, round_id: int, new_global_model_version: str) -> bool:
@@ -225,23 +287,37 @@ class BlockchainClient:
         logger.info(f"Finalizing round {round_id} on-chain...")
         return self._send_tx_with_retry(
             self.round_registry.functions.finalizeRound(round_id, new_global_model_version),
-            f"finalize_round({round_id})", contract_name="TrainingRoundRegistry",
-            function_name="finalizeRound", entity_id=str(round_id), entity_type="round",
+            f"finalize_round({round_id})",
+            contract_name="TrainingRoundRegistry",
+            function_name="finalizeRound",
+            entity_id=str(round_id),
+            entity_type="round",
         )
 
-    def submit_update(self, update_id: str, round_id: int, client_id: str, artifact_hash: str, nonce: str) -> bool:
+    def submit_update(
+        self, update_id: str, round_id: int, client_id: str, artifact_hash: str, nonce: str
+    ) -> bool:
         """Submit a signed update metadata to the registry."""
         existing = self.update_registry.functions.getUpdate(update_id).call()
         if existing[4] != 0:
             return True
-        logger.info(f"Submitting update {update_id} from {client_id} for round {round_id} on-chain...")
+        logger.info(
+            f"Submitting update {update_id} from {client_id} for round {round_id} on-chain..."
+        )
         return self._send_tx_with_retry(
-            self.update_registry.functions.submitUpdate(update_id, round_id, client_id, artifact_hash, nonce),
-            f"submit_update({update_id})", contract_name="UpdateRegistry",
-            function_name="submitUpdate", entity_id=update_id, entity_type="update",
+            self.update_registry.functions.submitUpdate(
+                update_id, round_id, client_id, artifact_hash, nonce
+            ),
+            f"submit_update({update_id})",
+            contract_name="UpdateRegistry",
+            function_name="submitUpdate",
+            entity_id=update_id,
+            entity_type="update",
         )
 
-    def mark_verification_state(self, update_id: str, is_valid: bool, reason_code: str | None = None) -> bool:
+    def mark_verification_state(
+        self, update_id: str, is_valid: bool, reason_code: str | None = None
+    ) -> bool:
         """Mark an update as verified or rejected."""
         existing = self.update_registry.functions.getUpdate(update_id).call()
         if existing[4] in (2, 4):
@@ -250,13 +326,16 @@ class BlockchainClient:
         logger.info(f"Marking update {update_id} as {state_str} on-chain...")
         operation = (
             self.update_registry.functions.markRejected(update_id, reason_code or "UNSPECIFIED")
-            if not is_valid and reason_code else
-            self.update_registry.functions.markVerificationState(update_id, is_valid)
+            if not is_valid and reason_code
+            else self.update_registry.functions.markVerificationState(update_id, is_valid)
         )
         return self._send_tx_with_retry(
             operation,
-            f"mark_verification_state({update_id})", contract_name="UpdateRegistry",
-            function_name="markVerificationState", entity_id=update_id, entity_type="update",
+            f"mark_verification_state({update_id})",
+            contract_name="UpdateRegistry",
+            function_name="markVerificationState",
+            entity_id=update_id,
+            entity_type="update",
         )
 
     def record_aggregation(self, update_id: str) -> bool:
@@ -267,6 +346,9 @@ class BlockchainClient:
         logger.info(f"Recording aggregation for update {update_id} on-chain...")
         return self._send_tx_with_retry(
             self.update_registry.functions.recordAggregation(update_id),
-            f"record_aggregation({update_id})", contract_name="UpdateRegistry",
-            function_name="recordAggregation", entity_id=update_id, entity_type="update",
+            f"record_aggregation({update_id})",
+            contract_name="UpdateRegistry",
+            function_name="recordAggregation",
+            entity_id=update_id,
+            entity_type="update",
         )

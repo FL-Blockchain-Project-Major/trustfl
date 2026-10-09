@@ -20,7 +20,9 @@ def main() -> None:
     local_epochs = 2
     seed = 42
 
-    print(f"Configuring simulation: {num_clients} clients, {num_rounds} rounds, {local_epochs} local epochs, seed={seed}")
+    print(
+        f"Configuring simulation: {num_clients} clients, {num_rounds} rounds, {local_epochs} local epochs, seed={seed}"
+    )
     sim = run_simulation(
         num_clients=num_clients,
         num_rounds=num_rounds,
@@ -38,7 +40,9 @@ def main() -> None:
         loss = stat["loss"]
         acc = stat["accuracy"]
         succ = stat["num_successful_clients"]
-        print(f"  Round {r}: Eval Loss = {loss:.4f} | Accuracy = {acc:.2%} | Clients Active = {succ}")
+        print(
+            f"  Round {r}: Eval Loss = {loss:.4f} | Accuracy = {acc:.2%} | Clients Active = {succ}"
+        )
 
     delta_w = [
         round(f - i, 5)

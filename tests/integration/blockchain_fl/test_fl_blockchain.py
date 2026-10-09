@@ -19,6 +19,7 @@ def _get_port() -> int:
         s.bind(("", 0))
         return s.getsockname()[1]
 
+
 def run_test():
     contracts_path = "packages/contracts/deployments/localhost/contracts.json"
     # standard hardhat dev key
@@ -29,7 +30,7 @@ def run_test():
         rpc_url="http://127.0.0.1:8545",
         contracts_json_path=contracts_path,
         private_key=pk,
-        network_name="localhost"
+        network_name="localhost",
     )
 
     port = _get_port()
@@ -40,22 +41,23 @@ def run_test():
         min_clients=1,
         num_rounds=1,
         round_timeout_seconds=30.0,
-        blockchain_client=bc_client
+        blockchain_client=bc_client,
     )
     server.start()
-    time.sleep(1) # wait for server to bind
+    time.sleep(1)  # wait for server to bind
 
     print("--- [3] Init Client Agent ---")
     import uuid
+
     client_test_id = f"client_{uuid.uuid4().hex[:6]}"
     identity = ClientIdentity.generate(client_test_id)
     cid = identity.client_id
 
     print("--- [4] Client Register ---")
-    resp = requests.post(f"http://127.0.0.1:{port}/register", json={
-        "client_id": cid,
-        "capabilities": {"pubkey": identity.public_key_b64}
-    })
+    resp = requests.post(
+        f"http://127.0.0.1:{port}/register",
+        json={"client_id": cid, "capabilities": {"pubkey": identity.public_key_b64}},
+    )
     ok = resp.status_code == 200 and resp.json().get("accepted")
     print(f"Client registered: {ok}")
     assert ok, "Client failed to register"
@@ -92,7 +94,7 @@ def run_test():
         parameters=[[0.1, 0.2], [0.3, 0.4]],
         num_examples=100,
         metrics={"loss": 0.5},
-        model_version="test_model_v1"
+        model_version="test_model_v1",
     )
 
     # Submit update to coordinator
@@ -100,10 +102,7 @@ def run_test():
     req_body["client_id"] = cid
     req_body["round_id"] = round_id
 
-    resp = requests.post(
-        f"http://127.0.0.1:{port}/submit",
-        json=req_body
-    )
+    resp = requests.post(f"http://127.0.0.1:{port}/submit", json=req_body)
     print(f"Submit response: {resp.status_code} {resp.text}")
     assert resp.status_code == 200, "Update submission failed"
 
@@ -119,6 +118,7 @@ def run_test():
     assert update_info[4] == 3, "Update was not aggregated on chain"
 
     print("--- [8] SUCCESS ---")
+
 
 if __name__ == "__main__":
     run_test()
