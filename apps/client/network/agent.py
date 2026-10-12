@@ -36,6 +36,10 @@ from packages.crypto.trustfl_crypto.signer import UpdateSigner
 
 logger = logging.getLogger(__name__)
 
+# After this many consecutive failed status polls, a client that has already
+# submitted at least one round will treat the coordinator as "done" and exit.
+_UNREACHABLE_EXIT_THRESHOLD = 5
+
 # Type alias for the local training function
 TrainFn = Callable[
     [int, list[list[float]], dict[str, Any]],  # round_id, params, config
@@ -125,6 +129,12 @@ class DistributedClientAgent:
 
         self.last_round_submitted: int = 0
         self.status = "IDLE"
+        # Number of consecutive status-poll failures that trigger an exit once
+        # at least one round has been submitted.  When the coordinator shuts
+        # down immediately after finishing, clients never see a DONE/ABORTED
+        # response, so we infer "federation complete" from persistent
+        # unreachability.
+        self._consecutive_failures: int = 0
 
     @property
     def is_registered(self) -> bool:
@@ -175,7 +185,32 @@ class DistributedClientAgent:
 
         # 2. Check if the federation is finished so the client can exit cleanly
         status = self._get_status()
-        if status and status.get("status") in ("DONE", "ABORTED"):
+        if status is None:
+            # Coordinator unreachable.  If we have already contributed to at
+            # least one round, treat persistent unreachability as "federation
+            # complete" — the coordinator most likely shut down after the final
+            # round without sending a DONE response.
+            if self.last_round_submitted > 0:
+                self._consecutive_failures += 1
+                logger.debug(
+                    "[%s] Coordinator unreachable (failure %d/%d).",
+                    self.client_id,
+                    self._consecutive_failures,
+                    _UNREACHABLE_EXIT_THRESHOLD,
+                )
+                if self._consecutive_failures >= _UNREACHABLE_EXIT_THRESHOLD:
+                    logger.info(
+                        "[%s] Coordinator has been unreachable for %d consecutive polls "
+                        "after submitting round %d — assuming federation complete, exiting.",
+                        self.client_id,
+                        self._consecutive_failures,
+                        self.last_round_submitted,
+                    )
+                    self._stop_event.set()
+            return False
+        # Coordinator responded — reset the failure counter.
+        self._consecutive_failures = 0
+        if status.get("status") in ("DONE", "ABORTED"):
             logger.info(
                 "[%s] Federation %s — stopping agent.",
                 self.client_id,

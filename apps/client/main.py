@@ -77,7 +77,7 @@ def _build_train_fn(
     try:
         sys.path.insert(0, "/app/packages/ml_core")
         from trustfl_ml.config import TrainingConfig
-        from trustfl_ml.yolo_wrapper import SimulatedDetector, YOLOModelWrapper
+        from trustfl_ml.yolo_wrapper import SimulatedDetector
 
         # Auto-detect held-out val directory if not explicitly provided
         eval_img_dir = val_images_dir
@@ -97,10 +97,10 @@ def _build_train_fn(
             global_params: list[list[float]],
             _config: dict[str, Any],
         ):
-            detector_cls = (
-                SimulatedDetector if "SimulatedDetector" in globals() else YOLOModelWrapper
-            )
-            model = detector_cls()
+            # SimulatedDetector is always available here (imported above).
+            # The previous globals()-based check was always False because the
+            # import is local to this function, not at module level.
+            model = SimulatedDetector()
             if global_params:
                 model.set_parameters(global_params)
             train_cfg = TrainingConfig(epochs=epochs)

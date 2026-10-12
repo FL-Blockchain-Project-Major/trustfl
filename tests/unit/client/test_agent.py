@@ -160,6 +160,76 @@ class TestDistributedClientAgent:
         )
         assert ag_https.coordinator_url == "https://remote-server.com:8100"
 
+    def test_exits_when_coordinator_unreachable_after_round_submitted(self):
+        """
+        After submitting a round, if the coordinator becomes persistently
+        unreachable, the agent must set _stop_event and stop — it should not
+        loop forever polling a dead server.
+        """
+        from apps.client.network.agent import _UNREACHABLE_EXIT_THRESHOLD
+
+        agent = _make_agent()
+        # Pretend the agent has already completed round 1 (i.e. it was alive
+        # for at least one full round).
+        agent.last_round_submitted = 1
+
+        # _get_status always returns None (coordinator shut down).
+        with patch.object(agent, "_get_status", return_value=None):
+            with patch.object(agent, "_heartbeat"):
+                # Drive step() enough times to exceed the threshold.
+                for _ in range(_UNREACHABLE_EXIT_THRESHOLD):
+                    assert not agent._stop_event.is_set(), "stop_event set too early"
+                    agent.step()
+                # The threshold-th call must have set the stop event.
+                assert agent._stop_event.is_set()
+
+    def test_does_not_exit_if_no_round_submitted_yet(self):
+        """
+        An unreachable coordinator must NOT exit the agent if it has never
+        submitted a round — that situation is a registration/connection failure,
+        not a completed federation.
+        """
+        from apps.client.network.agent import _UNREACHABLE_EXIT_THRESHOLD
+
+        agent = _make_agent()
+        # last_round_submitted stays 0
+
+        with patch.object(agent, "_get_status", return_value=None):
+            with patch.object(agent, "_heartbeat"):
+                for _ in range(_UNREACHABLE_EXIT_THRESHOLD + 2):
+                    agent.step()
+
+        assert not agent._stop_event.is_set()
+
+    def test_failure_counter_resets_on_success(self):
+        """
+        If the coordinator becomes reachable again before the threshold is
+        reached, _consecutive_failures must reset to 0.
+        """
+        from apps.client.network.agent import _UNREACHABLE_EXIT_THRESHOLD
+
+        agent = _make_agent()
+        agent.last_round_submitted = 1
+
+        call_count = {"n": 0}
+
+        def flaky_status():
+            call_count["n"] += 1
+            # Fail for threshold-1 polls, then recover.
+            if call_count["n"] < _UNREACHABLE_EXIT_THRESHOLD:
+                return None
+            return {"status": "ROUND_ACTIVE", "current_round": 2}
+
+        with patch.object(agent, "_get_status", side_effect=flaky_status):
+            with patch.object(agent, "_heartbeat"):
+                with patch.object(agent, "_get_round_instructions", return_value=None):
+                    for _ in range(_UNREACHABLE_EXIT_THRESHOLD + 1):
+                        agent.step()
+
+        # Counter resets on the successful poll — agent must NOT have exited.
+        assert not agent._stop_event.is_set()
+        assert agent._consecutive_failures == 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

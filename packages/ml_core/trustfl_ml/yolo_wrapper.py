@@ -112,8 +112,11 @@ class SimulatedDetector:
                 if not boxes:
                     continue
 
-                samples_count += 1
-                total_boxes += len(boxes)
+                # Count unique images only on the first epoch to avoid
+                # multiplying by the number of epochs.
+                if _epoch == 0:
+                    samples_count += 1
+                    total_boxes += len(boxes)
 
                 # Compute gradient updates on detection heads
                 loss_contrib = 0.0

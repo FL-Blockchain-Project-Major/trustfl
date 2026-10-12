@@ -109,6 +109,55 @@ class TestMLCore(unittest.TestCase):
             with self.assertRaises(ValueError):
                 missing_cfg.validate()
 
+    def test_samples_trained_is_epoch_invariant(self) -> None:
+        """
+        samples_trained must count unique images, not image×epoch pairs.
+        Training for 2 epochs must report the same value as training for 1 epoch.
+        """
+        import tempfile
+
+        from PIL import Image as PILImage
+        from trustfl_ml.yolo_wrapper import SimulatedDetector
+
+        # Build a tiny synthetic dataset: 3 images with valid annotations.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            img_dir = Path(tmpdir) / "images"
+            ann_dir = Path(tmpdir) / "annotations"
+            img_dir.mkdir()
+            ann_dir.mkdir()
+
+            for i in range(3):
+                img = PILImage.new("RGB", (64, 64), color=(i * 80, 0, 0))
+                img.save(img_dir / f"img{i:03d}.jpg")
+                # VisDrone CSV format:
+                # bbox_left,bbox_top,bbox_width,bbox_height,score,category,truncation,occlusion
+                # category=1 (pedestrian), score=1 (non-ignored)
+                (ann_dir / f"img{i:03d}.txt").write_text("10,10,20,20,1,1,0,0\n")
+
+            model1 = SimulatedDetector(seed=42)
+            res1 = model1.train_on_dataset(
+                images_dir=str(img_dir),
+                annotations_dir=str(ann_dir),
+                config=TrainingConfig(epochs=1),
+                max_samples=10,
+            )
+
+            model2 = SimulatedDetector(seed=42)
+            res2 = model2.train_on_dataset(
+                images_dir=str(img_dir),
+                annotations_dir=str(ann_dir),
+                config=TrainingConfig(epochs=2),
+                max_samples=10,
+            )
+
+            self.assertEqual(
+                res1["samples_trained"],
+                res2["samples_trained"],
+                "samples_trained must be epoch-invariant (unique images, not image×epochs)",
+            )
+            # Must equal the number of images, not images × epochs.
+            self.assertEqual(res1["samples_trained"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()
