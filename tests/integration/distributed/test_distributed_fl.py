@@ -428,6 +428,7 @@ class TestDistributedFL(unittest.TestCase):
         """
         import tempfile
 
+        from PIL import Image
         from trustfl_ml.config import TrainingConfig
         from trustfl_ml.yolo_wrapper import SimulatedDetector
 
@@ -438,13 +439,32 @@ class TestDistributedFL(unittest.TestCase):
         raw_annotations = repo_root / "datasets" / "raw" / "visdrone" / "annotations"
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            if not (raw_images.is_dir() and any(raw_images.iterdir())):
+                # When raw datasets are not checked into Git (e.g., CI runners),
+                # synthesize valid VisDrone images and annotations for the test.
+                raw_images = Path(tmpdir) / "source_visdrone" / "images"
+                raw_annotations = Path(tmpdir) / "source_visdrone" / "annotations"
+                raw_images.mkdir(parents=True, exist_ok=True)
+                raw_annotations.mkdir(parents=True, exist_ok=True)
+                for idx in range(15):
+                    im_path = raw_images / f"sample_{idx:03d}.jpg"
+                    im = Image.new("RGB", (640, 480), color=(idx * 16 % 255, 120, 140))
+                    im.save(im_path)
+                    ann_path = raw_annotations / f"sample_{idx:03d}.txt"
+                    ann_path.write_text(
+                        "50,50,100,80,1,1,0,0\n"
+                        "160,120,60,60,1,4,0,0\n"
+                        "240,200,80,50,1,5,0,0\n",
+                        encoding="utf-8",
+                    )
+
             out_partitions = Path(tmpdir) / "partitions"
             manifest = partition_dataset(
                 images_dir=raw_images,
                 annotations_dir=raw_annotations,
                 output_dir=out_partitions,
                 num_clients=3,
-                samples_per_client=10,
+                samples_per_client=5,
                 seed=42,
                 dirichlet=True,
                 alpha=0.5,
