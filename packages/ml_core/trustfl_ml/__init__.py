@@ -5,7 +5,7 @@ TrustFL ML Core Package.
 from trustfl_ml.checkpoint import ParameterSerialization
 from trustfl_ml.config import ClientNodeConfig, DatasetConfig, TrainingConfig
 from trustfl_ml.dataset import DatasetValidationError, VisDroneParser
-from trustfl_ml.yolo_wrapper import YOLOModelWrapper
+from trustfl_ml.yolo_wrapper import SimulatedDetector, YOLOModelWrapper
 
 __all__ = [
     "VisDroneParser",
@@ -14,5 +14,6 @@ __all__ = [
     "DatasetConfig",
     "TrainingConfig",
     "ClientNodeConfig",
+    "SimulatedDetector",
     "YOLOModelWrapper",
 ]

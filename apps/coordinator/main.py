@@ -135,7 +135,13 @@ def main() -> None:
 
     server.state.wait_until_done(timeout=None)
     server.stop()
+    if getattr(server.state, "aborted", False):
+        logger.error(
+            "Federation aborted: %s", getattr(server.state, "abort_reason", "quorum lost")
+        )
+        sys.exit(1)
     logger.info("Training complete. %d rounds finished.", args.num_rounds)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

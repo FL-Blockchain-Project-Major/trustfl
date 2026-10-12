@@ -102,21 +102,39 @@ def generate_nonce(client_id: str, round_id: int) -> str:
     return f"{client_id}:{round_id}:{random_part}"
 
 
+def _normalize_params(p: Any) -> Any:
+    if hasattr(p, "tolist"):
+        p = p.tolist()
+    if isinstance(p, (list, tuple)):
+        return [_normalize_params(x) for x in p]
+    return float(p)
+
+
 def canonical_artifact_bytes(
     parameters: list,
     num_examples: int,
     metrics: dict[str, float],
 ) -> bytes:
-    """Return the canonical bytes persisted for a signed update artifact."""
+    """Return the canonical bytes persisted for a signed update artifact.
+
+    All numeric fields are normalised to a single canonical type *here* so
+    that the hash is identical regardless of whether the value arrived as an
+    ``int`` (client training output), a ``float`` (deserialised from JSON),
+    or a string.  Without this normalisation the client hashes
+    ``boxes_evaluated=100`` while the verifier re-hashes ``100.0`` after
+    ``SignedUpdate.from_dict`` coerced it, producing ARTIFACT_HASH_MISMATCH
+    on every real update.
+    """
     return json.dumps(
         {
-            "metrics": metrics,
-            "num_examples": num_examples,
-            "parameters": parameters,
+            "metrics": {k: float(v) for k, v in (metrics or {}).items()},
+            "num_examples": int(num_examples),
+            "parameters": _normalize_params(parameters),
         },
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
 
 
 def hash_artifact(

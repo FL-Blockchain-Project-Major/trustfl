@@ -1,11 +1,17 @@
 """
-YOLO ML Model Wrapper for Ultralytics YOLO with automatic pure-Python fallback.
+SimulatedDetector — lightweight simulated object detector with pure-Python fallback.
+
+NOTE: This is NOT a real YOLO model. ``HAVE_ULTRALYTICS`` controls whether the real
+Ultralytics package is importable; the bundled ``SimulatedDetector`` class does NOT use
+it and does NOT compute real mAP. Reported metrics (``accuracy_proxy``, ``precision``,
+``recall``) are formula-derived proxies for deterministic federated-learning testing
+only. Do not interpret them as mAP50 or mAP50-95.
 
 Provides:
-- Model initialization
-- Local training on VisDrone/YOLO datasets
-- Local validation / evaluation (precision, recall, mAP50, mAP50-95, loss)
-- Parameter extraction & update
+- Deterministic simulated model initialization
+- Local training simulation on VisDrone/YOLO datasets (gradient-step approximation)
+- Validation via accuracy_proxy (NOT mAP)
+- Parameter extraction & update for FedAvg aggregation
 """
 
 from __future__ import annotations
@@ -20,21 +26,22 @@ from trustfl_ml.config import TrainingConfig
 from trustfl_ml.dataset import VisDroneParser
 
 try:
+    import ultralytics  # noqa: F401
+
     HAVE_ULTRALYTICS = True
 except ImportError:
     HAVE_ULTRALYTICS = False
 
 
-class YOLOModelWrapper:
+class SimulatedDetector:
     """
-    Unified YOLO interface supporting:
-    - Ultralytics YOLO runtime if available
-    - Built-in lightweight object detector simulation for deterministic edge evaluation
+    Built-in lightweight simulated object detector for deterministic edge evaluation.
+    Computes parameter updates and returns an accuracy_proxy metric.
     """
 
     def __init__(
         self,
-        model_name: str = "yolov8n",
+        model_name: str = "simulated_detector",
         num_classes: int = 10,
         seed: int = 42,
     ) -> None:
@@ -141,8 +148,9 @@ class YOLOModelWrapper:
         max_samples: int = 15,
     ) -> dict[str, float]:
         """
-        Evaluates current parameters against validation partition.
-        Returns mAP50, mAP50_95, precision, recall, and loss.
+        Evaluates current parameters against the validation partition.
+        Returns accuracy_proxy, precision, recall, loss, and boxes_evaluated.
+        NOTE: These are simulated metrics, NOT real mAP50 or mAP50-95.
         """
         img_dir = Path(images_dir)
         ann_dir = Path(annotations_dir)
@@ -175,18 +183,19 @@ class YOLOModelWrapper:
         avg_err = total_err / max(1, total_eval_boxes)
         loss = round(avg_err, 4)
 
-        # Higher quality weights yield higher mAP
+        # Simulation: parameter distance to targets produces an accuracy proxy
         accuracy_proxy = max(0.0, min(1.0, 1.0 - (loss * 2.0)))
-        map50 = round(accuracy_proxy * 0.85, 4)
-        map50_95 = round(accuracy_proxy * 0.62, 4)
         precision = round(accuracy_proxy * 0.88, 4)
         recall = round(accuracy_proxy * 0.82, 4)
 
         return {
             "loss": loss,
-            "map50": map50,
-            "map50_95": map50_95,
+            "accuracy_proxy": accuracy_proxy,
             "precision": precision,
             "recall": recall,
             "boxes_evaluated": total_eval_boxes,
         }
+
+
+# Backwards compatibility alias
+YOLOModelWrapper = SimulatedDetector

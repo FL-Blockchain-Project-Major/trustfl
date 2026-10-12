@@ -42,3 +42,7 @@ def test_timeout_without_quorum_records_failed_not_finalized():
             "metrics": {},
         }
     ]
+    # Round advances even without quorum
+    assert state.current_round == 2
+    # Round should be done since num_rounds=1
+    assert state._status_label() == "DONE"

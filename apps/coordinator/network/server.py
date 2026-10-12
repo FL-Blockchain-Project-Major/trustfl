@@ -92,6 +92,10 @@ def _fedavg(
     """
     if not updates:
         raise ValueError("At least one update is required")
+    # Sort updates by client_id (or update_id) to make FedAvg order-independent (floating-point
+    # summation is not associative). This ensures reproducible results regardless of
+    # client submission order.
+    updates = sorted(updates, key=lambda u: str(u.get("client_id", u.get("update_id", ""))))
     reference = updates[0]["parameters"]
     if not isinstance(reference, list) or any(not isinstance(layer, list) for layer in reference):
         raise ValueError("Update parameters must be a list of layers")
@@ -206,6 +210,8 @@ class CoordinatorState:
         # replay of signed read/heartbeat requests and are bounded by expiry.
         self._request_nonces: dict[str, float] = {}
 
+        self.aborted: bool = False
+        self.abort_reason: str | None = None
         self._done_event = threading.Event()
         if self.persistence:
             try:
@@ -260,6 +266,8 @@ class CoordinatorState:
         return [cid for cid, info in self.registered_clients.items() if info["status"] != "OFFLINE"]
 
     def _status_label(self) -> str:
+        if self.aborted:
+            return "ABORTED"
         if self.current_round == 0:
             return "WAITING"
         if self.current_round > self.num_rounds:
@@ -516,6 +524,7 @@ class CoordinatorState:
                 self._inflight_nonces.discard(nonce)
                 return False
             self.pending_updates[cid] = {
+                "client_id": cid,
                 "parameters": parameters,
                 "num_examples": num_examples,
                 "metrics": metrics,
@@ -677,7 +686,13 @@ class CoordinatorState:
                 self.current_round > 0
                 and self.current_round <= self.num_rounds
                 and self.round_start_time is not None
-                and now - self.round_start_time > self.round_timeout_seconds
+                and (
+                    now - self.round_start_time > self.round_timeout_seconds
+                    or (
+                        len(self.active_clients) < self.min_clients
+                        and len(self.pending_updates) >= len(self.active_clients)
+                    )
+                )
             ):
                 logger.warning(
                     "Round %d timed out after %.1f s",
@@ -714,18 +729,31 @@ class CoordinatorState:
                     self.persistence.fail_round(round_id)
                 with self.lock:
                     if self.current_round == round_id:
-                        self.round_history.append(
-                            {
-                                "round": round_id,
-                                "num_successful_clients": len(updates),
-                                "timed_out": timed_out,
-                                "status": "FAILED",
-                                "metrics": _avg_metrics([u["metrics"] for u in updates]),
-                            }
-                        )
+                        record = {
+                            "round": round_id,
+                            "num_successful_clients": len(updates),
+                            "timed_out": timed_out,
+                            "status": "FAILED",
+                            "metrics": _avg_metrics([u["metrics"] for u in updates]),
+                        }
                         self.pending_updates.clear()
-                        self.current_round += 1
+                        if len(self.active_clients) < self.min_clients:
+                            self._abort_locked(
+                                f"Quorum lost in round {round_id}: "
+                                f"{len(self.active_clients)} active clients"
+                                f" < {self.min_clients} required",
+                                record=record,
+                            )
+                            return
+                        self._advance_round_locked(
+                            finalize=False,
+                            record=record,
+                        )
                 return
+            # Sort updates by client_id to make FedAvg order-independent (floating-point
+            # summation is not associative). This ensures reproducible results regardless of
+            # client submission order.
+            updates.sort(key=lambda u: u.get("client_id", u.get("update_id", "")))
             parameters = _fedavg(updates)
             global_artifact = None
             if self.storage_client:
@@ -859,24 +887,30 @@ class CoordinatorState:
         updates = list(self.pending_updates.values())
         quorum_met = len(updates) >= self.min_clients
         if not quorum_met:
+            record = {
+                "round": self.current_round,
+                "num_successful_clients": len(updates),
+                "timed_out": timed_out,
+                "status": "FAILED",
+                "metrics": _avg_metrics([u["metrics"] for u in updates]),
+            }
             logger.error(
                 "Round %d failed quorum: %d < %d",
                 self.current_round,
                 len(updates),
                 self.min_clients,
             )
-            self.round_history.append(
-                {
-                    "round": self.current_round,
-                    "num_successful_clients": len(updates),
-                    "timed_out": timed_out,
-                    "status": "FAILED",
-                    "metrics": _avg_metrics([u["metrics"] for u in updates]),
-                }
-            )
             if self.persistence:
                 self.persistence.fail_round(self.current_round)
-            self._advance_round_locked(finalize=False)
+            if len(self.active_clients) < self.min_clients:
+                self._abort_locked(
+                    f"Quorum lost in round {self.current_round}: "
+                    f"{len(self.active_clients)} active clients"
+                    f" < {self.min_clients} required",
+                    record=record,
+                )
+                return
+            self._advance_round_locked(finalize=False, record=record)
             return
         try:
             self.global_parameters = _fedavg(updates)
@@ -921,7 +955,32 @@ class CoordinatorState:
 
         self._advance_round_locked()
 
-    def _advance_round_locked(self, finalize: bool = True) -> None:
+    def _abort_locked(
+        self,
+        reason: str,
+        record: dict[str, object] | None = None,
+    ) -> None:
+        """Abort the federation cleanly and unblock waiters."""
+        self.aborted = True
+        self.abort_reason = reason
+        if record is not None:
+            self.round_history.append(record)
+        self.pending_updates.clear()
+        self._aggregation_in_progress = False
+        self._done_event.set()
+        logger.error("Federation aborted: %s", reason)
+
+    def _advance_round_locked(
+        self,
+        finalize: bool = True,
+        record: dict[str, object] | None = None,
+    ) -> None:
+        """Advance to the next round after commit/abort; must be called while holding self.lock.
+
+        Optional `record` is appended to round_history if provided.
+        """
+        if record is not None:
+            self.round_history.append(record)
         # Finalize the current round
         chain_finalized = True
         if finalize and self.blockchain_client:
@@ -939,7 +998,8 @@ class CoordinatorState:
                 self._finalization_pending = False
                 self._terminal_error = "blockchain finalization retry budget exhausted"
                 logger.critical(
-                    "Round %d finalization is terminally blocked after %d attempts; operator recovery required",
+                    "Round %d finalization is terminally blocked after"
+                    " %d attempts; operator recovery required",
                     self.current_round,
                     self._finalization_attempts,
                 )
@@ -1246,6 +1306,17 @@ class CoordinatorServer:
 
         self._httpd = TimeoutThreadingHTTPServer((host, port), BoundHandler)
         self._httpd.timeout = 0.5  # so serve_forever can be interrupted quickly
+
+        tls_cert = os.getenv("COORDINATOR_TLS_CERT")
+        tls_key = os.getenv("COORDINATOR_TLS_KEY")
+        self.tls_enabled = bool(tls_cert and tls_key)
+        if self.tls_enabled:
+            import ssl
+
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(certfile=tls_cert, keyfile=tls_key)
+            self._httpd.socket = ssl_ctx.wrap_socket(self._httpd.socket, server_side=True)
+            logger.info("TLS enabled on coordinator with cert=%s", tls_cert)
 
         self._http_thread: threading.Thread | None = None
         self._monitor_thread: threading.Thread | None = None

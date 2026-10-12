@@ -16,12 +16,15 @@ Retry logic wraps every HTTP call (max_retries with exponential back-off).
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import logging
 import os
+import ssl
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -57,6 +60,8 @@ class DistributedClientAgent:
     retry_delay : float
     training_timeout_seconds : float
         If training takes longer, the update is dropped.
+    ca_bundle : str | None
+        Path to custom CA bundle for verifying coordinator TLS certificates.
     """
 
     def __init__(
@@ -72,9 +77,20 @@ class DistributedClientAgent:
         federation_id: str = "fed-default",
         identity: ClientIdentity | None = None,
         identity_path: str | None = None,
+        ca_bundle: str | None = None,
     ) -> None:
         self.client_id = client_id
         self.coordinator_url = coordinator_url.rstrip("/")
+        if os.getenv("ENVIRONMENT", "").lower() == "production":
+            parsed = urllib.parse.urlparse(self.coordinator_url)
+            if parsed.scheme == "http":
+                host = parsed.hostname or ""
+                if not self._is_loopback(host):
+                    raise ValueError(
+                        f"Plain HTTP to '{self.coordinator_url}' is refused"
+                        " in production. Configure TLS (https://) or use a"
+                        " loopback address behind a secure tunnel/proxy."
+                    )
         self.train_fn = train_fn
         self.poll_interval = poll_interval
         self.max_retries = max_retries
@@ -82,6 +98,11 @@ class DistributedClientAgent:
         self.training_timeout = training_timeout_seconds
         self.connection_timeout = connection_timeout_seconds
         self.federation_id = federation_id
+        self.ca_bundle = (
+            ca_bundle
+            or os.getenv("FL_CA_BUNDLE")
+            or os.getenv("COORDINATOR_CA_BUNDLE")
+        )
         # Identity is durable by default.  Deployments should override this with
         # FL_IDENTITY_PATH (the Compose services mount a per-client key volume).
         # Keeping the client ID in the path prevents accidental key sharing.
@@ -102,13 +123,23 @@ class DistributedClientAgent:
         self._stop_event = threading.Event()
         self._bg_thread: threading.Thread | None = None
         self._registered = False
+        self.failed = False
 
         self.last_round_submitted: int = 0
         self.status = "IDLE"
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    @property
+    def is_registered(self) -> bool:
+        return self._registered
+
+    @staticmethod
+    def _is_loopback(host: str) -> bool:
+        if host.lower() in ("localhost", "127.0.0.1", "::1"):
+            return True
+        try:
+            return ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            return False
 
     def register(self) -> bool:
         """POST /register; returns True on success."""
@@ -144,7 +175,18 @@ class DistributedClientAgent:
         # 1. Heartbeat
         self._heartbeat()
 
-        # 2. Fetch instructions
+        # 2. Check if the federation is finished so the client can exit cleanly
+        status = self._get_status()
+        if status and status.get("status") in ("DONE", "ABORTED"):
+            logger.info(
+                "[%s] Federation %s — stopping agent.",
+                self.client_id,
+                status.get("status"),
+            )
+            self._stop_event.set()
+            return False
+
+        # 3. Fetch instructions
         instructions = self._get_round_instructions()
         if instructions is None:
             return False
@@ -189,9 +231,17 @@ class DistributedClientAgent:
             for attempt in range(self.max_retries):
                 if self.register():
                     break
-                time.sleep(self.retry_delay * (2**attempt))
+                backoff = min(self.retry_delay * (2**attempt), 30.0)
+                time.sleep(backoff)
             else:
-                logger.error("[%s] Could not register; giving up.", self.client_id)
+                self.failed = True
+                logger.error(
+                    "[%s] Could not register after %d attempts; exiting.",
+                    self.client_id,
+                    self.max_retries,
+                )
+                # Signal stop so main thread exits
+                self._stop_event.set()
                 return
 
         self._bg_thread = threading.Thread(
@@ -221,6 +271,9 @@ class DistributedClientAgent:
 
     def _get_round_instructions(self) -> dict[str, Any] | None:
         return self._get(f"/round/instructions/{self.client_id}")
+
+    def _get_status(self) -> dict[str, Any] | None:
+        return self._get("/status")
 
     def _submit_update(
         self,
@@ -316,10 +369,19 @@ class DistributedClientAgent:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        ssl_context = None
+        if url.startswith("https://"):
+            if self.ca_bundle:
+                ssl_context = ssl.create_default_context(cafile=self.ca_bundle)
+            else:
+                ssl_context = ssl.create_default_context()
+
         for attempt in range(self.max_retries):
             try:
                 req = urllib.request.Request(url, data=data, headers=headers, method=method)
-                with urllib.request.urlopen(req, timeout=self.connection_timeout) as resp:
+                with urllib.request.urlopen(
+                    req, timeout=self.connection_timeout, context=ssl_context
+                ) as resp:
                     return json.loads(resp.read())
             except urllib.error.URLError as exc:
                 logger.debug(

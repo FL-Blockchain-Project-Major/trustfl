@@ -13,17 +13,21 @@ test_05  round timeout with partial update — timed_out flag
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import threading
 import time
 import unittest
+from pathlib import Path
 
 # Make sure the coordinator network package is importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "apps"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "packages", "crypto"))
 
 from client.network.agent import DistributedClientAgent
 from coordinator.network.server import CoordinatorServer
+from trustfl_crypto.keys import ClientIdentity
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -353,6 +357,211 @@ class TestDistributedFL(unittest.TestCase):
         self.assertTrue(rh["timed_out"], "Expected timed_out=True")
         # c0 submitted; c1 never did — at least 1 successful client
         self.assertGreaterEqual(rh["num_successful_clients"], 1)
+
+    # ── test_06: 3 clients, 1 killed mid-run loses quorum and aborts ─────────
+
+    def test_06_three_clients_one_killed_mid_run(self):
+        """
+        min_clients=3. Round 1 completes with 3 clients.
+        In round 2, c2 is killed/stopped mid-run and heartbeat times out.
+        Server detects active_clients < min_clients, marks round as FAILED,
+        and aborts federation cleanly.
+        """
+        port = _get_port()
+        server = CoordinatorServer(
+            host="127.0.0.1",
+            port=port,
+            min_clients=3,
+            num_rounds=2,
+            round_timeout_seconds=2.0,
+            heartbeat_timeout_seconds=1.0,  # fast heartbeat timeout for testing
+        )
+        server.start()
+        self.assertTrue(_wait_for_server(port))
+
+        agents = [_make_agent(f"c{i}", port) for i in range(3)]
+        try:
+            for ag in agents:
+                self.assertTrue(ag.register())
+
+            # Round 1 completes
+            deadline = time.time() + 6.0
+            while time.time() < deadline and server.state.current_round <= 1:
+                for ag in agents:
+                    ag.step()
+                time.sleep(0.1)
+
+            self.assertEqual(len(server.state.round_history), 1)
+
+            # Round 2: kill c2
+            agents[2].stop()
+
+            # Step c0 and c1 so they submit round 2 updates
+            deadline = time.time() + 6.0
+            while time.time() < deadline and not server.state.aborted:
+                agents[0].step()
+                agents[1].step()
+                time.sleep(0.1)
+
+            self.assertTrue(server.state.aborted, "Server state should be aborted")
+            self.assertEqual(server.state.get_status()["status"], "ABORTED")
+            self.assertEqual(len(server.state.round_history), 2)
+            self.assertEqual(server.state.round_history[-1]["status"], "FAILED")
+        finally:
+            server.stop()
+            for ag in agents:
+                try:
+                    ag.stop()
+                except Exception:
+                    pass
+
+    # ── test_07: 3 clients, 3 rounds, signatures on, allowlist on, real data ──
+
+    def test_07_three_clients_three_rounds_signatures_allowlist_real_data(self):
+        """
+        End-to-end integration test:
+        - 3 clients over 3 rounds
+        - require_signatures = True
+        - Allowlist enabled via COORDINATOR_ENROLLMENT_ALLOWLIST
+        - Real VisDrone dataset partitioned with partition_dataset (seed & Dirichlet)
+        - Trained via SimulatedDetector directly (validates real train/eval cycle)
+        """
+        import tempfile
+
+        from trustfl_ml.config import TrainingConfig
+        from trustfl_ml.yolo_wrapper import SimulatedDetector
+
+        from datasets.tools.visdrone_prep.prepare import partition_dataset
+
+        repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        raw_images = repo_root / "datasets" / "raw" / "visdrone" / "images"
+        raw_annotations = repo_root / "datasets" / "raw" / "visdrone" / "annotations"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_partitions = Path(tmpdir) / "partitions"
+            manifest = partition_dataset(
+                images_dir=raw_images,
+                annotations_dir=raw_annotations,
+                output_dir=out_partitions,
+                num_clients=3,
+                samples_per_client=10,
+                seed=42,
+                dirichlet=True,
+                alpha=0.5,
+            )
+
+            def _make_train_fn(
+                train_imgs_dir: str,
+                train_ann_dir: str,
+                val_imgs_dir: str,
+                val_ann_dir: str,
+            ):
+                """Build a real train callable using SimulatedDetector on actual VisDrone data."""
+                def train_fn(_round_id: int, global_params, _config):
+                    model = SimulatedDetector()
+                    if global_params:
+                        model.set_parameters(global_params)
+                    train_cfg = TrainingConfig(epochs=1)
+                    train_metrics = model.train_on_dataset(
+                        images_dir=train_imgs_dir,
+                        annotations_dir=train_ann_dir,
+                        config=train_cfg,
+                        max_samples=10,
+                    )
+                    # Use actual samples trained, not max_samples
+                    num_examples = max(1, train_metrics["samples_trained"])
+                    # Evaluate on val split (not train)
+                    eval_metrics = model.evaluate_on_dataset(
+                        images_dir=val_imgs_dir,
+                        annotations_dir=val_ann_dir,
+                        max_samples=5,
+                    )
+                    # Only pass numeric metrics to coordinator
+                    numeric_metrics = {
+                        k: float(v)
+                        for k, v in eval_metrics.items()
+                        if isinstance(v, (int, float))
+                    }
+                    return model.get_parameters(), num_examples, numeric_metrics
+                return train_fn
+
+            # Generate identities for 3 clients
+            identities = {f"client_{i}": ClientIdentity.generate(f"client_{i}") for i in range(3)}
+            allowlist = {cid: ident.public_key_b64 for cid, ident in identities.items()}
+
+            old_allowlist = os.environ.get("COORDINATOR_ENROLLMENT_ALLOWLIST")
+            os.environ["COORDINATOR_ENROLLMENT_ALLOWLIST"] = json.dumps(allowlist)
+            # Disable insecure dev auth so enrollment strictly enforces signature and allowlist
+            os.environ.pop("COORDINATOR_INSECURE_DEV_AUTH", None)
+
+            port = _get_port()
+            server = CoordinatorServer(
+                host="127.0.0.1",
+                port=port,
+                min_clients=3,
+                num_rounds=3,
+                require_signatures=True,
+                round_timeout_seconds=20.0,
+                heartbeat_timeout_seconds=30.0,
+            )
+            server.start()
+            self.assertTrue(_wait_for_server(port))
+
+            agents = []
+            try:
+                for i in range(3):
+                    cid = f"client_{i}"
+                    c_info = manifest["clients"][cid]
+                    train_fn = _make_train_fn(
+                        train_imgs_dir=c_info["train_images_dir"],
+                        train_ann_dir=c_info["train_annotations_dir"],
+                        val_imgs_dir=c_info["val_images_dir"],
+                        val_ann_dir=c_info["val_annotations_dir"],
+                    )
+                    ag = DistributedClientAgent(
+                        client_id=cid,
+                        coordinator_url=f"http://127.0.0.1:{port}",
+                        identity=identities[cid],
+                        train_fn=train_fn,
+                        poll_interval=0.1,
+                        max_retries=3,
+                        retry_delay=0.1,
+                        connection_timeout_seconds=5.0,
+                    )
+                    agents.append(ag)
+
+                for ag in agents:
+                    self.assertTrue(ag.register(), f"Registration failed for {ag.client_id}")
+
+                deadline = time.time() + 30.0
+                while (
+                    time.time() < deadline
+                    and server.state.current_round <= server.state.num_rounds
+                ):
+                    for ag in agents:
+                        ag.step()
+                    time.sleep(0.05)
+
+                server.state.wait_until_done(timeout=5.0)
+            finally:
+                if old_allowlist is not None:
+                    os.environ["COORDINATOR_ENROLLMENT_ALLOWLIST"] = old_allowlist
+                else:
+                    os.environ.pop("COORDINATOR_ENROLLMENT_ALLOWLIST", None)
+                os.environ["COORDINATOR_INSECURE_DEV_AUTH"] = "true"
+                server.stop()
+                for ag in agents:
+                    try:
+                        ag.stop()
+                    except Exception:
+                        pass
+
+            self.assertEqual(len(server.state.round_history), 3)
+            for r_idx, rh in enumerate(server.state.round_history, start=1):
+                self.assertEqual(rh["round"], r_idx)
+                self.assertEqual(rh["num_successful_clients"], 3)
+                self.assertFalse(rh["timed_out"])
+                self.assertIn("accuracy_proxy", rh["metrics"])
 
 
 if __name__ == "__main__":

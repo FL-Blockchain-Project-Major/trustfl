@@ -60,6 +60,42 @@ class TestSignerAndVerifier(unittest.TestCase):
         result = verifier.verify(restored, expected_client_id="c1")
         self.assertTrue(result.ok, f"Roundtrip failed: {result}")
 
+    def test_int_metrics_roundtrip_matches_hash(self):
+        """Regression: client hashes int metrics; from_dict coerces to float.
+
+        ARTIFACT_HASH_MISMATCH fired on every real update because the client
+        signed ``boxes_evaluated=100`` (int) while the verifier re-hashed
+        ``100.0`` (float) after deserialisation.  The canonical hasher must
+        normalise both to the same representation.
+        """
+        _, signer, _, verifier = _setup()
+        # Real training output: integer-valued metrics and example counts.
+        signed = signer.sign(
+            round_id=1,
+            model_version=MODEL_VER,
+            parameters=PARAMS,
+            num_examples=100,
+            metrics={"boxes_evaluated": 100, "loss": 0.3},
+        )
+        # Round-trip through the wire format — from_dict coerces to float.
+        wire = signed.to_dict()
+        self.assertIsInstance(wire["metrics"]["boxes_evaluated"], int)
+        restored = SignedUpdate.from_dict(wire)
+        self.assertEqual(restored.metrics["boxes_evaluated"], 100.0)
+        result = verifier.verify(restored, expected_client_id="c1")
+        self.assertTrue(result.ok, f"Int-metric roundtrip failed: {result}")
+
+        # Also confirm the canonical hash is identical for int vs float input.
+        from trustfl_crypto.canonical import canonical_artifact_bytes
+
+        int_bytes = canonical_artifact_bytes(
+            PARAMS, 100, {"boxes_evaluated": 100, "loss": 0.3}
+        )
+        float_bytes = canonical_artifact_bytes(
+            PARAMS, 100.0, {"boxes_evaluated": 100.0, "loss": 0.3}
+        )
+        self.assertEqual(int_bytes, float_bytes)
+
     # ------------------------------------------------------------------
     # Invalid signature
 

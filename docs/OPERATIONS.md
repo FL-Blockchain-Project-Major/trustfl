@@ -112,3 +112,58 @@ old-key signature audit trail.
 ZKP artifacts are standalone and are not used as coordinator admission proofs.
 Do not treat a stored proof’s validity field as verification; only a dedicated
 verifier may set it.
+
+## TLS / transport security
+
+See [DEPLOYMENT.md § 4](../DEPLOYMENT.md#4-tls-configuration) for the full TLS
+setup guide.  Quick reference:
+
+| Variable | Component | Purpose |
+| --- | --- | --- |
+| `COORDINATOR_TLS_CERT` | coordinator | Path to PEM server certificate |
+| `COORDINATOR_TLS_KEY` | coordinator | Path to PEM private key |
+| `FL_CA_BUNDLE` | client | CA bundle for coordinator certificate verification |
+| `COORDINATOR_CA_BUNDLE` | client | Legacy alias for `FL_CA_BUNDLE` |
+| `ENVIRONMENT` | client | Set to `production` to refuse non-loopback `http://` URLs |
+
+`ENVIRONMENT=production` causes the client agent to raise a `ValueError` at
+startup if the coordinator URL is a non-loopback `http://` address.  Loopback
+addresses (`127.x`, `::1`, `localhost`) are always permitted.
+
+## Enrollment allowlist
+
+`COORDINATOR_ENROLLMENT_ALLOWLIST` is a JSON object mapping client IDs to their
+base64-encoded Ed25519 public keys.  Example:
+
+```json
+{
+  "client-a": "base64encodedPublicKeyA==",
+  "client-b": "base64encodedPublicKeyB=="
+}
+```
+
+Set this environment variable on the coordinator.  Only listed clients may
+register; any attempt from an unknown ID or with a mismatched key is rejected.
+`COORDINATOR_INSECURE_DEV_AUTH=true` bypasses this check -- use only in
+disposable development environments.
+
+## Quorum and abort behaviour
+
+If the number of live clients drops below `FL_MIN_CLIENTS` during a round, the
+coordinator records the round as `FAILED` and aborts the federation.
+
+- Abort is logged at `ERROR` level with the reason.
+- The coordinator process exits with code `1`.
+- Rounds completed before the abort are preserved in the round history.
+
+## Artifact size limit
+
+The coordinator enforces `MAX_BODY_BYTES = 1_048_576` (1 MB).  Real YOLO
+weights exceed this limit.  See [DEPLOYMENT.md](../DEPLOYMENT.md#5-artifact-size-limit).
+
+## SimulatedDetector / accuracy_proxy
+
+`SimulatedDetector` (alias `YOLOModelWrapper`) is NOT a real YOLO model.  Its
+`accuracy_proxy`, `precision`, and `recall` values are formula-derived and must
+not be reported as mAP50 or mAP50-95.  See
+[DEPLOYMENT.md](../DEPLOYMENT.md#6-model-disclaimer--simulateddetector).

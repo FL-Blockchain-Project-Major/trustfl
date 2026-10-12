@@ -6,9 +6,13 @@ Each client:
 - Validates local dataset and annotations prior to training.
 - Participates in standard Flower lifecycle:
   1. Receives global parameters
-  2. Trains locally on VisDrone data partition
-  3. Evaluates performance (mAP50, mAP50-95, precision, recall)
+  2. Trains locally on VisDrone data partition (via SimulatedDetector — NOT real YOLO)
+  3. Evaluates performance on held-out val split (accuracy_proxy, precision, recall)
   4. Returns serialized parameters & metrics to coordinator
+
+NOTE: The ``SimulatedDetector`` class (aliased as ``YOLOModelWrapper``) is a pure-Python
+simulation that does NOT compute real mAP50 or mAP50-95. See
+``packages/ml_core/trustfl_ml/yolo_wrapper.py`` for the full disclaimer.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from __future__ import annotations
 from trustfl_core.flower_app import EvaluateIns, EvaluateRes, FitIns, FitRes, FlowerClient
 from trustfl_ml.config import ClientNodeConfig
 from trustfl_ml.dataset import VisDroneParser
-from trustfl_ml.yolo_wrapper import YOLOModelWrapper
+from trustfl_ml.yolo_wrapper import SimulatedDetector
 
 
 class TrustFLYOLOClient(FlowerClient):
@@ -33,7 +37,7 @@ class TrustFLYOLOClient(FlowerClient):
         # Validate dataset exists
         self.config.dataset_config.validate()
 
-        self.model = YOLOModelWrapper(
+        self.model = SimulatedDetector(
             model_name=config.training_config.model_name,
             num_classes=config.dataset_config.num_classes,
             seed=config.training_config.seed,
@@ -62,9 +66,10 @@ class TrustFLYOLOClient(FlowerClient):
             config=self.config.training_config,
         )
 
+        val_img_dir, val_ann_dir = self.config.dataset_config.get_val_dirs()
         val_metrics = self.model.evaluate_on_dataset(
-            images_dir=self.config.dataset_config.images_dir,
-            annotations_dir=self.config.dataset_config.annotations_dir,
+            images_dir=val_img_dir,
+            annotations_dir=val_ann_dir,
         )
 
         num_examples = train_metrics["samples_trained"]
@@ -72,8 +77,7 @@ class TrustFLYOLOClient(FlowerClient):
             "client_id": self.cid,
             "train_loss": train_metrics["train_loss"],
             "val_loss": val_metrics["loss"],
-            "map50": val_metrics["map50"],
-            "map50_95": val_metrics["map50_95"],
+            "accuracy_proxy": val_metrics["accuracy_proxy"],
             "precision": val_metrics["precision"],
             "recall": val_metrics["recall"],
             "total_boxes": train_metrics["total_boxes"],
@@ -95,9 +99,10 @@ class TrustFLYOLOClient(FlowerClient):
         """
         self.model.set_parameters(ins.parameters)
 
+        val_img_dir, val_ann_dir = self.config.dataset_config.get_val_dirs()
         val_metrics = self.model.evaluate_on_dataset(
-            images_dir=self.config.dataset_config.images_dir,
-            annotations_dir=self.config.dataset_config.annotations_dir,
+            images_dir=val_img_dir,
+            annotations_dir=val_ann_dir,
         )
 
         return EvaluateRes(
@@ -105,10 +110,9 @@ class TrustFLYOLOClient(FlowerClient):
             num_examples=val_metrics["boxes_evaluated"],
             metrics={
                 "client_id": self.cid,
-                "map50": val_metrics["map50"],
-                "map50_95": val_metrics["map50_95"],
+                "accuracy_proxy": val_metrics["accuracy_proxy"],
                 "precision": val_metrics["precision"],
                 "recall": val_metrics["recall"],
-                "accuracy": val_metrics["map50"],  # Map50 as accuracy proxy for Flower FedAvg
+                "accuracy": val_metrics["accuracy_proxy"],
             },
         )
