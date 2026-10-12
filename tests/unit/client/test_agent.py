@@ -33,7 +33,7 @@ class TestDistributedClientAgent:
         agent = _make_agent("http://unreachable:8100")
 
         # Mock _post to always return None (registration fails)
-        with patch.object(agent, '_post', return_value=None):
+        with patch.object(agent, "_post", return_value=None):
             agent.start_background_loop(wait_for_registration=True)
 
         # Agent should have set _stop_event and not started the background thread
@@ -57,7 +57,7 @@ class TestDistributedClientAgent:
                     return {"accepted": True}
             return None
 
-        with patch.object(agent, '_post', side_effect=mock_post):
+        with patch.object(agent, "_post", side_effect=mock_post):
             agent.start_background_loop(wait_for_registration=True)
 
         # Should have retried and succeeded
@@ -83,8 +83,10 @@ class TestDistributedClientAgent:
                 return {"is_active": False, "round_id": 3}
             return None
 
-        with patch.object(agent, '_post', side_effect=mock_post), \
-             patch.object(agent, '_get', side_effect=mock_get):
+        with (
+            patch.object(agent, "_post", side_effect=mock_post),
+            patch.object(agent, "_get", side_effect=mock_get),
+        ):
             agent.start_background_loop(wait_for_registration=True)
 
             # Wait for the background thread to run one iteration
@@ -117,8 +119,10 @@ class TestDistributedClientAgent:
                 return {}
             return None
 
-        with patch.object(agent, '_post', side_effect=mock_post), \
-             patch.object(agent, '_get', side_effect=mock_get):
+        with (
+            patch.object(agent, "_post", side_effect=mock_post),
+            patch.object(agent, "_get", side_effect=mock_get),
+        ):
             # Register manually so the background thread doesn't interfere
             assert agent.register()
             time.sleep(0.05)

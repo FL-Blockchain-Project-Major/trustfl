@@ -99,9 +99,7 @@ class DistributedClientAgent:
         self.connection_timeout = connection_timeout_seconds
         self.federation_id = federation_id
         self.ca_bundle = (
-            ca_bundle
-            or os.getenv("FL_CA_BUNDLE")
-            or os.getenv("COORDINATOR_CA_BUNDLE")
+            ca_bundle or os.getenv("FL_CA_BUNDLE") or os.getenv("COORDINATOR_CA_BUNDLE")
         )
         # Identity is durable by default.  Deployments should override this with
         # FL_IDENTITY_PATH (the Compose services mount a per-client key volume).

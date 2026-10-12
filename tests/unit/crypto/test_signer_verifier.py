@@ -88,9 +88,7 @@ class TestSignerAndVerifier(unittest.TestCase):
         # Also confirm the canonical hash is identical for int vs float input.
         from trustfl_crypto.canonical import canonical_artifact_bytes
 
-        int_bytes = canonical_artifact_bytes(
-            PARAMS, 100, {"boxes_evaluated": 100, "loss": 0.3}
-        )
+        int_bytes = canonical_artifact_bytes(PARAMS, 100, {"boxes_evaluated": 100, "loss": 0.3})
         float_bytes = canonical_artifact_bytes(
             PARAMS, 100.0, {"boxes_evaluated": 100.0, "loss": 0.3}
         )

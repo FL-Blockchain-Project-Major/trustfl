@@ -47,4 +47,3 @@ def test_fedavg_independent_of_arrival_order():
         assert res == res_base, f"FedAvg result differed for order: {order_ids}"
         bytes_order = canonical_artifact_bytes(res, sum(u["num_examples"] for u in updates), {})
         assert bytes_order == bytes_base, "Canonical artifact bytes differed across arrival orders"
-

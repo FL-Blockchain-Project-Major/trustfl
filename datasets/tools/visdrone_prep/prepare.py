@@ -159,8 +159,12 @@ if __name__ == "__main__":
     parser.add_argument("--clients", type=int, default=3, help="Number of clients")
     parser.add_argument("--samples-per-client", type=int, default=30, help="Samples per client")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for shuffling")
-    parser.add_argument("--dirichlet", action="store_true", help="Use Dirichlet distribution for non-IID partition")
-    parser.add_argument("--alpha", type=float, default=0.5, help="Dirichlet concentration parameter alpha")
+    parser.add_argument(
+        "--dirichlet", action="store_true", help="Use Dirichlet distribution for non-IID partition"
+    )
+    parser.add_argument(
+        "--alpha", type=float, default=0.5, help="Dirichlet concentration parameter alpha"
+    )
     args = parser.parse_args()
 
     partition_dataset(

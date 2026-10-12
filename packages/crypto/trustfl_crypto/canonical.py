@@ -136,7 +136,6 @@ def canonical_artifact_bytes(
     ).encode("utf-8")
 
 
-
 def hash_artifact(
     parameters: list,
     num_examples: int,

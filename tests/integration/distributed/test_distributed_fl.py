@@ -452,9 +452,7 @@ class TestDistributedFL(unittest.TestCase):
                     im.save(im_path)
                     ann_path = raw_annotations / f"sample_{idx:03d}.txt"
                     ann_path.write_text(
-                        "50,50,100,80,1,1,0,0\n"
-                        "160,120,60,60,1,4,0,0\n"
-                        "240,200,80,50,1,5,0,0\n",
+                        "50,50,100,80,1,1,0,0\n160,120,60,60,1,4,0,0\n240,200,80,50,1,5,0,0\n",
                         encoding="utf-8",
                     )
 
@@ -477,6 +475,7 @@ class TestDistributedFL(unittest.TestCase):
                 val_ann_dir: str,
             ):
                 """Build a real train callable using SimulatedDetector on actual VisDrone data."""
+
                 def train_fn(_round_id: int, global_params, _config):
                     model = SimulatedDetector()
                     if global_params:
@@ -498,11 +497,10 @@ class TestDistributedFL(unittest.TestCase):
                     )
                     # Only pass numeric metrics to coordinator
                     numeric_metrics = {
-                        k: float(v)
-                        for k, v in eval_metrics.items()
-                        if isinstance(v, (int, float))
+                        k: float(v) for k, v in eval_metrics.items() if isinstance(v, (int, float))
                     }
                     return model.get_parameters(), num_examples, numeric_metrics
+
                 return train_fn
 
             # Generate identities for 3 clients
@@ -555,8 +553,7 @@ class TestDistributedFL(unittest.TestCase):
 
                 deadline = time.time() + 30.0
                 while (
-                    time.time() < deadline
-                    and server.state.current_round <= server.state.num_rounds
+                    time.time() < deadline and server.state.current_round <= server.state.num_rounds
                 ):
                     for ag in agents:
                         ag.step()
