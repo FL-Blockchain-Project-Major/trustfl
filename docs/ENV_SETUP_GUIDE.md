@@ -1,0 +1,170 @@
+# TrustFL Environment Variables Configuration Guide
+
+This guide provides an exhaustive, production-ready specification for configuring environment variables across all TrustFL subsystems: **Coordinator**, **Clients**, **API Control Plane**, **Dashboard**, **Database**, **Storage (IPFS/Local)**, and **Blockchain (EVM)**.
+
+---
+
+## 1. Core Principles & Security Invariants
+
+1. **Zero-Git Principle**:
+   - **NEVER** commit `.env`, `.pem`, `.key`, or files containing private keys, API secrets, or passwords to version control.
+   - All secret material must be injected dynamically via environment variables, container secrets, or secret managers (e.g., HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager).
+2. **Environment Modes**:
+   - `ENVIRONMENT=development`: Permits SQLite, local loopback HTTP, default dev keys, and disposable fallback authentication.
+   - `ENVIRONMENT=production`: Enforces PostgreSQL, role-scoped API keys, Ed25519 client identity allowlisting (`COORDINATOR_ENROLLMENT_ALLOWLIST`), HTTPS/TLS for all non-loopback URLs, and strict CORS without wildcards.
+3. **Role-Scoped Access Control**:
+   - TrustFL separates API capabilities into `read` (GET/HEAD), `write` (POST/PUT), and `admin` (DELETE). Each tier requires a distinct cryptographic bearer secret in production.
+
+---
+
+## 2. Master Environment Variables Matrix
+
+| Variable Name | Component | Default | Required in Prod? | Description & Scope |
+| :--- | :--- | :--- | :--- | :--- |
+| **`ENVIRONMENT`** | Global | `development` | **YES** | Deployment mode (`development`, `staging`, `production`). Controls strict validation gates. |
+| **`DATABASE_URL`** | API / Coord | `sqlite:///./trustfl.db` | **YES** | SQLAlchemy database connection URI. Must be `postgresql+psycopg://...` in production. |
+| **`POSTGRES_USER`** | DB Container | `trustfl` | Recommended | Postgres administrative / application database username. |
+| **`POSTGRES_PASSWORD`**| DB Container | `trustfl` | **YES** | Postgres password (must be high-entropy in production). |
+| **`POSTGRES_DB`** | DB Container | `trustfl` | Recommended | Postgres database name. |
+| **`COORDINATOR_HOST`** | Coordinator | `0.0.0.0` | No | IP/Interface binding address for coordinator HTTP/HTTPS server. |
+| **`COORDINATOR_PORT`** | Coordinator | `8100` | No | Listening port for coordinator server. |
+| **`FL_FEDERATION_ID`** | Coord / Client| `fed-default` | **YES** | Federation domain identifier (`fed_*`). Must match exactly between coordinator and clients. |
+| **`FL_FEDERATION_NAME`**| Coordinator | `TrustFL Federation`| No | Human-readable name persisted to metadata database. |
+| **`FL_MIN_CLIENTS`** | Coordinator | `2` | **YES** | Quorum threshold: minimum registered clients required to start a training round. |
+| **`FL_NUM_ROUNDS`** | Coordinator | `3` | **YES** | Total target training rounds before the federation transitions to `DONE`. |
+| **`FL_ROUND_TIMEOUT_SECONDS`** | Coordinator | `60.0` | Recommended | Maximum duration allowed per round before proceeding with available submissions. |
+| **`FL_HEARTBEAT_TIMEOUT_SECONDS`**| Coordinator | `30.0` | Recommended | Client eviction threshold. Clients failing to heartbeat within this window are marked `OFFLINE`. |
+| **`COORDINATOR_REQUIRE_SIGNATURES`** | Coordinator | `true` (prod) | **YES** | Enforces Ed25519 digital signatures and artifact SHA-256 validation on all client updates. |
+| **`COORDINATOR_ENROLLMENT_ALLOWLIST`**| Coordinator | `{}` | **YES** | JSON dictionary mapping authorized client IDs to base64 Ed25519 public keys. |
+| **`COORDINATOR_INSECURE_DEV_AUTH`** | Coordinator | `false` | **NO (MUST BE FALSE)**| Bypasses public key allowlist. Permits legacy token auth. Strictly forbidden in production. |
+| **`COORDINATOR_ENROLLMENT_TOKEN`** | Coord / Client| *(empty)* | Dev/Staging | Shared secret bearer token used as secondary factor or dev authentication. |
+| **`COORDINATOR_TLS_CERT`** | Coordinator | *(unset)* | If direct TLS | Absolute path to PEM server TLS certificate (chain) for native HTTPS termination. |
+| **`COORDINATOR_TLS_KEY`** | Coordinator | *(unset)* | If direct TLS | Absolute path to PEM server private key for native HTTPS termination. |
+| **`FL_MAX_CLIENT_WEIGHT_SHARE`** | Coordinator | `0.5` | Recommended | FedAvg security clipping: maximum influence share any single client can exert in aggregation. |
+| **`FL_MAX_NUM_EXAMPLES_PER_UPDATE`** | Coordinator | `1000000` | Recommended | Hard input cap on client-reported sample count to prevent weight poisoning attacks. |
+| **`FL_FINALIZE_MAX_RETRIES`** | Coordinator | `5` | No | Maximum blockchain retry attempts on round finalization before freezing. |
+| **`FL_FINALIZE_RETRY_BASE_SECONDS`** | Coordinator | `1.0` | No | Exponential backoff base interval for blockchain transaction retries. |
+| **`FL_CLIENT_ID`** | Client | `client_001` | **YES** | Unique identifier for the edge client worker (`cli_*` format encouraged). |
+| **`FL_COORDINATOR_URL`** | Client | `http://127.0.0.1:8100` | **YES** | URL of coordinator. Must begin with `https://` in production unless loopback. |
+| **`FL_IDENTITY_PATH`** | Client | `~/.local/state/...` | **YES** | Absolute path to client's persistent Ed25519 private key (`private.pem`). |
+| **`FL_CA_BUNDLE`** | Client | *(system)* | If self-signed | Path to custom PEM CA certificate bundle to verify coordinator TLS certificates. |
+| **`FL_IMAGES_DIR`** | Client | *(unset)* | For real data | Directory containing local training image partition. |
+| **`FL_ANNOTATIONS_DIR`** | Client | *(unset)* | For real data | Directory containing local training bounding box annotations. |
+| **`FL_VAL_IMAGES_DIR`** | Client | *(unset)* | Optional | Directory containing local validation images. |
+| **`FL_VAL_ANNOTATIONS_DIR`**| Client | *(unset)* | Optional | Directory containing local validation annotations. |
+| **`FL_LOCAL_EPOCHS`** | Client | `1` | No | Number of local gradient steps / training epochs executed per round. |
+| **`FL_MAX_SAMPLES`** | Client | `50` | No | Maximum image samples processed per round. |
+| **`FL_POLL_INTERVAL_SECONDS`** | Client | `5.0` | No | Interval between client polling cycles for instructions and heartbeats. |
+| **`API_PORT`** | API | `8000` | No | Port on which the FastAPI control plane listens. |
+| **`API_AUTH_REQUIRED`** | API | `true` (prod) | **YES** | Enforces HTTP Bearer authentication for all endpoints except `/health/`. |
+| **`API_READ_KEY`** | API / Dash | *(unset)* | **YES** | High-entropy bearer secret granting `GET` and `HEAD` access to control plane. |
+| **`API_WRITE_KEY`** | API | *(unset)* | **YES** | High-entropy bearer secret granting `POST` and `PUT` mutation access. |
+| **`API_ADMIN_KEY`** | API | *(unset)* | **YES** | High-entropy bearer secret granting `DELETE` and full administrative access. |
+| **`API_LEGACY_AUTH_COMPAT`** | API | `false` | No | Fallback compatibility for legacy single-secret `API_SECRET_KEY`. |
+| **`API_RATE_LIMIT`** | API | `100/minute` | Recommended | Global per-client IP sliding window rate limit. |
+| **`TRUSTED_PROXY_IPS`** | API | *(empty)* | If proxied | Comma-separated list of reverse proxy IP addresses for safe client IP header parsing. |
+| **`CORS_ALLOWED_ORIGINS`**| API | `http://localhost:3000`| **YES** | Comma-separated list of allowed browser origins. Wildcard `*` rejected in production. |
+| **`LOG_LEVEL`** | API | `INFO` | No | Standard Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| **`INTERNAL_API_URL`** | Dashboard | `http://api:8000` | Recommended | Internal URL used by the Next.js server-side API proxy to communicate with FastAPI. |
+| **`NEXT_PUBLIC_API_URL`** | Dashboard | `http://127.0.0.1:8000`| No | Public API fallback URL. |
+| **`DASHBOARD_ACCESS_KEY`** | Dashboard | *(unset)* | Recommended | Bearer secret required to query the Next.js dashboard server-side proxy. |
+| **`STORAGE_BACKEND`** | Coord / Storage | `local` | **YES** | Artifact storage engine: `ipfs` (decentralized) or `local` (filesystem dev). |
+| **`STORAGE_LOCAL_DIR`** | Coord / Storage | `/tmp/trustfl-artifacts`| Dev only | Local filesystem directory for storing model artifacts when `STORAGE_BACKEND=local`. |
+| **`IPFS_API_URL` / `IPFS_URL`** | Coord / Storage | `http://127.0.0.1:5001`| If IPFS | HTTP endpoint of the Kubo IPFS API (`POST /api/v0/add`, `cat`). |
+| **`IPFS_CONNECT_TIMEOUT_SECONDS`**| Storage | `5` | No | Socket connection timeout for IPFS HTTP requests. |
+| **`IPFS_READ_TIMEOUT_SECONDS`** | Storage | `30` | No | Read response timeout for IPFS HTTP requests. |
+| **`BLOCKCHAIN_ENABLED`** | Coordinator | `false` | Recommended | Toggles on-chain audit trail logging via EVM smart contracts. |
+| **`BLOCKCHAIN_RPC_URL`** | Coord / Web3 | `http://127.0.0.1:8545`| If on-chain | JSON-RPC provider endpoint for the target Ethereum network / roll-up. |
+| **`COORDINATOR_PRIVATE_KEY`**| Coord / Web3 | *(placeholder)* | If on-chain | EVM private key (`0x...`) used by coordinator to sign smart contract transactions. |
+| **`BLOCKCHAIN_CONTRACTS_JSON`**| Coordinator | *(path)* | If on-chain | Path to deployment manifest containing contract addresses and ABIs. |
+
+---
+
+## 3. Subsystem Configuration Details
+
+### 3.1. Database Subsystem
+
+In production, TrustFL strictly rejects SQLite:
+```python
+# Validation rule in apps/api/api/db/session.py:
+if ENVIRONMENT == "production" and db_url.startswith("sqlite"):
+    raise RuntimeError("Production requires a PostgreSQL DATABASE_URL")
+```
+
+- **Format**: `postgresql+psycopg://<USER>:<PASSWORD>@<HOST>:<PORT>/<DATABASE>`
+- Ensure PostgreSQL has SSL enabled in cloud environments (`?sslmode=require`).
+- Run database migrations before starting services:
+  ```bash
+  alembic -c apps/api/alembic.ini upgrade head
+  ```
+
+### 3.2. Cryptographic Client Identity & Enrollment Allowlist
+
+In production, coordinator enrollment requires:
+1. An operator-provisioned allowlist in `COORDINATOR_ENROLLMENT_ALLOWLIST`.
+2. A cryptographic proof of possession during registration.
+3. Ed25519 signatures on all subsequent HTTP requests (`X-TrustFL-Signature`, `X-TrustFL-Timestamp`, `X-TrustFL-Nonce`).
+
+#### Generating Keys and the Allowlist
+
+Use this Python one-liner to generate an Ed25519 key pair for a client:
+```bash
+python3 -c "
+from packages.crypto.trustfl_crypto.keys import ClientIdentity
+from pathlib import Path
+
+cid = 'client_001'
+key_path = Path('/var/lib/trustfl/keys') / cid / 'private.pem'
+ident = ClientIdentity.load_or_generate(cid, key_path)
+print(f'Client ID: {cid}')
+print(f'Public Key (Base64): {ident.public_key_b64}')
+print(f'Private Key written to: {key_path}')
+"
+```
+
+To configure the coordinator, assemble the generated public keys into JSON:
+```bash
+export COORDINATOR_ENROLLMENT_ALLOWLIST='{"client_001":"base64_pubkey_1==","client_002":"base64_pubkey_2=="}'
+```
+
+### 3.3. API Control Plane & Role-Scoped Keys
+
+The API gateway enforces role-based separation based on the HTTP method:
+- `GET`, `HEAD` $\rightarrow$ requires `API_READ_KEY` (or `API_ADMIN_KEY`)
+- `POST`, `PUT` $\rightarrow$ requires `API_WRITE_KEY` (or `API_ADMIN_KEY`)
+- `DELETE` $\rightarrow$ requires `API_ADMIN_KEY`
+
+Generate secure 256-bit random hex keys using `openssl`:
+```bash
+export API_READ_KEY=$(openssl rand -hex 32)
+export API_WRITE_KEY=$(openssl rand -hex 32)
+export API_ADMIN_KEY=$(openssl rand -hex 32)
+```
+
+Clients calling the API must include the header:
+```http
+Authorization: Bearer <CONFIGURED_KEY>
+```
+
+### 3.4. Next.js Dashboard Configuration
+
+The Next.js dashboard uses a server-side proxy route (`/app/api/dashboard/[...path]/route.ts`) to query the API. This guarantees that **production API secrets are never delivered to client web browsers**:
+
+- Set `INTERNAL_API_URL=http://api:8000` (container internal network) or `https://api.internal.trustfl.io`.
+- Set `API_READ_KEY` on the dashboard container so the proxy can authenticate to the FastAPI backend.
+- (Optional) Set `DASHBOARD_ACCESS_KEY` to password-protect the dashboard web interface itself.
+
+---
+
+## 4. Production Security Checklist
+
+- [ ] `ENVIRONMENT=production` is set across all containers/processes.
+- [ ] `COORDINATOR_INSECURE_DEV_AUTH=false` is verified on the coordinator.
+- [ ] `COORDINATOR_REQUIRE_SIGNATURES=true` is set.
+- [ ] `COORDINATOR_ENROLLMENT_ALLOWLIST` contains explicit mappings for every valid client.
+- [ ] No placeholder values (`CHANGE_ME_IN_PRODUCTION`, `0xYOUR_PRIVATE_KEY_HERE`) remain.
+- [ ] `DATABASE_URL` points to an authenticated, managed PostgreSQL cluster.
+- [ ] `CORS_ALLOWED_ORIGINS` specifies exact HTTPS production domains without wildcards.
+- [ ] `COORDINATOR_PRIVATE_KEY` is loaded securely via KMS or container secret injection.
+- [ ] `FL_COORDINATOR_URL` uses `https://` for all remote network calls.
+
