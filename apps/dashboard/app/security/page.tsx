@@ -17,7 +17,9 @@ export default async function SecurityPage() {
       }
       bctx = await fetchAPI('/blockchain/transactions');
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error fetching security page data:', err);
+  }
 
   const verifiedUpdates = updates.filter(u => u.status === 'VERIFIED' || u.status === 'AGGREGATED').length;
   const rejectedUpdates = updates.filter(u => u.status === 'REJECTED').length;

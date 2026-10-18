@@ -100,8 +100,8 @@ services:
       # Client keys are generated into development volumes, so this disposable
       # Compose stack must opt in explicitly to legacy enrollment.
       - COORDINATOR_INSECURE_DEV_AUTH=${COORDINATOR_INSECURE_DEV_AUTH:-true}
-      - FL_MIN_CLIENTS=2
-      - FL_NUM_ROUNDS=3
+      - FL_MIN_CLIENTS=${FL_MIN_CLIENTS:-2}
+      - FL_NUM_ROUNDS=${FL_NUM_ROUNDS:-3}
       - COORDINATOR_PORT=8100
       - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
       - IPFS_URL=http://ipfs:5001
@@ -143,8 +143,15 @@ services:
       - FL_COORDINATOR_URL=http://coordinator:8100
       - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
       - FL_IDENTITY_PATH=/var/lib/trustfl/keys/client_001/private.pem
+      - FL_IMAGES_DIR=${CLIENT_1_IMAGES_DIR:-/data/partitions/client_001/train/images}
+      - FL_ANNOTATIONS_DIR=${CLIENT_1_ANNOTATIONS_DIR:-/data/partitions/client_001/train/annotations}
+      - FL_LOCAL_EPOCHS=${FL_LOCAL_EPOCHS:-1}
+      - FL_MAX_SAMPLES=${FL_MAX_SAMPLES:-50}
+      - FL_POLL_INTERVAL_SECONDS=${FL_POLL_INTERVAL_SECONDS:-3.0}
     volumes:
       - client_1_keys:/var/lib/trustfl/keys
+      - ${VISDRONE_DATA_DIR:-/home/sayam/Desktop/project-data/VisDrone2019-DET-val}:/data/raw:ro
+      - ${VISDRONE_PARTITIONS_DIR:-./datasets/processed/partitions}:/data/partitions:ro
     depends_on:
       coordinator:
         condition: service_healthy
@@ -159,8 +166,15 @@ services:
       - FL_COORDINATOR_URL=http://coordinator:8100
       - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
       - FL_IDENTITY_PATH=/var/lib/trustfl/keys/client_002/private.pem
+      - FL_IMAGES_DIR=${CLIENT_2_IMAGES_DIR:-/data/partitions/client_002/train/images}
+      - FL_ANNOTATIONS_DIR=${CLIENT_2_ANNOTATIONS_DIR:-/data/partitions/client_002/train/annotations}
+      - FL_LOCAL_EPOCHS=${FL_LOCAL_EPOCHS:-1}
+      - FL_MAX_SAMPLES=${FL_MAX_SAMPLES:-50}
+      - FL_POLL_INTERVAL_SECONDS=${FL_POLL_INTERVAL_SECONDS:-3.0}
     volumes:
       - client_2_keys:/var/lib/trustfl/keys
+      - ${VISDRONE_DATA_DIR:-/home/sayam/Desktop/project-data/VisDrone2019-DET-val}:/data/raw:ro
+      - ${VISDRONE_PARTITIONS_DIR:-./datasets/processed/partitions}:/data/partitions:ro
     depends_on:
       coordinator:
         condition: service_healthy
@@ -169,11 +183,17 @@ services:
     build:
       context: ./apps/dashboard
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
+        - NEXT_PUBLIC_DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
     environment:
+      - HOSTNAME=0.0.0.0
       - INTERNAL_API_URL=http://api:8000
       - API_SECRET_KEY=${API_SECRET_KEY:-}
       - API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
       - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
+      - NEXT_PUBLIC_API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
+      - NEXT_PUBLIC_DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

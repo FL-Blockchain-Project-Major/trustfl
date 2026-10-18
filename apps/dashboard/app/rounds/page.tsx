@@ -16,7 +16,9 @@ export default async function RoundsPage() {
 
       bctx = await fetchAPI('/blockchain/transactions');
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error fetching rounds page data:', err);
+  }
 
   return (
     <div className="space-y-6">

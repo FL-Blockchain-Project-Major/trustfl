@@ -83,12 +83,19 @@ export default function OperationsConsole() {
     setError("");
     try {
       const get = async (endpoint: string) => {
-        const response = await fetch(`/api/dashboard${endpoint}`, { cache: "no-store" });
+        const headers: HeadersInit = {
+          Accept: "application/json",
+        };
+        const readKey = process.env.NEXT_PUBLIC_API_READ_KEY || process.env.NEXT_PUBLIC_DASHBOARD_ACCESS_KEY;
+        if (readKey) {
+          headers["Authorization"] = `Bearer ${readKey}`;
+        }
+        const response = await fetch(`/api/dashboard${endpoint}`, { cache: "no-store", headers });
         if (!response.ok) throw new Error(`Dashboard API returned ${response.status}`);
         const payload = await response.json();
         return payload.data || [];
       };
-      const nextFederations = await get("/federations/?limit=100");
+      const nextFederations = await get("/federations?limit=100");
       const federationId = selectedFederation || String(nextFederations[0]?.id || "");
       const [clients, rounds, updates, artifacts, transactions] = federationId
         ? await Promise.all([

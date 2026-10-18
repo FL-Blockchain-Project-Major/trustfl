@@ -19,7 +19,9 @@ export default async function ClientsPage() {
         proofs.push(...uProofs);
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error fetching clients page data:', err);
+  }
 
   return (
     <div className="space-y-6">

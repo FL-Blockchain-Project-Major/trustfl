@@ -37,6 +37,7 @@ TrustFL/
 
 For complete architectural details and security invariants, consult [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 For environment variable configuration, consult [docs/ENV_SETUP_GUIDE.md](docs/ENV_SETUP_GUIDE.md).
+For Scenario 1 step-by-step execution on real VisDrone data, consult [docs/SCENARIO_1_WALKTHROUGH.md](docs/SCENARIO_1_WALKTHROUGH.md).
 For multi-device and network deployment instructions (LAN/WAN/Localhost), consult [docs/DEPLOYMENT_SCENARIOS.md](docs/DEPLOYMENT_SCENARIOS.md).
 For dashboard usage, consult [docs/DASHBOARD.md](docs/DASHBOARD.md). For operations
 and production boundaries, consult [docs/OPERATIONS.md](docs/OPERATIONS.md) and

@@ -75,6 +75,7 @@ def _build_train_fn(
         return synthetic_train_fn
 
     try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "packages" / "ml_core"))
         sys.path.insert(0, "/app/packages/ml_core")
         from trustfl_ml.config import TrainingConfig
         from trustfl_ml.yolo_wrapper import SimulatedDetector

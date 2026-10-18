@@ -8,7 +8,9 @@ export default async function ModelsPage() {
     if (federations.length > 0) {
       artifacts = await fetchAPI(`/artifacts/federation/${federations[0].id}`);
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error fetching models page data:', err);
+  }
 
   return (
     <div className="space-y-6">
