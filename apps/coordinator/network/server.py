@@ -199,6 +199,7 @@ class CoordinatorState:
         self._inflight_nonces: set[str] = set()
         self._inflight_registrations: set[str] = set()
         self._aggregation_in_progress = False
+        self._round_active = False
 
         # History of completed rounds
         self.round_history: list[dict[str, Any]] = []
@@ -234,16 +235,18 @@ class CoordinatorState:
                     if hash_parameters(restored_parameters) != artifact["model_version"]:
                         raise ValueError("stored global-model version does not match artifact")
                     self.global_parameters = restored_parameters
-                if 0 < self.current_round <= self.num_rounds and self.require_signatures:
-                    verifier_state = (
-                        recovery.get("verifier", {}) if isinstance(recovery, dict) else {}
-                    )
-                    if verifier_state:
-                        self.update_verifier.restore_state(verifier_state)
-                    else:
-                        self.update_verifier.set_round(
-                            self.current_round, set(INITIAL_MODEL_VERSIONS)
+                if 0 < self.current_round <= self.num_rounds:
+                    self._round_active = True
+                    if self.require_signatures:
+                        verifier_state = (
+                            recovery.get("verifier", {}) if isinstance(recovery, dict) else {}
                         )
+                        if verifier_state:
+                            self.update_verifier.restore_state(verifier_state)
+                        else:
+                            self.update_verifier.set_round(
+                                self.current_round, set(INITIAL_MODEL_VERSIONS)
+                            )
                 if self.current_round > self.num_rounds:
                     self._done_event.set()
                 logger.info(
@@ -331,6 +334,9 @@ class CoordinatorState:
             logger.info("Client registered: %s", cid)
             if started_round:
                 self._start_round_durable(started_round, INITIAL_MODEL_VERSION)
+                with self.lock:
+                    self._round_active = True
+                    self.round_start_time = time.time()
             return True
         finally:
             with self.lock:
@@ -360,6 +366,8 @@ class CoordinatorState:
             is_active = (
                 self.current_round > 0
                 and self.current_round <= self.num_rounds
+                and self._round_active
+                and not self._aggregation_in_progress
                 and cid not in self.pending_updates
             )
             return {
@@ -402,12 +410,13 @@ class CoordinatorState:
             if cid not in self.registered_clients:
                 logger.warning("Rejecting update from unknown client %s", cid)
                 return False
-            if round_id != self.current_round:
+            if round_id != self.current_round or not self._round_active:
                 logger.warning(
-                    "Stale update from %s: round %d (current %d)",
+                    "Stale or inactive update from %s: round %d (current %d, active %s)",
                     cid,
                     round_id,
                     self.current_round,
+                    self._round_active,
                 )
                 return False
             if cid in self.pending_updates or cid in self._inflight_updates:
@@ -685,6 +694,7 @@ class CoordinatorState:
             if (
                 self.current_round > 0
                 and self.current_round <= self.num_rounds
+                and self._round_active
                 and self.round_start_time is not None
                 and (
                     now - self.round_start_time > self.round_timeout_seconds
@@ -721,6 +731,7 @@ class CoordinatorState:
             if self._aggregation_in_progress or not (0 < self.current_round <= self.num_rounds):
                 return
             self._aggregation_in_progress = True
+            self._round_active = False
             round_id = self.current_round
             updates = list(self.pending_updates.values())
         try:
@@ -805,19 +816,24 @@ class CoordinatorState:
                     )
                     self._save_recovery_locked()
                     return
-                self.pending_updates.clear()
-                self.current_round += 1
-                if self.current_round > self.num_rounds:
+                if round_id >= self.num_rounds:
+                    self.pending_updates.clear()
+                    self.current_round += 1
+                    self._round_active = False
                     self._done_event.set()
+                    self._save_recovery_locked()
                     return
-                self.round_start_time = time.time()
-                if self.require_signatures:
-                    self.update_verifier.set_round(
-                        self.current_round, {hash_parameters(self.global_parameters)}
-                    )
-                next_round = self.current_round
+                next_round = round_id + 1
                 model_version = hash_parameters(self.global_parameters)
             self._start_round_durable(next_round, model_version)
+            with self.lock:
+                self.pending_updates.clear()
+                self.current_round = next_round
+                self.round_start_time = time.time()
+                if self.require_signatures:
+                    self.update_verifier.set_round(self.current_round, {model_version})
+                self._round_active = True
+                self._save_recovery_locked()
         finally:
             with self.lock:
                 self._aggregation_in_progress = False
@@ -833,22 +849,8 @@ class CoordinatorState:
         )
         if succeeded and self.persistence:
             self.persistence.finalize_round(round_id)
-        with self.lock:
-            if succeeded:
-                self._finalization_pending = False
-                self._finalization_attempts = 0
-                self._next_finalization_retry = None
-                self.pending_updates.clear()
-                self.current_round += 1
-                if self.current_round <= self.num_rounds:
-                    self.round_start_time = time.time()
-                    if self.require_signatures:
-                        self.update_verifier.set_round(self.current_round, {model_version})
-                    next_round = self.current_round
-                else:
-                    self._done_event.set()
-                    next_round = 0
-            else:
+        if not succeeded:
+            with self.lock:
                 self._finalization_attempts += 1
                 self._finalization_pending = self._finalization_attempts < FINALIZE_MAX_RETRIES
                 self._next_finalization_retry = time.time() + FINALIZE_RETRY_BASE_SECONDS * (
@@ -856,9 +858,33 @@ class CoordinatorState:
                 )
                 if not self._finalization_pending:
                     self._terminal_error = "blockchain finalization retry budget exhausted"
+                self._save_recovery_locked()
+            return
+
+        with self.lock:
+            self._finalization_pending = False
+            self._finalization_attempts = 0
+            self._next_finalization_retry = None
+            if round_id >= self.num_rounds:
+                self.pending_updates.clear()
+                self.current_round += 1
+                self._round_active = False
+                self._done_event.set()
+                self._save_recovery_locked()
+                return
+            next_round = round_id + 1
+            next_model_version = hash_parameters(self.global_parameters)
+
+        self._start_round_durable(next_round, next_model_version)
+
+        with self.lock:
+            self.pending_updates.clear()
+            self.current_round = next_round
+            self.round_start_time = time.time()
+            if self.require_signatures:
+                self.update_verifier.set_round(self.current_round, {next_model_version})
+            self._round_active = True
             self._save_recovery_locked()
-        if succeeded and next_round:
-            self._start_round_durable(next_round, model_version)
 
     def _start_next_round_if_ready_locked(self) -> None:
         """Start round 1 when enough clients have registered."""
@@ -963,6 +989,7 @@ class CoordinatorState:
         """Abort the federation cleanly and unblock waiters."""
         self.aborted = True
         self.abort_reason = reason
+        self._round_active = False
         if record is not None:
             self.round_history.append(record)
         self.pending_updates.clear()
@@ -1027,6 +1054,7 @@ class CoordinatorState:
         self.current_round += 1
         if self.current_round > self.num_rounds:
             logger.info("All %d rounds completed.", self.num_rounds)
+            self._round_active = False
             self._done_event.set()
         else:
             self.round_start_time = time.time()
@@ -1056,6 +1084,7 @@ class CoordinatorState:
                     if self.global_parameters
                     else INITIAL_MODEL_VERSION,
                 )
+            self._round_active = True
             logger.info("Round %d started.", self.current_round)
 
     # ------------------------------------------------------------------
