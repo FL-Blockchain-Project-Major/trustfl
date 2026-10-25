@@ -91,12 +91,16 @@ def generate_sample_dataset(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate synthetic VisDrone raw sample dataset")
     parser.add_argument(
+        "--out-dir",
         "--output-dir",
+        dest="output_dir",
         default="datasets/sample",
         help="Target directory for generated dataset root",
     )
     parser.add_argument(
+        "--num-images",
         "--train-samples",
+        dest="train_samples",
         type=int,
         default=10,
         help="Number of training samples to generate",

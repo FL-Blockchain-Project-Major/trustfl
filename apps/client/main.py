@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import signal
 import sys
 import time
@@ -68,6 +69,8 @@ def _build_train_fn(
     max_samples: int,
     val_images_dir: str = "",
     val_annotations_dir: str = "",
+    client_index: int = 0,
+    num_clients: int = 1,
 ) -> Any:
     """
     Build a training callable compatible with DistributedClientAgent.
@@ -125,6 +128,8 @@ def _build_train_fn(
                 annotations_dir=annotations_dir,
                 config=train_cfg,
                 max_samples=max_samples,
+                client_index=client_index,
+                num_clients=num_clients,
             )
             # Must be the actual number of samples used, never max_samples
             num_examples = train_metrics["samples_trained"]
@@ -138,6 +143,8 @@ def _build_train_fn(
                 images_dir=val_target_images,
                 annotations_dir=val_target_ann,
                 max_samples=min(max_samples, 10),
+                client_index=client_index,
+                num_clients=num_clients,
             )
             return model.get_parameters(), num_examples, eval_metrics
 
@@ -266,6 +273,11 @@ def main() -> None:
             )
             sys.exit(1)
 
+    client_idx = 0
+    match = re.search(r"(\d+)", client_id)
+    if match:
+        client_idx = max(0, int(match.group(1)) - 1)
+
     train_fn = _build_train_fn(
         images_dir,
         annotations_dir,
@@ -273,6 +285,8 @@ def main() -> None:
         args.max_samples,
         val_images_dir=val_images_dir,
         val_annotations_dir=val_annotations_dir,
+        client_index=client_idx,
+        num_clients=args.num_clients,
     )
 
     from network.agent import DistributedClientAgent

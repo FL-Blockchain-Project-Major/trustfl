@@ -76,6 +76,8 @@ class SimulatedDetector:
         annotations_dir: Path | str,
         config: TrainingConfig,
         max_samples: int = 20,
+        client_index: int = 0,
+        num_clients: int = 1,
     ) -> dict[str, Any]:
         """
         Executes local training on client VisDrone data.
@@ -84,9 +86,16 @@ class SimulatedDetector:
         img_dir = Path(images_dir)
         ann_dir = Path(annotations_dir)
 
-        image_files = sorted(
+        all_image_files = sorted(
             [f for f in img_dir.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png"}]
-        )[:max_samples]
+        )
+        if num_clients > 1:
+            eff_idx = client_index % num_clients
+            image_files = [f for i, f in enumerate(all_image_files) if i % num_clients == eff_idx][
+                :max_samples
+            ]
+        else:
+            image_files = all_image_files[:max_samples]
 
         total_loss = 0.0
         samples_count = 0
@@ -149,6 +158,8 @@ class SimulatedDetector:
         images_dir: Path | str,
         annotations_dir: Path | str,
         max_samples: int = 15,
+        client_index: int = 0,
+        num_clients: int = 1,
     ) -> dict[str, float]:
         """
         Evaluates current parameters against the validation partition.
@@ -158,9 +169,16 @@ class SimulatedDetector:
         img_dir = Path(images_dir)
         ann_dir = Path(annotations_dir)
 
-        image_files = sorted(
+        all_image_files = sorted(
             [f for f in img_dir.iterdir() if f.suffix.lower() in {".jpg", ".jpeg", ".png"}]
-        )[:max_samples]
+        )
+        if num_clients > 1:
+            eff_idx = client_index % num_clients
+            image_files = [f for i, f in enumerate(all_image_files) if i % num_clients == eff_idx][
+                :max_samples
+            ]
+        else:
+            image_files = all_image_files[:max_samples]
 
         total_err = 0.0
         total_eval_boxes = 0

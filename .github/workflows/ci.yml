@@ -246,14 +246,14 @@ jobs:
           PY
           }
 
-          export FL_NUM_CLIENTS=2
-          export FL_MIN_CLIENTS=2
+          export FL_NUM_CLIENTS=3
+          export FL_MIN_CLIENTS=3
 
           # Generate sample dataset BEFORE starting the stack so it is present
           # when client containers mount the volume.  Falls back gracefully to an
           # empty directory; clients will use the synthetic training function.
-          echo "Generating sample dataset..."
-          python scripts/generate_sample_dataset.py --out-dir ./datasets/sample --num-images 30 \
+          echo "Generating sample dataset (30 mock images for 3 clients)..."
+          python scripts/generate_sample_dataset.py --out-dir ./datasets/sample --train-samples 30 \
             || mkdir -p ./datasets/sample/images ./datasets/sample/annotations
 
           echo "Starting Compose stack..."
