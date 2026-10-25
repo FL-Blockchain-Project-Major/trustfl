@@ -170,6 +170,8 @@ class CoordinatorState:
         storage_client=None,
         persistence=None,
     ) -> None:
+        if not isinstance(min_clients, int) or isinstance(min_clients, bool) or min_clients < 1:
+            raise ValueError(f"min_clients must be an integer >= 1 (got {min_clients!r})")
         self.min_clients = min_clients
         self.num_rounds = num_rounds
         self.round_timeout_seconds = round_timeout_seconds
@@ -1228,11 +1230,26 @@ class _Handler(BaseHTTPRequestHandler):
             pubkey, _wire_message("trustfl-registration-v1", cid, pubkey, nonce), signature
         ):
             return False
-        try:
-            allowlist = json.loads(os.getenv("COORDINATOR_ENROLLMENT_ALLOWLIST", "{}"))
-        except json.JSONDecodeError:
-            logger.error("COORDINATOR_ENROLLMENT_ALLOWLIST is not valid JSON")
-            return False
+        allowlist: dict[str, str] = {}
+        allowlist_raw = os.getenv("COORDINATOR_ENROLLMENT_ALLOWLIST")
+        if allowlist_raw:
+            try:
+                allowlist = json.loads(allowlist_raw)
+            except json.JSONDecodeError:
+                logger.error("COORDINATOR_ENROLLMENT_ALLOWLIST is not valid JSON")
+                return False
+        allowlist_path = os.getenv("COORDINATOR_ENROLLMENT_ALLOWLIST_FILE")
+        if not allowlist and allowlist_path and os.path.isfile(allowlist_path):
+            try:
+                with open(allowlist_path, encoding="utf-8") as f:
+                    allowlist = json.load(f)
+            except Exception as exc:
+                logger.error(
+                    "Failed to read COORDINATOR_ENROLLMENT_ALLOWLIST_FILE '%s': %s",
+                    allowlist_path,
+                    exc,
+                )
+                return False
         expected_key = allowlist.get(cid)
         # An explicit per-client allow-list is mandatory outside explicitly
         # insecure development.  A shared token is only a second dev factor.

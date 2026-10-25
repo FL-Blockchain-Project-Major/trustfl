@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -148,12 +149,15 @@ class VisDroneParser:
                     f"Failed to read annotation file {ann_path}: {e}"
                 ) from e
 
+            pair_boxes = 0
             for line in content.splitlines():
                 parsed = cls.parse_annotation_line(line, w, h)
                 if parsed is not None:
                     total_boxes += 1
+                    pair_boxes += 1
 
-            valid_pairs += 1
+            if pair_boxes > 0:
+                valid_pairs += 1
 
         if valid_pairs == 0:
             raise DatasetValidationError(
@@ -229,3 +233,134 @@ class VisDroneParser:
             converted_count += 1
 
         return converted_count
+
+
+def resolve_and_validate_dataset(
+    dataset_dir: Path | str,
+    min_samples: int = 1,
+    check_images_readable: bool = True,
+) -> dict[str, Any]:
+    """
+    Resolve and validate a single host-side raw dataset root for TrustFL clients.
+
+    Supported directory layouts:
+      Layout 1 (standard VisDrone):
+        <dataset_dir>/
+          images/
+          annotations/
+
+      Layout 2 (train/val split):
+        <dataset_dir>/
+          train/images/
+          train/annotations/
+          val/images/        (optional)
+          val/annotations/   (optional)
+
+      Layout 3 (flat directory):
+        <dataset_dir>/
+          *.jpg | *.jpeg | *.png
+          *.txt
+
+    Validates:
+      - dataset_dir exists and is a directory
+      - image/annotation pairing and readability
+      - VisDrone bounding box annotation format
+      - usable sample count >= min_samples
+
+    Returns:
+      {
+          "train_images_dir": Path,
+          "train_annotations_dir": Path,
+          "val_images_dir": Path | None,
+          "val_annotations_dir": Path | None,
+          "stats": {
+              "total_images": int,
+              "valid_pairs": int,
+              "total_boxes": int,
+          },
+      }
+
+    Raises:
+      DatasetValidationError: If dataset directory is missing, layout is invalid,
+                              or samples are missing/corrupt.
+    """
+
+    dpath = Path(dataset_dir).resolve()
+    if not dpath.is_dir():
+        raise DatasetValidationError(
+            f"Dataset root directory not found or not a directory: {dpath}"
+        )
+
+    # Layout 1: images/ and annotations/
+    l1_img = dpath / "images"
+    l1_ann = dpath / "annotations"
+
+    # Layout 2: train/images and train/annotations
+    l2_img = dpath / "train" / "images"
+    l2_ann = dpath / "train" / "annotations"
+
+    val_img: Path | None = None
+    val_ann: Path | None = None
+
+    if l1_img.is_dir() and l1_ann.is_dir():
+        train_img = l1_img
+        train_ann = l1_ann
+        cand_val_img = dpath / "val" / "images"
+        cand_val_ann = dpath / "val" / "annotations"
+        if cand_val_img.is_dir() and cand_val_ann.is_dir():
+            val_img = cand_val_img
+            val_ann = cand_val_ann
+    elif l2_img.is_dir() and l2_ann.is_dir():
+        train_img = l2_img
+        train_ann = l2_ann
+        cand_val_img = dpath / "val" / "images"
+        cand_val_ann = dpath / "val" / "annotations"
+        if cand_val_img.is_dir() and cand_val_ann.is_dir():
+            val_img = cand_val_img
+            val_ann = cand_val_ann
+    else:
+        # Check Layout 3: flat directory with images and txt files directly
+        image_files = [
+            f
+            for f in dpath.iterdir()
+            if f.is_file() and f.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        ]
+        ann_files = [f for f in dpath.iterdir() if f.is_file() and f.suffix.lower() == ".txt"]
+        if image_files and ann_files:
+            train_img = dpath
+            train_ann = dpath
+        else:
+            raise DatasetValidationError(
+                f"Invalid dataset layout in '{dpath}'. Expected either 'images/' and 'annotations/' "
+                "subdirectories, 'train/images/' and 'train/annotations/', or paired image/annotation files."
+            )
+
+    stats = VisDroneParser.validate_dataset(
+        images_dir=train_img,
+        annotations_dir=train_ann,
+        check_images_readable=check_images_readable,
+    )
+
+    if stats["valid_pairs"] < min_samples:
+        raise DatasetValidationError(
+            f"Dataset in '{dpath}' has {stats['valid_pairs']} valid pairs, "
+            f"but at least {min_samples} usable samples are required."
+        )
+
+    # If val split exists, validate it as well (optional)
+    if val_img and val_ann:
+        try:
+            VisDroneParser.validate_dataset(
+                val_img, val_ann, check_images_readable=check_images_readable
+            )
+        except DatasetValidationError:
+            val_img = None
+            val_ann = None
+
+    return {
+        "train_images_dir": train_img,
+        "train_annotations_dir": train_ann,
+        "val_images_dir": val_img,
+        "val_annotations_dir": val_ann,
+        "stats": stats,
+    }

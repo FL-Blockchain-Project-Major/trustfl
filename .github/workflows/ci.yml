@@ -93,10 +93,10 @@ jobs:
 
       - name: Build images
         run: |
-          docker build -t trustfl-api -f apps/api/Dockerfile .
-          docker build -t trustfl-coordinator -f apps/coordinator/Dockerfile .
-          docker build -t trustfl-client -f apps/client/Dockerfile .
-          docker build -t trustfl-dashboard apps/dashboard
+          docker build -t trustfl-api -t ghcr.io/sayam-1705/trustfl/api:ci -f apps/api/Dockerfile .
+          docker build -t trustfl-coordinator -t ghcr.io/sayam-1705/trustfl/coordinator:ci -f apps/coordinator/Dockerfile .
+          docker build -t trustfl-client -t ghcr.io/sayam-1705/trustfl/client:ci -f apps/client/Dockerfile .
+          docker build -t trustfl-dashboard -t ghcr.io/sayam-1705/trustfl/dashboard:ci apps/dashboard
 
       - name: Validate Compose configuration
         run: docker compose config
@@ -117,6 +117,8 @@ jobs:
           export COORDINATOR_HOST_PORT=18100
           export API_AUTH_REQUIRED=true API_READ_KEY=ci-read API_WRITE_KEY=ci-write API_ADMIN_KEY=ci-admin
           export DASHBOARD_ACCESS_KEY=ci-dashboard COORDINATOR_ENROLLMENT_TOKEN=ci-coordinator
+          export FL_DATASET_DIR=./datasets/sample
+          export FL_NUM_CLIENTS=2
           # Compose's generated client keys are intentionally ephemeral.  The
           # E2E lifecycle therefore uses the documented explicit dev-only
           # enrollment compatibility mode; production never inherits this.
@@ -187,6 +189,7 @@ jobs:
 
             python - "$rounds" "$updates" "$transactions" <<'PY'
           import json
+          import os
           import sys
 
           rounds, updates, transactions = map(json.loads, sys.argv[1:])
@@ -204,12 +207,14 @@ jobs:
               for u in updates.get("data", [])
               if u.get("status") in {"VERIFIED", "AGGREGATED"} and "client_id" in u
           }
+          num_clients = int(os.environ.get("FL_NUM_CLIENTS", "2"))
+          expected_clients = {f"client_{i:03d}" for i in range(1, num_clients + 1)}
           for round_number in (1, 2, 3):
               round_clients = {u["client_id"] for u in updates.get("data", [])
                                if u.get("status") in {"VERIFIED", "AGGREGATED"}
                                and u.get("round_id") == f"fed-default_round{round_number}"}
-              if not {"client_001", "client_002"} <= round_clients:
-                  sys.exit(f"Round {round_number} missing verified/aggregated updates from both clients: {sorted(round_clients)}")
+              if not expected_clients <= round_clients:
+                  sys.exit(f"Round {round_number} missing verified/aggregated updates from expected clients {sorted(expected_clients)}: got {sorted(round_clients)}")
 
           confirmed_finalizations = {
               int(t["entity_id"])
@@ -232,8 +237,15 @@ jobs:
           PY
           }
 
+          export FL_NUM_CLIENTS=2
+          export FL_MIN_CLIENTS=2
+
           echo "Starting Compose stack..."
+          mkdir -p ./datasets/sample
           docker compose up --build -d
+
+          # Generate a minimal sample dataset for E2E (synthetic images + annotations)
+          python scripts/generate_sample_dataset.py --out-dir ./datasets/sample --num-images 30 2>/dev/null || mkdir -p ./datasets/sample/images ./datasets/sample/annotations
 
           echo "Waiting for services..."
           wait_for_url "http://localhost:8000/health/"

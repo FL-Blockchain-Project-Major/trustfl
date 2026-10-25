@@ -31,6 +31,11 @@ from .canonical import (
     hash_parameters,
 )
 from .keys import ClientIdentity, PublicKeyRegistry
+from .provision import (
+    claim_client_identity,
+    provision_client_identities,
+    validate_client_counts,
+)
 from .signer import SignedUpdate, UpdateSigner
 from .verifier import (
     NonceStore,
@@ -50,6 +55,10 @@ __all__ = [
     # keys
     "ClientIdentity",
     "PublicKeyRegistry",
+    # provision
+    "claim_client_identity",
+    "provision_client_identities",
+    "validate_client_counts",
     # signer
     "SignedUpdate",
     "UpdateSigner",

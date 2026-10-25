@@ -87,6 +87,7 @@ zk/keys/
 datasets/raw/
 datasets/processed/
 datasets/cache/
+datasets/sample/
 storage/uploads/
 storage/ipfs-local/
 

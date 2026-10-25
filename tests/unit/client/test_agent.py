@@ -8,13 +8,14 @@ from unittest.mock import patch
 import pytest
 
 from apps.client.network.agent import DistributedClientAgent
+from packages.crypto.trustfl_crypto.keys import ClientIdentity
 
 
 def _synthetic_train_fn(_round_id, _params, _config):
     return [[0.1, 0.2]], 50, {"loss": 0.5}
 
 
-def _make_agent(coordinator_url="http://127.0.0.1:8100"):
+def _make_agent(coordinator_url="http://127.0.0.1:8100", identity=None):
     return DistributedClientAgent(
         client_id="test-client",
         coordinator_url=coordinator_url,
@@ -24,6 +25,7 @@ def _make_agent(coordinator_url="http://127.0.0.1:8100"):
         retry_delay=0.01,
         training_timeout_seconds=1.0,
         connection_timeout_seconds=0.5,
+        identity=identity or ClientIdentity.generate("test-client"),
     )
 
 
@@ -150,6 +152,7 @@ class TestDistributedClientAgent:
             client_id="prod-client-loopback",
             coordinator_url="http://127.0.0.1:8100",
             train_fn=_synthetic_train_fn,
+            identity=ClientIdentity.generate("prod-client-loopback"),
         )
         assert ag_loopback.coordinator_url == "http://127.0.0.1:8100"
 
@@ -157,6 +160,7 @@ class TestDistributedClientAgent:
             client_id="prod-client-https",
             coordinator_url="https://remote-server.com:8100",
             train_fn=_synthetic_train_fn,
+            identity=ClientIdentity.generate("prod-client-https"),
         )
         assert ag_https.coordinator_url == "https://remote-server.com:8100"
 

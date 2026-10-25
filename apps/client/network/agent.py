@@ -108,17 +108,28 @@ class DistributedClientAgent:
         # Identity is durable by default.  Deployments should override this with
         # FL_IDENTITY_PATH (the Compose services mount a per-client key volume).
         # Keeping the client ID in the path prevents accidental key sharing.
-        default_identity_path = (
-            Path(os.getenv("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
-            / "trustfl"
-            / "keys"
-            / client_id
-            / "private.pem"
-        )
-        self.identity = identity or ClientIdentity.load_or_generate(
-            client_id,
-            Path(identity_path) if identity_path else default_identity_path,
-        )
+        raw_state_dir = Path(os.getenv("XDG_STATE_HOME", str(Path.home() / ".local" / "state")))
+        try:
+            raw_state_dir.mkdir(parents=True, exist_ok=True)
+            state_base = raw_state_dir
+        except OSError:
+            state_base = Path("/tmp/trustfl_state")
+            state_base.mkdir(parents=True, exist_ok=True)
+
+        default_identity_path = state_base / "trustfl" / "keys" / client_id / "private.pem"
+        target_identity_path = Path(identity_path) if identity_path else default_identity_path
+        if identity is not None:
+            self.identity = identity
+        else:
+            try:
+                self.identity = ClientIdentity.load_or_generate(client_id, target_identity_path)
+            except OSError:
+                logger.warning(
+                    "[%s] Key path %s is not writable; falling back to ephemeral in-memory identity",
+                    client_id,
+                    target_identity_path,
+                )
+                self.identity = ClientIdentity.generate(client_id)
         self.signer = UpdateSigner(self.identity, federation_id)
         self.enrollment_token = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
 

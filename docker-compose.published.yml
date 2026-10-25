@@ -1,0 +1,208 @@
+# TrustFL – Published-image Compose Stack
+#
+# Uses pre-built images from GHCR instead of building from source.
+# Requires TRUSTFL_VERSION to be set (defaults to "latest").
+#
+# Quickstart (clean machine):
+#   export TRUSTFL_VERSION=0.1.0
+#   cp .env.example .env   # edit secrets and FL_DATASET_DIR
+#   docker compose -f docker-compose.published.yml pull
+#   docker compose -f docker-compose.published.yml up
+#
+# Images are published automatically on tagged releases via
+# .github/workflows/publish.yml.
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trustfl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustfl}
+      POSTGRES_DB: ${POSTGRES_DB:-trustfl}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-trustfl} -d $${POSTGRES_DB:-trustfl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ipfs:
+    image: ipfs/kubo:v0.32.1
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ipfs_data:/data/ipfs
+    healthcheck:
+      test: ["CMD", "wget", "--post-data=", "-qO-", "http://localhost:5001/api/v0/id"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hardhat:
+    image: node:22.13-alpine
+    working_dir: /app
+    volumes:
+      - ./packages/contracts:/app
+    command: >
+      sh -c "npm ci && npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8545', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'net_version',params:[]})}).then(r=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  contract-deployer:
+    environment:
+      HARDHAT_RPC_URL: http://hardhat:8545
+    image: node:22.13-alpine
+    working_dir: /app
+    volumes:
+      - ./packages/contracts:/app
+      - contract_deployments:/app/deployments
+    command: >
+      sh -c "npm ci && npx hardhat compile &&
+      until wget -qO- --post-data='' http://hardhat:8545 >/dev/null 2>&1; do sleep 1; done &&
+      npx hardhat run scripts/deploy.js --network localhost"
+    depends_on:
+      hardhat:
+        condition: service_healthy
+
+  api:
+    image: ghcr.io/sayam-1705/trustfl/api:${TRUSTFL_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=development
+      - API_PORT=${API_PORT:-8000}
+      - API_AUTH_REQUIRED=true
+      - API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
+      - API_WRITE_KEY=${API_WRITE_KEY:-trustfl-write-dev}
+      - API_ADMIN_KEY=${API_ADMIN_KEY:-trustfl-admin-dev}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
+      - IPFS_URL=http://ipfs:5001
+      - WEB3_PROVIDER_URI=http://hardhat:8545
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ipfs:
+        condition: service_healthy
+      hardhat:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  client-init:
+    image: ghcr.io/sayam-1705/trustfl/client:${TRUSTFL_VERSION:-latest}
+    command: >
+      python -m trustfl_crypto.provision
+        --keys-dir /var/lib/trustfl/keys
+        --num-clients ${FL_NUM_CLIENTS:-2}
+        --min-clients ${FL_MIN_CLIENTS:-2}
+    environment:
+      - FL_NUM_CLIENTS=${FL_NUM_CLIENTS:-2}
+      - FL_MIN_CLIENTS=${FL_MIN_CLIENTS:-2}
+      - FL_KEYS_DIR=/var/lib/trustfl/keys
+    volumes:
+      - client_keys:/var/lib/trustfl/keys
+    restart: "no"
+
+  coordinator:
+    image: ghcr.io/sayam-1705/trustfl/coordinator:${TRUSTFL_VERSION:-latest}
+    environment:
+      - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
+      - COORDINATOR_REQUIRE_SIGNATURES=true
+      - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
+      - COORDINATOR_ENROLLMENT_ALLOWLIST_FILE=/var/lib/trustfl/keys/allowlist.json
+      - COORDINATOR_INSECURE_DEV_AUTH=${COORDINATOR_INSECURE_DEV_AUTH:-true}
+      - FL_MIN_CLIENTS=${FL_MIN_CLIENTS:-2}
+      - FL_NUM_CLIENTS=${FL_NUM_CLIENTS:-2}
+      - FL_NUM_ROUNDS=${FL_NUM_ROUNDS:-3}
+      - COORDINATOR_PORT=8100
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
+      - IPFS_URL=http://ipfs:5001
+      - IPFS_API_URL=http://ipfs:5001
+      - STORAGE_BACKEND=ipfs
+      - BLOCKCHAIN_ENABLED=true
+      - BLOCKCHAIN_RPC_URL=http://hardhat:8545
+      - BLOCKCHAIN_CONTRACTS_JSON=/contracts-deployments/localhost/contracts.json
+      - COORDINATOR_PRIVATE_KEY=${COORDINATOR_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+    volumes:
+      - contract_deployments:/contracts-deployments
+      - client_keys:/var/lib/trustfl/keys:ro
+    ports:
+      - "127.0.0.1:${COORDINATOR_HOST_PORT:-8100}:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      ipfs:
+        condition: service_healthy
+      hardhat:
+        condition: service_healthy
+      contract-deployer:
+        condition: service_completed_successfully
+      client-init:
+        condition: service_completed_successfully
+
+  client:
+    image: ghcr.io/sayam-1705/trustfl/client:${TRUSTFL_VERSION:-latest}
+    environment:
+      - FL_CLIENT_ID=auto
+      - FL_NUM_CLIENTS=${FL_NUM_CLIENTS:-2}
+      - FL_KEYS_DIR=/var/lib/trustfl/keys
+      - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
+      - FL_COORDINATOR_URL=http://coordinator:8100
+      - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
+      - FL_DATASET_DIR=/data/dataset
+      - FL_LOCAL_EPOCHS=${FL_LOCAL_EPOCHS:-1}
+      - FL_MAX_SAMPLES=${FL_MAX_SAMPLES:-50}
+      - FL_POLL_INTERVAL_SECONDS=${FL_POLL_INTERVAL_SECONDS:-3.0}
+    volumes:
+      - client_keys:/var/lib/trustfl/keys
+      - ${FL_DATASET_DIR:-./datasets/sample}:/data/dataset:ro
+    depends_on:
+      coordinator:
+        condition: service_healthy
+      client-init:
+        condition: service_completed_successfully
+    deploy:
+      replicas: ${FL_NUM_CLIENTS:-2}
+
+  dashboard:
+    image: ghcr.io/sayam-1705/trustfl/dashboard:${TRUSTFL_VERSION:-latest}
+    environment:
+      - HOSTNAME=0.0.0.0
+      - INTERNAL_API_URL=http://api:8000
+      - API_SECRET_KEY=${API_SECRET_KEY:-}
+      - API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
+      - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
+      - NEXT_PUBLIC_API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
+      - NEXT_PUBLIC_DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  ipfs_data:
+  contract_deployments:
+  client_keys:

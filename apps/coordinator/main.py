@@ -39,6 +39,7 @@ def main() -> None:
     parser.add_argument("--host", default=os.environ.get("COORDINATOR_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=_int_env("COORDINATOR_PORT", 8100))
     parser.add_argument("--min-clients", type=int, default=_int_env("FL_MIN_CLIENTS", 2))
+    parser.add_argument("--num-clients", type=int, default=_int_env("FL_NUM_CLIENTS", 0))
     parser.add_argument("--num-rounds", type=int, default=_int_env("FL_NUM_ROUNDS", 3))
     parser.add_argument(
         "--round-timeout",
@@ -51,6 +52,18 @@ def main() -> None:
         default=_float_env("FL_HEARTBEAT_TIMEOUT_SECONDS", 30.0),
     )
     args = parser.parse_args()
+
+    if args.min_clients < 1:
+        logger.error("Invalid configuration: FL_MIN_CLIENTS (%d) must be >= 1", args.min_clients)
+        sys.exit(1)
+    if args.num_clients > 0 and args.min_clients > args.num_clients:
+        logger.error(
+            "Invalid quorum configuration: FL_MIN_CLIENTS (%d) > FL_NUM_CLIENTS (%d). "
+            "Quorum requirement cannot exceed the number of configured workers.",
+            args.min_clients,
+            args.num_clients,
+        )
+        sys.exit(1)
 
     # Import here so the module is importable without network deps
     from network.server import CoordinatorServer

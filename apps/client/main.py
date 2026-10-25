@@ -2,13 +2,15 @@
 Client entry point (Docker / CLI).
 
 Usage:
-    python main.py --client-id CLIENT_001 --coordinator http://coordinator:8100
+    python main.py [--client-id CLIENT_001] [--coordinator http://coordinator:8100]
+                   [--dataset-dir /data/dataset]
                    [--images-dir /data/images] [--annotations-dir /data/ann]
                    [--epochs 1] [--max-samples 50] [--poll-interval 5]
+                   [--num-clients 2] [--keys-dir /var/lib/trustfl/keys]
 
 Environment variables (override CLI):
-    FL_CLIENT_ID, FL_COORDINATOR_URL, FL_IMAGES_DIR, FL_ANNOTATIONS_DIR,
-    FL_LOCAL_EPOCHS, FL_MAX_SAMPLES, FL_POLL_INTERVAL_SECONDS
+    FL_CLIENT_ID, FL_COORDINATOR_URL, FL_DATASET_DIR, FL_IMAGES_DIR, FL_ANNOTATIONS_DIR,
+    FL_LOCAL_EPOCHS, FL_MAX_SAMPLES, FL_POLL_INTERVAL_SECONDS, FL_NUM_CLIENTS, FL_KEYS_DIR
 """
 
 from __future__ import annotations
@@ -27,6 +29,24 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
 )
 logger = logging.getLogger("client.main")
+
+# Ensure package roots are in sys.path
+_repo_root = Path(__file__).resolve().parents[2]
+for _pkg in ("packages/crypto", "packages/ml_core", "packages/schemas"):
+    _p = str(_repo_root / _pkg)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+    _app_p = f"/app/{_pkg}"
+    if _app_p not in sys.path:
+        sys.path.insert(0, _app_p)
+
+from trustfl_crypto.keys import ClientIdentity  # noqa: E402
+from trustfl_crypto.provision import claim_client_identity  # noqa: E402
+from trustfl_ml.dataset import (  # noqa: E402
+    DatasetValidationError,
+    VisDroneParser,
+    resolve_and_validate_dataset,
+)
 
 
 def _env(name: str, default: str) -> str:
@@ -51,7 +71,7 @@ def _build_train_fn(
 ) -> Any:
     """
     Build a training callable compatible with DistributedClientAgent.
-    Falls back to a synthetic train fn if the ML layer is unavailable.
+    Falls back to a synthetic train fn if ML core is unavailable or data is not configured.
     """
     if not (
         images_dir
@@ -75,8 +95,6 @@ def _build_train_fn(
         return synthetic_train_fn
 
     try:
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "packages" / "ml_core"))
-        sys.path.insert(0, "/app/packages/ml_core")
         from trustfl_ml.config import TrainingConfig
         from trustfl_ml.yolo_wrapper import SimulatedDetector
 
@@ -98,9 +116,6 @@ def _build_train_fn(
             global_params: list[list[float]],
             _config: dict[str, Any],
         ):
-            # SimulatedDetector is always available here (imported above).
-            # The previous globals()-based check was always False because the
-            # import is local to this function, not at module level.
             model = SimulatedDetector()
             if global_params:
                 model.set_parameters(global_params)
@@ -126,7 +141,7 @@ def _build_train_fn(
             )
             return model.get_parameters(), num_examples, eval_metrics
 
-        logger.info("Using simulated detector training function.")
+        logger.info("Using simulated detector training function on dataset: %s", images_dir)
         return real_train_fn
 
     except (ImportError, ValueError):
@@ -148,16 +163,19 @@ def _build_train_fn(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="TrustFL Client")
-    parser.add_argument("--client-id", default=_env("FL_CLIENT_ID", "client_001"))
+    parser.add_argument("--client-id", default=_env("FL_CLIENT_ID", ""))
     parser.add_argument("--federation-id", default=_env("FL_FEDERATION_ID", "fed-default"))
     parser.add_argument("--identity-path", default=_env("FL_IDENTITY_PATH", ""))
     parser.add_argument(
         "--coordinator", default=_env("FL_COORDINATOR_URL", "http://127.0.0.1:8100")
     )
+    parser.add_argument("--dataset-dir", default=_env("FL_DATASET_DIR", ""))
     parser.add_argument("--images-dir", default=_env("FL_IMAGES_DIR", ""))
     parser.add_argument("--annotations-dir", default=_env("FL_ANNOTATIONS_DIR", ""))
     parser.add_argument("--val-images-dir", default=_env("FL_VAL_IMAGES_DIR", ""))
     parser.add_argument("--val-annotations-dir", default=_env("FL_VAL_ANNOTATIONS_DIR", ""))
+    parser.add_argument("--num-clients", type=int, default=_int_env("FL_NUM_CLIENTS", 2))
+    parser.add_argument("--keys-dir", default=_env("FL_KEYS_DIR", "/var/lib/trustfl/keys"))
     parser.add_argument("--ca-bundle", default=_env("FL_CA_BUNDLE", ""))
     parser.add_argument("--epochs", type=int, default=_int_env("FL_LOCAL_EPOCHS", 1))
     parser.add_argument("--max-samples", type=int, default=_int_env("FL_MAX_SAMPLES", 50))
@@ -168,30 +186,115 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from network.agent import DistributedClientAgent
+    # 1. Identity acquisition (explicit vs dynamic slot claiming)
+    lock_handle = None
+    if not args.client_id or args.client_id.lower() == "auto":
+        logger.info(
+            "No static FL_CLIENT_ID provided; claiming dynamic slot from %d available in %s...",
+            args.num_clients,
+            args.keys_dir,
+        )
+        try:
+            client_id, identity, lock_handle = claim_client_identity(
+                keys_dir=args.keys_dir,
+                num_clients=args.num_clients,
+            )
+        except Exception as exc:
+            logger.error("Failed to claim unique client identity: %s", exc)
+            sys.exit(1)
+    else:
+        client_id = args.client_id
+        client_keys_dir = Path(args.keys_dir) / client_id
+        client_keys_dir.mkdir(parents=True, exist_ok=True)
+        key_path = (
+            Path(args.identity_path) if args.identity_path else client_keys_dir / "private.pem"
+        )
+        identity = ClientIdentity.load_or_generate(client_id, key_path)
+
+    logger.info("Using client identity %s (public key: %s)", client_id, identity.public_key_b64)
+
+    # 2. Dataset resolution and pre-training validation
+    images_dir = args.images_dir
+    annotations_dir = args.annotations_dir
+    val_images_dir = args.val_images_dir
+    val_annotations_dir = args.val_annotations_dir
+
+    if args.dataset_dir:
+        logger.info("Resolving and validating raw dataset root: %s", args.dataset_dir)
+        try:
+            ds_info = resolve_and_validate_dataset(
+                args.dataset_dir,
+                min_samples=1,
+                check_images_readable=True,
+            )
+            images_dir = str(ds_info["train_images_dir"])
+            annotations_dir = str(ds_info["train_annotations_dir"])
+            if ds_info["val_images_dir"]:
+                val_images_dir = str(ds_info["val_images_dir"])
+            if ds_info["val_annotations_dir"]:
+                val_annotations_dir = str(ds_info["val_annotations_dir"])
+
+            logger.info(
+                "Dataset validated successfully: %d usable samples, %d total boxes from %s",
+                ds_info["stats"]["valid_pairs"],
+                ds_info["stats"]["total_boxes"],
+                images_dir,
+            )
+            logger.info(
+                "NOTE: Single-host protocol demonstration: Client %s is reading shared dataset at '%s'. "
+                "This topology exercises federated aggregation and verification protocols on a single host; "
+                "it does not demonstrate data privacy, data isolation, or statistical heterogeneity of independent client data owners.",
+                client_id,
+                args.dataset_dir,
+            )
+        except DatasetValidationError as exc:
+            logger.error("Dataset validation failed on '%s': %s", args.dataset_dir, exc)
+            sys.exit(1)
+    elif images_dir and annotations_dir:
+        try:
+            stats = VisDroneParser.validate_dataset(
+                images_dir,
+                annotations_dir,
+                check_images_readable=True,
+            )
+            logger.info(
+                "Explicit images/annotations validated: %d valid pairs.", stats["valid_pairs"]
+            )
+        except DatasetValidationError as exc:
+            logger.error(
+                "Dataset validation failed on (%s, %s): %s", images_dir, annotations_dir, exc
+            )
+            sys.exit(1)
 
     train_fn = _build_train_fn(
-        args.images_dir,
-        args.annotations_dir,
+        images_dir,
+        annotations_dir,
         args.epochs,
         args.max_samples,
-        val_images_dir=args.val_images_dir,
-        val_annotations_dir=args.val_annotations_dir,
+        val_images_dir=val_images_dir,
+        val_annotations_dir=val_annotations_dir,
     )
 
+    from network.agent import DistributedClientAgent
+
     agent = DistributedClientAgent(
-        client_id=args.client_id,
+        client_id=client_id,
         coordinator_url=args.coordinator,
         train_fn=train_fn,
         poll_interval=args.poll_interval,
         federation_id=args.federation_id,
-        identity_path=args.identity_path or None,
+        identity=identity,
         ca_bundle=args.ca_bundle or None,
     )
 
     def _shutdown(signum, _frame):  # noqa: ANN001
-        logger.info("Signal %d received — stopping.", signum)
+        logger.info("Signal %d received — stopping client %s.", signum, client_id)
         agent.stop()
+        if lock_handle is not None:
+            try:
+                lock_handle.close()
+            except Exception:
+                pass
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, _shutdown)
@@ -199,20 +302,26 @@ def main() -> None:
 
     agent.start_background_loop()
     if not agent.is_registered:
-        logger.error("Client %s failed to register; exiting nonzero.", args.client_id)
+        logger.error("Client %s failed to register; exiting nonzero.", client_id)
+        if lock_handle is not None:
+            try:
+                lock_handle.close()
+            except Exception:
+                pass
         sys.exit(1)
 
-    logger.info(
-        "Client %s connected to %s",
-        args.client_id,
-        args.coordinator,
-    )
+    logger.info("Client %s connected and registered with %s", client_id, args.coordinator)
 
-    # Keep main thread alive; exit with the same code the agent failed with,
-    # or normally once the agent has stopped (e.g. federation completed).
     while not agent._stop_event.is_set():
         time.sleep(1)
-    logger.info("Client %s stopped.", args.client_id)
+
+    logger.info("Client %s stopped.", client_id)
+    if lock_handle is not None:
+        try:
+            lock_handle.close()
+        except Exception:
+            pass
+
     if agent.failed or not agent.is_registered:
         sys.exit(1)
     sys.exit(0)
