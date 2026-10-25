@@ -127,7 +127,15 @@ jobs:
           export API_AUTH_REQUIRED=true API_READ_KEY=ci-read API_WRITE_KEY=ci-write API_ADMIN_KEY=ci-admin
           export DASHBOARD_ACCESS_KEY=ci-dashboard COORDINATOR_ENROLLMENT_TOKEN=ci-coordinator
           export FL_DATASET_DIR=./datasets/sample
-          export FL_NUM_CLIENTS=2
+          export FL_NUM_CLIENTS=3
+          export FL_MIN_CLIENTS=3
+          # These must be set explicitly here so they are NOT inherited from any
+          # .env file that may exist in the checkout (e.g. from a developer's
+          # local Scenario 1 run that sets FL_FEDERATION_ID=fed-visdrone-local
+          # and FL_NUM_ROUNDS=1).  Docker Compose auto-loads .env from CWD.
+          export FL_FEDERATION_ID=fed-default
+          export FL_NUM_ROUNDS=3
+          export FL_MAX_CLIENT_WEIGHT_SHARE=0.5
           # Compose's generated client keys are intentionally ephemeral.  The
           # E2E lifecycle therefore uses the documented explicit dev-only
           # enrollment compatibility mode; production never inherits this.
@@ -256,7 +264,28 @@ jobs:
           python scripts/generate_sample_dataset.py --out-dir ./datasets/sample --train-samples 30 \
             || mkdir -p ./datasets/sample/images ./datasets/sample/annotations
 
-          echo "Starting Compose stack..."
+          # Write a CI-specific .env so Docker Compose does not auto-load any
+          # developer .env that may have been committed or cached, and to ensure
+          # FL_FEDERATION_ID / FL_NUM_ROUNDS / FL_MAX_CLIENT_WEIGHT_SHARE are
+          # exactly what CI expects regardless of repository checkout state.
+          cat > .env <<'ENVEOF'
+POSTGRES_USER=trustfl
+POSTGRES_PASSWORD=trustfl
+POSTGRES_DB=trustfl
+ENVIRONMENT=development
+FL_FEDERATION_ID=fed-default
+FL_NUM_ROUNDS=3
+FL_NUM_CLIENTS=3
+FL_MIN_CLIENTS=3
+FL_MAX_CLIENT_WEIGHT_SHARE=0.5
+FL_LOCAL_EPOCHS=1
+FL_MAX_SAMPLES=50
+FL_POLL_INTERVAL_SECONDS=3.0
+COORDINATOR_REQUIRE_SIGNATURES=true
+COORDINATOR_INSECURE_DEV_AUTH=true
+ENVEOF
+
+          echo "Starting Compose stack (FL_NUM_CLIENTS=3, FL_FEDERATION_ID=fed-default, FL_NUM_ROUNDS=3)..."
           docker compose up --build -d
 
           echo "Waiting for services..."
