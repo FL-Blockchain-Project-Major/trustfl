@@ -269,21 +269,21 @@ jobs:
           # FL_FEDERATION_ID / FL_NUM_ROUNDS / FL_MAX_CLIENT_WEIGHT_SHARE are
           # exactly what CI expects regardless of repository checkout state.
           cat > .env <<'ENVEOF'
-POSTGRES_USER=trustfl
-POSTGRES_PASSWORD=trustfl
-POSTGRES_DB=trustfl
-ENVIRONMENT=development
-FL_FEDERATION_ID=fed-default
-FL_NUM_ROUNDS=3
-FL_NUM_CLIENTS=3
-FL_MIN_CLIENTS=3
-FL_MAX_CLIENT_WEIGHT_SHARE=0.5
-FL_LOCAL_EPOCHS=1
-FL_MAX_SAMPLES=50
-FL_POLL_INTERVAL_SECONDS=3.0
-COORDINATOR_REQUIRE_SIGNATURES=true
-COORDINATOR_INSECURE_DEV_AUTH=true
-ENVEOF
+          POSTGRES_USER=trustfl
+          POSTGRES_PASSWORD=trustfl
+          POSTGRES_DB=trustfl
+          ENVIRONMENT=development
+          FL_FEDERATION_ID=fed-default
+          FL_NUM_ROUNDS=3
+          FL_NUM_CLIENTS=3
+          FL_MIN_CLIENTS=3
+          FL_MAX_CLIENT_WEIGHT_SHARE=0.5
+          FL_LOCAL_EPOCHS=1
+          FL_MAX_SAMPLES=50
+          FL_POLL_INTERVAL_SECONDS=3.0
+          COORDINATOR_REQUIRE_SIGNATURES=true
+          COORDINATOR_INSECURE_DEV_AUTH=true
+          ENVEOF
 
           echo "Starting Compose stack (FL_NUM_CLIENTS=3, FL_FEDERATION_ID=fed-default, FL_NUM_ROUNDS=3)..."
           docker compose up --build -d
