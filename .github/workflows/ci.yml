@@ -98,6 +98,15 @@ jobs:
           docker build -t trustfl-client -t ghcr.io/sayam-1705/trustfl/client:ci -f apps/client/Dockerfile .
           docker build -t trustfl-dashboard -t ghcr.io/sayam-1705/trustfl/dashboard:ci apps/dashboard
 
+      - name: Smoke-test Python package imports inside client image
+        # Catches PYTHONPATH misconfigurations that would break client-init
+        # and any other module-as-script invocations inside the container.
+        run: |
+          docker run --rm trustfl-client python -m trustfl_crypto.provision --help
+          docker run --rm trustfl-client python -c "from trustfl_crypto.keys import ClientIdentity; print('trustfl_crypto OK')"
+          docker run --rm trustfl-client python -c "from trustfl_ml.dataset import resolve_and_validate_dataset; print('trustfl_ml OK')"
+          docker run --rm trustfl-coordinator python -c "from trustfl_crypto.keys import ClientIdentity; print('coordinator trustfl_crypto OK')"
+
       - name: Validate Compose configuration
         run: docker compose config
 
@@ -240,12 +249,15 @@ jobs:
           export FL_NUM_CLIENTS=2
           export FL_MIN_CLIENTS=2
 
-          echo "Starting Compose stack..."
-          mkdir -p ./datasets/sample
-          docker compose up --build -d
+          # Generate sample dataset BEFORE starting the stack so it is present
+          # when client containers mount the volume.  Falls back gracefully to an
+          # empty directory; clients will use the synthetic training function.
+          echo "Generating sample dataset..."
+          python scripts/generate_sample_dataset.py --out-dir ./datasets/sample --num-images 30 \
+            || mkdir -p ./datasets/sample/images ./datasets/sample/annotations
 
-          # Generate a minimal sample dataset for E2E (synthetic images + annotations)
-          python scripts/generate_sample_dataset.py --out-dir ./datasets/sample --num-images 30 2>/dev/null || mkdir -p ./datasets/sample/images ./datasets/sample/annotations
+          echo "Starting Compose stack..."
+          docker compose up --build -d
 
           echo "Waiting for services..."
           wait_for_url "http://localhost:8000/health/"

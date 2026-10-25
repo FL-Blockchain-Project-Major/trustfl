@@ -185,18 +185,24 @@ for multi-host deployment guidance.
 
 ## 6. Published Images (Clean-machine install)
 
-Pre-built images are pushed to GHCR on every tagged release:
+Pre-built images are pushed to GHCR on every tagged release (`v*`):
 
 ```bash
 export TRUSTFL_VERSION=0.1.0
 
-# Pull all images
+# Pull application images (API, coordinator, client, dashboard)
 docker compose -f docker-compose.published.yml pull
 
-# Start the stack (no build required)
+# Start the stack
 cp .env.example .env   # set FL_DATASET_DIR and secrets
 docker compose -f docker-compose.published.yml up
 ```
+
+> **Note on Contract Deployment:** The Python application services (API, coordinator, client, dashboard)
+> run entirely from published images. The local Hardhat development node and contract deployer
+> mount `./packages/contracts` from the repository root because Solidity smart contracts must be
+> compiled and deployed fresh to the local in-memory blockchain on startup. Host-side Node.js/Python
+> is still not required as Hardhat runs inside the `node:22.13-alpine` container.
 
 Available images:
 
