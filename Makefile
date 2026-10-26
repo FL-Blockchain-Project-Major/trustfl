@@ -76,6 +76,10 @@ audit: ## Check git repository against forbidden patterns (Zero-Git principle)
 check: lint test audit ## Run all code quality checks, tests, and security audits
 	@echo "==> All checks completed successfully."
 
+e2e-ci: ## Run local end-to-end CI Compose workflow (3 clients, 3 rounds)
+	@echo "==> Running local CI Compose E2E workflow..."
+	@./scripts/run_ci_e2e.sh
+
 clean: ## Clean build, test, and temporary cache artifacts
 	@echo "==> Cleaning cache and build artifacts..."
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
