@@ -98,7 +98,11 @@ In Scenario 1, all TrustFL microservices communicate over an isolated Docker net
 The real VisDrone dataset is copied from `/home/sayam/Desktop/project-data/VisDrone2019-DET-val/VisDrone2019-DET-val` into the designated project location: `datasets/raw/VisDrone2019-DET-val`.
 
 ```bash
-# Verify dataset files in project location
+# 1. Create target directory and copy real VisDrone data
+mkdir -p datasets/raw
+cp -r /home/sayam/Desktop/project-data/VisDrone2019-DET-val/VisDrone2019-DET-val datasets/raw/
+
+# 2. Verify dataset files in project location
 ls datasets/raw/VisDrone2019-DET-val/images | wc -l
 # Output: 548 (.jpg images)
 
@@ -106,11 +110,20 @@ ls datasets/raw/VisDrone2019-DET-val/annotations | wc -l
 # Output: 548 (.txt annotations)
 ```
 
-Validate dataset layout and annotations with the Python resolver:
+Validate dataset layout and annotations with the Python resolver (using local virtualenv or Docker):
 ```bash
-PYTHONPATH=packages/ml_core .venv/bin/python -c "
+# Option A: Using local python
+PYTHONPATH=packages/ml_core python3 -c "
 from trustfl_ml.dataset import resolve_and_validate_dataset
 info = resolve_and_validate_dataset('datasets/raw/VisDrone2019-DET-val')
+print('Valid pairs:', info['stats']['valid_pairs'])
+print('Total boxes:', info['stats']['total_boxes'])
+"
+
+# Option B: Using the built trustfl-client container (no host python dependencies needed)
+docker run --rm -v $(pwd)/datasets/raw/VisDrone2019-DET-val:/data/dataset:ro trustfl-client python -c "
+from trustfl_ml.dataset import resolve_and_validate_dataset
+info = resolve_and_validate_dataset('/data/dataset')
 print('Valid pairs:', info['stats']['valid_pairs'])
 print('Total boxes:', info['stats']['total_boxes'])
 "
@@ -214,21 +227,23 @@ docker compose up -d
 
 ### Step 3: Verify Service Health
 ```bash
-docker compose ps
+# Check running service states (or use `docker compose ps -a` to view all including exited)
+docker compose ps -a
 ```
 **Observed Container States:**
 ```text
-NAME                  IMAGE                COMMAND                  SERVICE             STATUS                    PORTS
-trustfl-api-1         trustfl-api          "sh -c 'alembic -c a…"   api                 Up (healthy)              127.0.0.1:8000->8000/tcp
-trustfl-dashboard-1   trustfl-dashboard    "docker-entrypoint.s…"   dashboard           Up (healthy)              127.0.0.1:3000->3000/tcp
-trustfl-db-1          postgres:15-alpine   "docker-entrypoint.s…"   db                  Up (healthy)              127.0.0.1:5432->5432/tcp
-trustfl-hardhat-1     node:22.13-alpine    "docker-entrypoint.s…"   hardhat             Up (healthy)              127.0.0.1:8545->8545/tcp
-trustfl-ipfs-1        ipfs/kubo:v0.32.1    "/sbin/tini -- /usr/…"   ipfs                Up (healthy)              127.0.0.1:8081->8080/tcp
-trustfl-contract-deployer-1 node:22.13     "sh -c 'npm ci && …"     contract-deployer   Exited (0)
-trustfl-client-init-1 trustfl-client       "python -m trustfl_c…"   client-init         Exited (0)
-trustfl-coordinator-1 trustfl-coordinator  "python -m coordinat…"   coordinator         Exited (0)
-trustfl-client-1      trustfl-client       "python -m apps.clie…"   client              Exited (0)
+NAME                          IMAGE                 COMMAND                  SERVICE             STATUS                    PORTS
+trustfl-api-1                 trustfl-api           "sh -c 'alembic -c a…"   api                 Up (healthy)              127.0.0.1:8000->8000/tcp
+trustfl-dashboard-1           trustfl-dashboard     "docker-entrypoint.s…"   dashboard           Up (healthy)              127.0.0.1:3000->3000/tcp
+trustfl-db-1                  postgres:15-alpine    "docker-entrypoint.s…"   db                  Up (healthy)              127.0.0.1:5432->5432/tcp
+trustfl-hardhat-1             node:22.13-alpine     "docker-entrypoint.s…"   hardhat             Up (healthy)              127.0.0.1:8545->8545/tcp
+trustfl-ipfs-1                ipfs/kubo:v0.32.1     "/sbin/tini -- /usr/…"   ipfs                Up (healthy)              127.0.0.1:8081->8080/tcp
+trustfl-contract-deployer-1   node:22.13-alpine     "docker-entrypoint.s…"   contract-deployer   Exited (0)
+trustfl-client-init-1         trustfl-client        "python -m trustfl_c…"   client-init         Exited (0)
+trustfl-coordinator-1         trustfl-coordinator  "python apps/coordin…"   coordinator         Exited (0)
+trustfl-client-1              trustfl-client        "python apps/client/…"   client              Exited (0)
 ```
+*(Note: During training, `coordinator` and `client` are `Up`; once Round 1 completes, both transition to `Exited (0)` cleanly).*
 
 ---
 
@@ -301,56 +316,65 @@ INFO  coordinator.main | Training complete. 1 rounds finished.
 Query recorded training updates:
 ```bash
 curl -s -H "Authorization: Bearer trustfl-read-dev" \
-  http://localhost:8000/updates/federation/fed-visdrone-local | jq .data
+  http://localhost:8000/updates/federation/fed-visdrone-local | python3 -m json.tool
 ```
 **Output:**
 ```json
-[
-  {
-    "client_id": "client_001",
-    "round_id": "fed-visdrone-local_round1",
-    "status": "VERIFIED",
-    "num_examples": 20,
-    "metrics": {
-      "epochs": 1,
-      "train_loss": 0.00768,
-      "samples_trained": 20,
-      "total_boxes": 1391,
-      "val_accuracy_proxy": 0.8164,
-      "val_boxes_evaluated": 750,
-      "val_loss": 0.0918,
-      "val_precision": 0.7184,
-      "val_recall": 0.6694
+{
+  "success": true,
+  "data": [
+    {
+      "id": "update_client_001_1",
+      "round_id": "fed-visdrone-local_round1",
+      "client_id": "client_001",
+      "status": "AGGREGATED",
+      "artifact_id": "update_client_001_1",
+      "artifact_hash": "sha256:0dc4fd4786e6c55ea1c7dbcba343bc54b7d68e01217e6cfe3ac9d1346964399a",
+      "nonce": "client_001:1:7ec9cf5fea84ac48baa1910b5764fc38",
+      "num_examples": 20,
+      "loss": 0.2245,
+      "submitted_at": "2026-10-26T13:19:29.908127Z",
+      "verified_at": "2026-10-26T13:19:29.890936Z"
     }
-  }
-]
+  ],
+  "message": "OK"
+}
 ```
 
 ### 6.2 Cryptographic Client Identity & Dynamic Slot Claiming
 Query the registered client identity:
 ```bash
 curl -s -H "Authorization: Bearer trustfl-read-dev" \
-  http://localhost:8000/clients/federation/fed-visdrone-local | jq .data
+  http://localhost:8000/clients/federation/fed-visdrone-local | python3 -m json.tool
 ```
 **Output:**
 ```json
-[
-  {
-    "id": "client_001",
-    "public_key_b64": "bBb4BefyWuJIyafZOBFcPuHB5C0N2/yJ56kpa9Q0I0A=",
-    "capabilities": {
-      "registration_nonce": "9360dbd63aa64b9787fbda01a97d9fc8",
-      "registration_signature": "MszrXQ50jV3F3Qh7B1J8J0o5xZ6tX0k/9k..."
+{
+  "success": true,
+  "data": [
+    {
+      "id": "client_001",
+      "federation_id": "fed-visdrone-local",
+      "public_key_b64": "uAC0+xi3eMFnlYTZhQW2DP6lFgOFheUUdO67QlzC38M=",
+      "is_active": true,
+      "capabilities": {
+        "public_key": "uAC0+xi3eMFnlYTZhQW2DP6lFgOFheUUdO67QlzC38M=",
+        "registration_nonce": "512b05fc9ede4ad6972a8d0a0b8bad13",
+        "registration_signature": "V+yy/YJq5x2MfaIWh3GThPA2pKqB7IeTrm6kKm4PpM/6X07SrlU53NpkLPTWBB6Jqv/+WfNR6itj0OC26e5CCQ=="
+      },
+      "registered_at": "2026-10-26T13:19:29.220656Z",
+      "last_seen_at": "2026-10-26T13:19:29.217265Z"
     }
-  }
-]
+  ],
+  "message": "OK"
+}
 ```
 
 ### 6.3 Smart Contract On-Chain Auditing (EVM)
 Query confirmed blockchain transactions:
 ```bash
 curl -s -H "Authorization: Bearer trustfl-read-dev" \
-  "http://localhost:8000/blockchain/transactions?limit=10" | jq .data
+  "http://localhost:8000/blockchain/transactions?limit=10" | python3 -m json.tool
 ```
 **Output Summary (7 Confirmed Transactions):**
 1. `ClientRegistry.registerClient` — `CONFIRMED`
@@ -365,9 +389,9 @@ curl -s -H "Authorization: Bearer trustfl-read-dev" \
 Query artifacts recorded in the database:
 ```bash
 curl -s -H "Authorization: Bearer trustfl-read-dev" \
-  http://localhost:8000/artifacts/federation/fed-visdrone-local | jq .data
+  http://localhost:8000/artifacts/federation/fed-visdrone-local | python3 -m json.tool
 ```
-The aggregated model is stored with an IPFS CID and verified with its SHA-256 digest.
+The aggregated model is stored with an IPFS CID (`ipfs://QmeTDaXjMpPZtU4zwY8iT3ZiMQWW7XhiW72ENhkopEU55Q`) and verified with its canonical SHA-256 digest (`sha256:a14e062e1d97046acd3e7816b9cae104c98f31c715c0d2bd851b10958d1282a3`).
 
 ### 6.5 FastAPI Gateway & Role-Scoped Bearer Auth
 - `GET http://localhost:8000/federations/` with valid `API_READ_KEY` returns `200 OK`.
@@ -381,7 +405,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/federations/
 Query the Next.js API proxy:
 ```bash
 curl -sL -H "Authorization: Bearer trustfl-dashboard-dev" \
-  http://localhost:3000/api/dashboard/federations | jq .
+  http://localhost:3000/api/dashboard/federations | python3 -m json.tool
 ```
 **Output:**
 ```json
@@ -390,11 +414,16 @@ curl -sL -H "Authorization: Bearer trustfl-dashboard-dev" \
   "data": [
     {
       "id": "fed-visdrone-local",
-      "name": "fed-visdrone-local",
+      "name": "TrustFL Federation",
+      "description": null,
       "status": "ACTIVE",
-      "current_round": 1
+      "min_clients": 1,
+      "max_rounds": 1,
+      "created_at": "2026-10-26T13:19:25.108775Z",
+      "updated_at": "2026-10-26T13:19:25.108785Z"
     }
-  ]
+  ],
+  "message": "OK"
 }
 ```
 
