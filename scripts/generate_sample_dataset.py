@@ -5,7 +5,7 @@ Generates a lightweight, valid synthetic raw VisDrone dataset for testing and lo
 Structure created:
   <output_dir>/
     images/
-      sample_001.jpg
+      sample_001.png (or .jpg)
       ...
     annotations/
       sample_001.txt
@@ -18,7 +18,9 @@ Structure created:
 from __future__ import annotations
 
 import argparse
+import struct
 import sys
+import zlib
 from pathlib import Path
 
 _repo_root = Path(__file__).resolve().parent.parent
@@ -26,8 +28,44 @@ _ml_core = _repo_root / "packages" / "ml_core"
 if str(_ml_core) not in sys.path:
     sys.path.insert(0, str(_ml_core))
 
-from PIL import Image  # noqa: E402
-from trustfl_ml.dataset import resolve_and_validate_dataset  # noqa: E402
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+try:
+    from trustfl_ml.dataset import resolve_and_validate_dataset
+except ImportError:
+    resolve_and_validate_dataset = None
+
+
+def _write_image(path: Path, width: int, height: int, r: int, g: int, b: int) -> None:
+    """Save an RGB image using PIL if available, or pure Python PNG otherwise."""
+    if Image is not None and path.suffix.lower() in {".jpg", ".jpeg"}:
+        im = Image.new("RGB", (width, height), color=(r, g, b))
+        im.save(path, quality=90)
+        return
+
+    # Standard-library PNG writer (zero external dependencies)
+    raw_row = b"\x00" + bytes([r, g, b] * width)
+    raw_data = raw_row * height
+    compressed = zlib.compress(raw_data)
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", compressed)
+        + chunk(b"IEND", b"")
+    )
+    path.write_bytes(png_bytes)
 
 
 def generate_sample_dataset(
@@ -46,16 +84,20 @@ def generate_sample_dataset(
     for d in (train_images, train_annotations, val_images, val_annotations):
         d.mkdir(parents=True, exist_ok=True)
 
+    ext = ".jpg" if Image is not None else ".png"
+
     # Generate training samples
     for idx in range(1, train_samples + 1):
         stem = f"sample_{idx:03d}"
-        img_file = train_images / f"{stem}.jpg"
-        im = Image.new(
-            "RGB",
-            (img_width, img_height),
-            color=((idx * 23) % 256, (idx * 47) % 256, (idx * 83) % 256),
+        img_file = train_images / f"{stem}{ext}"
+        _write_image(
+            img_file,
+            img_width,
+            img_height,
+            (idx * 23) % 256,
+            (idx * 47) % 256,
+            (idx * 83) % 256,
         )
-        im.save(img_file, quality=90)
 
         ann_file = train_annotations / f"{stem}.txt"
         # VisDrone format: bbox_left, bbox_top, bbox_width, bbox_height, score, category, truncation, occlusion
@@ -69,13 +111,15 @@ def generate_sample_dataset(
     # Generate val samples
     for idx in range(1, val_samples + 1):
         stem = f"val_sample_{idx:03d}"
-        img_file = val_images / f"{stem}.jpg"
-        im = Image.new(
-            "RGB",
-            (img_width, img_height),
-            color=((idx * 31) % 256, (idx * 59) % 256, (idx * 97) % 256),
+        img_file = val_images / f"{stem}{ext}"
+        _write_image(
+            img_file,
+            img_width,
+            img_height,
+            (idx * 31) % 256,
+            (idx * 59) % 256,
+            (idx * 97) % 256,
         )
-        im.save(img_file, quality=90)
 
         ann_file = val_annotations / f"{stem}.txt"
         lines = [
@@ -84,8 +128,14 @@ def generate_sample_dataset(
         ]
         ann_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    stats = resolve_and_validate_dataset(out_path, min_samples=1)
-    return stats["stats"]
+    if resolve_and_validate_dataset is not None:
+        stats = resolve_and_validate_dataset(out_path, min_samples=1)
+        return stats["stats"]
+
+    return {
+        "valid_pairs": train_samples + val_samples,
+        "total_boxes": train_samples * 3 + val_samples * 2,
+    }
 
 
 def main() -> None:
