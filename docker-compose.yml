@@ -144,6 +144,7 @@ services:
       - FL_MIN_CLIENTS=${FL_MIN_CLIENTS:-2}
       - FL_NUM_CLIENTS=${FL_NUM_CLIENTS:-2}
       - FL_NUM_ROUNDS=${FL_NUM_ROUNDS:-3}
+      - FL_MAX_UPDATE_NORM=${FL_MAX_UPDATE_NORM:-1.0}
       - COORDINATOR_PORT=8100
       - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
       - IPFS_URL=http://ipfs:5001
@@ -221,7 +222,7 @@ services:
       - INTERNAL_API_URL=http://api:8000
       - API_SECRET_KEY=${API_SECRET_KEY:-}
       - API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
-      - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
+      - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY-}
       - NEXT_PUBLIC_API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
       - NEXT_PUBLIC_DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:-trustfl-dashboard-dev}
     ports:

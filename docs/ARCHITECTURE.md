@@ -76,7 +76,7 @@ sequenceDiagram
     opt Optional ZKP policy
         Coord->>Coord: Verify ZKP commitment
     end
-    Coord->>Coord: Compute Aggregated Weights (FedAvg / Robust Aggregation)
+    Coord->>Coord: Compute Aggregated Weights (FedAvg with Norm Clipping)
     Coord->>Storage: Upload New Global Model (CID_N+1)
     Coord->>Chain: Record Round Completion & Audit Trail (CID_N+1, Merkle Root)
 ```

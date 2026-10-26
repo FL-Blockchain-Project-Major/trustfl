@@ -48,6 +48,12 @@ logger = logging.getLogger(__name__)
 
 MAX_NUM_EXAMPLES = int(os.getenv("FL_MAX_NUM_EXAMPLES_PER_UPDATE", "1000000"))
 MAX_CLIENT_WEIGHT_SHARE = float(os.getenv("FL_MAX_CLIENT_WEIGHT_SHARE", "0.5"))
+# Maximum L2 norm of (client update - current global model). 0 disables clipping.
+MAX_UPDATE_NORM = float(os.getenv("FL_MAX_UPDATE_NORM", "0"))
+# Transient chain/storage failures are retried this many times before the submit
+# is reported as retryable (never recorded as a permanent rejection).
+CHAIN_CALL_MAX_RETRIES = int(os.getenv("FL_CHAIN_CALL_MAX_RETRIES", "5"))
+CHAIN_CALL_RETRY_BASE_SECONDS = float(os.getenv("FL_CHAIN_CALL_RETRY_BASE_SECONDS", "1"))
 FINALIZE_MAX_RETRIES = int(os.getenv("FL_FINALIZE_MAX_RETRIES", "5"))
 FINALIZE_RETRY_BASE_SECONDS = float(os.getenv("FL_FINALIZE_RETRY_BASE_SECONDS", "1"))
 INITIAL_MODEL_VERSION = "initial"
@@ -83,8 +89,57 @@ def _verify_public_key_signature(public_key_b64: str, message: bytes, signature_
 # ---------------------------------------------------------------------------
 
 
+def _clip_update_norms(
+    updates: list[dict[str, Any]],
+    reference_parameters: list[list[float]] | None,
+) -> list[dict[str, Any]]:
+    """Scale each update's delta from the global model down to MAX_UPDATE_NORM.
+
+    A valid signature proves who sent an update, not that it is sane. Without a
+    bound, one enrolled client can send weights x1000 and dominate the average.
+    """
+    if MAX_UPDATE_NORM < 0:
+        raise ValueError("FL_MAX_UPDATE_NORM must be >= 0")
+    if MAX_UPDATE_NORM == 0:
+        return updates
+    shape = [len(layer) for layer in updates[0]["parameters"]]
+    ref = reference_parameters
+    if not ref or [len(layer) for layer in ref] != shape:
+        ref = [[0.0] * n for n in shape]  # first round / no usable reference: bound absolute norm
+    clipped: list[dict[str, Any]] = []
+    for u in updates:
+        norm = math.sqrt(
+            sum(
+                (float(v) - float(r)) ** 2
+                for layer, ref_layer in zip(u["parameters"], ref, strict=True)
+                for v, r in zip(layer, ref_layer, strict=True)
+            )
+        )
+        if norm > MAX_UPDATE_NORM:
+            scale = MAX_UPDATE_NORM / norm
+            logger.warning(
+                "Clipped update from %s: delta norm %.4g exceeds %.4g",
+                u.get("client_id", "?"),
+                norm,
+                MAX_UPDATE_NORM,
+            )
+            u = {
+                **u,
+                "parameters": [
+                    [
+                        float(r) + (float(v) - float(r)) * scale
+                        for v, r in zip(layer, ref_layer, strict=True)
+                    ]
+                    for layer, ref_layer in zip(u["parameters"], ref, strict=True)
+                ],
+            }
+        clipped.append(u)
+    return clipped
+
+
 def _fedavg(
     updates: list[dict[str, Any]],
+    reference_parameters: list[list[float]] | None = None,
 ) -> list[list[float]]:
     """
     Weighted average of parameter updates.
@@ -113,6 +168,8 @@ def _fedavg(
                 not isinstance(value, (int, float)) or not math.isfinite(value) for value in layer
             ):
                 raise ValueError("Update parameters must be finite numbers")
+
+    updates = _clip_update_norms(updates, reference_parameters)
 
     if not 0 < MAX_CLIENT_WEIGHT_SHARE <= 1:
         raise ValueError("FL_MAX_CLIENT_WEIGHT_SHARE must be in (0, 1]")
@@ -500,12 +557,22 @@ class CoordinatorState:
             ):
                 raise ValueError("ARTIFACT_HASH_MISMATCH")
             if self.blockchain_client:
-                if not self.blockchain_client.submit_update(
-                    update_id, round_id, cid, artifact_hash, nonce
-                ):
-                    raise OSError("BLOCKCHAIN_SUBMIT_FAILED")
-                if verified and not self.blockchain_client.mark_verification_state(update_id, True):
-                    raise OSError("BLOCKCHAIN_VERIFICATION_FAILED")
+                self._chain_call_with_retry(
+                    "BLOCKCHAIN_SUBMIT_FAILED",
+                    self.blockchain_client.submit_update,
+                    update_id,
+                    round_id,
+                    cid,
+                    artifact_hash,
+                    nonce,
+                )
+                if verified:
+                    self._chain_call_with_retry(
+                        "BLOCKCHAIN_VERIFICATION_FAILED",
+                        self.blockchain_client.mark_verification_state,
+                        update_id,
+                        True,
+                    )
             if self.persistence:
                 self.persistence.record_update(
                     update_id,
@@ -518,7 +585,18 @@ class CoordinatorState:
                     nonce,
                     verified,
                 )
-        except (TypeError, ValueError, OSError) as exc:
+        except OSError as exc:
+            # Infrastructure problem (chain RPC, storage, DB). The update itself was
+            # not judged invalid, so do NOT write a terminal rejection: release the
+            # reservation and let the client resubmit (chain calls are idempotent).
+            logger.warning(
+                "Transient failure handling update %s (%s); client may resubmit", update_id, exc
+            )
+            with self.lock:
+                self._inflight_updates.discard(cid)
+                self._inflight_nonces.discard(nonce)
+            return False
+        except (TypeError, ValueError) as exc:
             reason = str(exc) if str(exc).isupper() else "DURABLE_WRITE_FAILED"
             self._audit_rejection(update_id, cid, round_id, nonce, "sha256:rejected", reason)
             with self.lock:
@@ -587,6 +665,21 @@ class CoordinatorState:
         ):
             return False
         return True
+
+    @staticmethod
+    def _chain_call_with_retry(label: str, fn: Any, *args: Any) -> None:
+        """Run an idempotent chain call, retrying with exponential backoff."""
+        delay = CHAIN_CALL_RETRY_BASE_SECONDS
+        for attempt in range(1, CHAIN_CALL_MAX_RETRIES + 1):
+            try:
+                if fn(*args):
+                    return
+            except OSError:
+                pass
+            if attempt < CHAIN_CALL_MAX_RETRIES:
+                time.sleep(delay)
+                delay = min(delay * 2, 30.0)
+        raise OSError(label)
 
     def _audit_rejection(
         self, update_id: str, cid: str, round_id: int, nonce: str, artifact_hash: str, reason: str
@@ -767,7 +860,7 @@ class CoordinatorState:
             # summation is not associative). This ensures reproducible results regardless of
             # client submission order.
             updates.sort(key=lambda u: u.get("client_id", u.get("update_id", "")))
-            parameters = _fedavg(updates)
+            parameters = _fedavg(updates, self.global_parameters)
             global_artifact = None
             if self.storage_client:
                 global_artifact = self.storage_client.save_artifact(
@@ -785,8 +878,12 @@ class CoordinatorState:
                         hash_parameters(parameters),
                     )
             for update in updates:
-                if self.blockchain_client and update.get("update_id"):
-                    self.blockchain_client.record_aggregation(update["update_id"])
+                uid = update.get("update_id")
+                if uid:
+                    if self.blockchain_client:
+                        self.blockchain_client.record_aggregation(uid)
+                    if self.persistence and hasattr(self.persistence, "record_aggregation"):
+                        self.persistence.record_aggregation(uid)
             finalized = not self.blockchain_client or self.blockchain_client.finalize_round(
                 round_id, hash_parameters(parameters)
             )
@@ -941,7 +1038,7 @@ class CoordinatorState:
             self._advance_round_locked(finalize=False, record=record)
             return
         try:
-            self.global_parameters = _fedavg(updates)
+            self.global_parameters = _fedavg(updates, self.global_parameters)
         except (TypeError, ValueError, OverflowError) as exc:
             # Defense in depth: malformed in-memory data can never wedge monitor_tick.
             logger.exception("Round %d aggregation rejected: %s", self.current_round, exc)
@@ -959,11 +1056,13 @@ class CoordinatorState:
             self._advance_round_locked(finalize=False)
             return
         if updates:
-            if self.blockchain_client:
-                for u in updates:
-                    update_id = u.get("update_id")
-                    if update_id:
+            for u in updates:
+                update_id = u.get("update_id")
+                if update_id:
+                    if self.blockchain_client:
                         self.blockchain_client.record_aggregation(update_id)
+                    if self.persistence and hasattr(self.persistence, "record_aggregation"):
+                        self.persistence.record_aggregation(update_id)
         else:
             logger.warning("No updates to aggregate for round %d", self.current_round)
 

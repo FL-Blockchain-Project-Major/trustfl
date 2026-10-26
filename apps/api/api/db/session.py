@@ -65,11 +65,11 @@ def check_config(_app: FastAPI) -> None:
     db_url = os.getenv("DATABASE_URL", "sqlite:///./trustfl.db")
     if ENVIRONMENT == "production" and db_url.startswith("sqlite"):
         errors.append("Production requires a PostgreSQL DATABASE_URL")
-    elif db_url.startswith("sqlite") and db_url == "sqlite:///./trustfl.db":
-        # Dev mode: check that SQLite file is writable
+    elif db_url.startswith("sqlite"):
+        # Dev mode: any SQLite path is allowed; check that the file is writable
         import pathlib
 
-        db_path = pathlib.Path("./trustfl.db")
+        db_path = pathlib.Path(db_url.removeprefix("sqlite:///"))
         if db_path.exists() and not os.access(db_path, os.W_OK):
             errors.append("SQLite database file is not writable")
     elif not db_url.startswith("postgresql"):

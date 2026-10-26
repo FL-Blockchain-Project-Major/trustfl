@@ -65,7 +65,13 @@ jobs:
       - run: npm ci
       - run: npx hardhat compile
       - name: Verify committed contract types are current
-        run: git diff --exit-code -- packages/contracts/types/ethers-contracts
+        # working-directory is packages/contracts, so the pathspec must be relative to it
+        run: |
+          if [ -n "$(git status --porcelain -- types/ethers-contracts)" ]; then
+            git status --porcelain -- types/ethers-contracts
+            echo "Committed contract types are stale; regenerate and commit them." >&2
+            exit 1
+          fi
       - run: npx hardhat test
 
   zk-tests:
@@ -136,6 +142,7 @@ jobs:
           export FL_FEDERATION_ID=fed-default
           export FL_NUM_ROUNDS=3
           export FL_MAX_CLIENT_WEIGHT_SHARE=0.5
+          export FL_MAX_UPDATE_NORM=1.0
           # Compose's generated client keys are intentionally ephemeral.  The
           # E2E lifecycle therefore uses the documented explicit dev-only
           # enrollment compatibility mode; production never inherits this.
@@ -278,6 +285,7 @@ jobs:
           FL_NUM_CLIENTS=3
           FL_MIN_CLIENTS=3
           FL_MAX_CLIENT_WEIGHT_SHARE=0.5
+          FL_MAX_UPDATE_NORM=1.0
           FL_LOCAL_EPOCHS=1
           FL_MAX_SAMPLES=50
           FL_POLL_INTERVAL_SECONDS=3.0

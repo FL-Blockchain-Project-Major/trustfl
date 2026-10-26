@@ -18,6 +18,7 @@ import logging
 import os
 import signal
 import sys
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -147,6 +148,9 @@ def main() -> None:
     )
 
     server.state.wait_until_done(timeout=None)
+    # Keep answering /status (DONE or ABORTED) briefly so clients stop cleanly
+    # instead of guessing from an unreachable coordinator.
+    time.sleep(float(os.getenv("COORDINATOR_SHUTDOWN_GRACE_SECONDS", "15")))
     server.stop()
     if getattr(server.state, "aborted", False):
         logger.error("Federation aborted: %s", getattr(server.state, "abort_reason", "quorum lost"))

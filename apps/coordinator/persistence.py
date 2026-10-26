@@ -144,6 +144,14 @@ class CoordinatorPersistence:
                     )
             db.commit()
 
+    def record_aggregation(self, update_id: str) -> None:
+        """Mark a submitted/verified update as aggregated into the global model."""
+        with self._session() as db:
+            row = db.get(self.Update, update_id)
+            if row is not None:
+                row.status = self.UpdateStatus.AGGREGATED
+                db.commit()
+
     def record_rejection(
         self,
         update_id: str,
