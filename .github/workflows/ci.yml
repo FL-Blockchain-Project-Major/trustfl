@@ -104,14 +104,22 @@ jobs:
           docker build -t trustfl-client -t ghcr.io/sayam-1705/trustfl/client:ci -f apps/client/Dockerfile .
           docker build -t trustfl-dashboard -t ghcr.io/sayam-1705/trustfl/dashboard:ci apps/dashboard
 
+
       - name: Smoke-test Python package imports inside client image
-        # Catches PYTHONPATH misconfigurations that would break client-init
-        # and any other module-as-script invocations inside the container.
         run: |
-          docker run --rm trustfl-client python -m trustfl_crypto.provision --help
-          docker run --rm trustfl-client python -c "from trustfl_crypto.keys import ClientIdentity; print('trustfl_crypto OK')"
-          docker run --rm trustfl-client python -c "from trustfl_ml.dataset import resolve_and_validate_dataset; print('trustfl_ml OK')"
-          docker run --rm trustfl-coordinator python -c "from trustfl_crypto.keys import ClientIdentity; print('coordinator trustfl_crypto OK')"
+          set -Eeuo pipefail
+
+          docker run --rm trustfl-client \
+            python -m trustfl_crypto.provision --help
+
+          docker run --rm trustfl-client \
+            python -c "from trustfl_crypto.keys import ClientIdentity; print('trustfl_crypto OK')"
+
+          docker run --rm trustfl-client \
+            python -c "from trustfl_ml.dataset import resolve_and_validate_dataset; print('trustfl_ml OK')"
+
+          docker run --rm trustfl-coordinator \
+            python -c "from trustfl_crypto.keys import ClientIdentity; print('coordinator trustfl_crypto OK')"
 
       - name: Validate Compose configuration
         run: docker compose config
@@ -232,22 +240,33 @@ jobs:
               for r in rounds.get("data", [])
               if r.get("status") == "FINALIZED"
           }
-          if not {1, 2, 3} <= finalized:
-              sys.exit(f"Expected finalized rounds {{1, 2, 3}}, got {sorted(finalized)}")
+          if not {1, 2, 3}.issubset(finalized):
+              sys.exit(
+                  f"Expected finalized rounds 1, 2, 3; "
+                  f"observed {sorted(finalized)}"
+              )
 
-          clients = {
-              u["client_id"]
-              for u in updates.get("data", [])
-              if u.get("status") in {"VERIFIED", "AGGREGATED"} and "client_id" in u
+          num_clients = int(os.environ.get("FL_NUM_CLIENTS", "3"))
+          expected_clients = {
+              f"client_{i:03d}" for i in range(1, num_clients + 1)
           }
-          num_clients = int(os.environ.get("FL_NUM_CLIENTS", "2"))
-          expected_clients = {f"client_{i:03d}" for i in range(1, num_clients + 1)}
+
           for round_number in (1, 2, 3):
-              round_clients = {u["client_id"] for u in updates.get("data", [])
-                               if u.get("status") in {"VERIFIED", "AGGREGATED"}
-                               and u.get("round_id") == f"fed-default_round{round_number}"}
-              if not expected_clients <= round_clients:
-                  sys.exit(f"Round {round_number} missing verified/aggregated updates from expected clients {sorted(expected_clients)}: got {sorted(round_clients)}")
+              round_id = f"fed-default_round{round_number}"
+              round_clients = {
+                  u["client_id"]
+                  for u in updates.get("data", [])
+                  if u.get("status") in {"VERIFIED", "AGGREGATED"}
+                  and u.get("round_id") == round_id
+                  and "client_id" in u
+              }
+
+              missing = expected_clients - round_clients
+              if missing:
+                  sys.exit(
+                      f"Round {round_number}: missing clients "
+                      f"{sorted(missing)}; observed {sorted(round_clients)}"
+                  )
 
           confirmed_finalizations = {
               int(t["entity_id"])
@@ -258,15 +277,16 @@ jobs:
               and t.get("entity_type") == "round"
               and str(t.get("entity_id", "")).isdigit()
           }
-          if not {1, 2, 3} <= confirmed_finalizations:
+
+          if not {1, 2, 3}.issubset(confirmed_finalizations):
               sys.exit(
-                  "Expected a CONFIRMED finalizeRound transaction for each round; "
-                  f"got {sorted(confirmed_finalizations)}"
+                  "Missing confirmed finalizeRound transactions for rounds "
+                  f"1, 2, 3; observed {sorted(confirmed_finalizations)}"
               )
 
           print(f"Finalized rounds: {sorted(finalized)}")
-          print(f"Verified/aggregated clients: {sorted(clients)}")
-          print(f"Confirmed round finalizations: {sorted(confirmed_finalizations)}")
+          print(f"Expected clients: {sorted(expected_clients)}")
+          print(f"Confirmed finalizations: {sorted(confirmed_finalizations)}")
           PY
           }
 
@@ -275,8 +295,29 @@ jobs:
 
           # Generate sample dataset BEFORE starting the stack so it is present
           # when client containers mount the volume.
+
           echo "Generating sample dataset (30 mock images for 3 clients)..."
-          python3 scripts/generate_sample_dataset.py --out-dir ./datasets/sample --train-samples 30
+          python3 scripts/generate_sample_dataset.py \
+            --output-dir ./datasets/sample \
+            --train-samples 30 \
+            --val-samples 3
+
+          echo "Validating generated dataset..."
+          test -d ./datasets/sample/images
+          test -d ./datasets/sample/annotations
+          test -d ./datasets/sample/val/images
+          test -d ./datasets/sample/val/annotations
+
+          python3 -c '
+          from pathlib import Path
+          root = Path("./datasets/sample")
+          images = list((root / "images").glob("*"))
+          annotations = list((root / "annotations").glob("*.txt"))
+          assert len(images) == 30, f"Expected 30 training images, got {len(images)}"
+          assert len(annotations) == 30, f"Expected 30 training annotations, got {len(annotations)}"
+          print(f"Dataset OK: {len(images)} training images and {len(annotations)} annotations")
+          '
+
 
           # Write a CI-specific .env so Docker Compose does not auto-load any
           # developer .env that may have been committed or cached, and to ensure
