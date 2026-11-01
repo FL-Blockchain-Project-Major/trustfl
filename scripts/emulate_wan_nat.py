@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-import select
 import socket
-import sys
 import threading
 import time
 
@@ -159,4 +157,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
