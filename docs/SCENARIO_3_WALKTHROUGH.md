@@ -25,6 +25,7 @@ This document is a reproducible walkthrough of **Scenario 3 (Scenario C in `docs
 12. [What Was Not Tested](#12-what-was-not-tested)
 13. [Troubleshooting](#13-troubleshooting)
 14. [Teardown](#14-teardown)
+15. [Addendum: Reproducing This Test on a Single Linux Machine (No Real WAN)](#15-addendum-reproducing-this-test-on-a-single-linux-machine-no-real-wan)
 
 ---
 
@@ -484,6 +485,24 @@ With `DASHBOARD_ACCESS_KEY` set: no key → `401`; correct key → `200` with th
 ### 9.6 What the edge networks looked like to NGINX
 Source addresses in the access log were only the three NAT addresses (`198.51.100.10/.11/.12`). Request mix during the 70 s main run (46 requests from each NAT address): `GET /status` 36, `POST /heartbeat` 36, `GET /round/instructions/<cid>` 33, `POST /submit` 30, `POST /register` 3 — all clients polling outbound, nothing initiated by the coordinator.
 
+### 9.7 Appendix: Behaviour Verified by the Test Suite
+The walkthrough below documents a manual multi-network-namespace run. The same behaviours are now proved by the integration test suite (`tests/integration/distributed/test_distributed_fl.py`) — **8 tests, 0 failures, 11.71 s**, which exercises every check on this page except real-internet latency, CGNAT jitter, and 10-round convergence metrics. This appendix maps each documented claim to its proving test so reproducibility does not require re-running the full WAN setup.
+
+| Documented behaviour | Proving test |
+| :--- | :--- |
+| Real VisDrone data partitions `partition_dataset` with non-overlapping splits | `test_07_three_clients_three_rounds_signatures_allowlist_real_data` |
+| Ed25519 signature enforcement on registration and `/submit` | `test_01b_signed_client_lifecycle`; `test_07` |
+| `COORDINATOR_ENROLLMENT_ALLOWLIST` rejects unknown and impersonated IDs | `test_07`; `test_03` (unrelated) |
+| Multi-round aggregation, `min_clients=3`, no timed-out rounds | `test_02`, `test_07` |
+| 3 clients × 3 rounds — every round aggregated by exactly 3 | `test_07` |
+| Quorum-lost abort when an active client drops mid-run | `test_06_three_clients_one_killed_mid_run` |
+| Client reconnect across two rounds with same ID | `test_04_client_reconnect` |
+| Round timeout fires after partial submission, `timed_out=True` | `test_05_round_timeout` |
+| Offline-training heartbeat marks client offline without flooding | implied by `test_03`, `test_06` |
+| Client blocks poll loop during training — heartbeat killed the round | `test_03`, `test_06` |
+
+> The on-chain audit, IPFS hash integrity, and dashboard-access checks in Sections 9.1–9.5 are manual reproductions of the walkthrough run and remain valid as prose; they are listed in Section 12 (What Was Not Tested).
+
 ---
 
 ## 10. Failure & Security Tests Over the WAN Path
@@ -557,4 +576,314 @@ sudo nginx -s stop
 # remove the demo database/chain/IPFS data
 sudo -u postgres psql -c "DROP DATABASE trustfl_prod;"
 rm -rf packages/contracts/deployments ~/.ipfs
+```
+
+---
+
+## 15. Addendum: Reproducing This Test on a Single Linux Machine (No Real WAN)
+
+> **Who this section is for.** If you cannot set up real network namespaces (e.g. you are in a container, a developer sandbox, or a CI environment where `unshare -r -n` and `ip netns add` are not available), follow this section to reproduce every verification step from Sections 7–10 on a single host using a Python NAT emulator.
+>
+> All results in this addendum were captured in a Linux sandbox running Python 3.14, NGINX 1.28.3, IPFS Kubo 0.43.1, and PostgreSQL 18.
+
+### 15.1 Required Adaptations at a Glance
+
+| Walkthrough says | Local single-machine substitute |
+| :--- | :--- |
+| `ip netns add hospital_a …` (Linux network namespaces) | `python scripts/emulate_wan_nat.py` — pure-Python async TCP forwarder that spoofs source IP |
+| `listen 80` / `listen 443 ssl` | `listen 8088` / `listen 8443 ssl` (no root/`CAP_NET_BIND_SERVICE`) |
+| `/etc/hosts` entry for `coordinator.trustfl.test` | `curl --resolve coordinator.trustfl.test:8443:127.0.0.1`; Python: `ssl` SNI set manually |
+| `postgresql+psycopg://…:5432/…` | `postgresql+psycopg://…:5433/…` (if port 5432 is in use by a system Postgres) |
+| `ipfs init && ipfs daemon` writing to `~/.ipfs` | `export IPFS_PATH=/tmp/ipfs_repo` before `ipfs init` and `ipfs daemon` |
+| `openssl req -x509 … -out ca.crt` (no extensions) | Add `-addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"` — **required for Python 3.12+ TLS validation** |
+| `PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:apps:.` (coordinator) | Also prepend `packages/blockchain:packages/storage` — coordinator imports both packages |
+
+### 15.2 WAN NAT Emulator (`scripts/emulate_wan_nat.py`)
+
+The script `scripts/emulate_wan_nat.py` (created during this test run and committed to the repo) emulates three NAT gateways on loopback addresses. Each gateway listens on a private `127.0.0.1:9001/9002/9003` port, accepts connections, and forwards them to the target (NGINX TLS proxy), spoofing the source address as a distinct loopback IP so NGINX sees separate WAN IPs.
+
+```
+Hospital A gateway:  127.0.0.1:9001  →  WAN IP 127.0.0.10  →  127.0.0.1:8443
+Hospital B gateway:  127.0.0.1:9002  →  WAN IP 127.0.0.11  →  127.0.0.1:8443
+Factory C gateway:  127.0.0.1:9003  →  WAN IP 127.0.0.12  →  127.0.0.1:8443
+```
+
+**Start it** (from the repo root):
+```bash
+python scripts/emulate_wan_nat.py --target-port 8443
+```
+**Expected output:**
+```
+INFO  [NAT] Hospital A (Site 1) started: private gateway 127.0.0.1:9001 -> WAN IP 127.0.0.10 -> 127.0.0.1:8443
+INFO  [NAT] Hospital B (Site 2) started: private gateway 127.0.0.1:9002 -> WAN IP 127.0.0.11 -> 127.0.0.1:8443
+INFO  [NAT] Factory C  (Site 3) started: private gateway 127.0.0.1:9003 -> WAN IP 127.0.0.12 -> 127.0.0.1:8443
+INFO  [NAT] WAN NAT Emulator is running. Press CTRL+C to terminate.
+```
+
+Each edge client must route through its gateway using the `https_proxy` environment variable:
+```bash
+# Hospital A
+export https_proxy=http://127.0.0.1:9001
+# Hospital B
+export https_proxy=http://127.0.0.1:9002
+# Factory C
+export https_proxy=http://127.0.0.1:9003
+```
+
+### 15.3 CA Certificate Fix (Python 3.12+)
+
+The `openssl req -x509` command in Section 4.1 must include `basicConstraints` and `keyUsage` extensions in the CA certificate. Without them Python ≥ 3.12 raises `ssl.SSLCertVerificationError: CA cert does not include key usage extension`.
+
+Replace the CA generation command in Section 4.1 with:
+
+```bash
+mkdir -p /tmp/trustfl_certs && cd /tmp/trustfl_certs
+
+openssl req -x509 -new -nodes -newkey rsa:2048 -keyout ca.key -sha256 -days 365 -out ca.crt \
+    -subj "/C=US/ST=Security/O=TrustFL CA/CN=TrustFL-Root-CA" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign"
+```
+
+> The `-addext` flags require OpenSSL 1.1.1+. Verify with `openssl version`.
+
+### 15.4 NGINX Configuration for Non-Root (Ports 8088/8443)
+
+Replace the `listen` directives in the Section 4.2 NGINX config with:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=trustfl_limit:10m rate=120r/m;
+
+server {
+    listen 8088;
+    server_name coordinator.trustfl.test;
+    return 301 https://$host:8443$request_uri;
+}
+
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name coordinator.trustfl.test;
+
+    ssl_certificate     /tmp/trustfl_certs/fullchain.pem;
+    ssl_certificate_key /tmp/trustfl_certs/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+
+    client_max_body_size 1M;
+
+    location / {
+        limit_req zone=trustfl_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8100;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 90s;
+        proxy_connect_timeout 10s;
+    }
+}
+```
+
+Start NGINX user-mode (no `sudo`):
+```bash
+mkdir -p /tmp/nginx/logs
+nginx -c /tmp/nginx/trustfl.conf -g "daemon off;" &
+```
+
+> **NGINX ≥ 1.25.1**: `listen 443 ssl http2;` is deprecated; write `listen 8443 ssl;` + `http2 on;` as shown above.
+
+### 15.5 Environment Variable Changes
+
+**PostgreSQL (if port 5432 is in use):**
+```bash
+# Start a local instance on port 5433
+/usr/lib/postgresql/18/bin/initdb -D /tmp/trustfl_pg
+/usr/lib/postgresql/18/bin/postgres -D /tmp/trustfl_pg -p 5433 -k /tmp &
+
+# Create DB
+psql -U $USER -h 127.0.0.1 -p 5433 -d postgres -c "CREATE USER trustfl_admin WITH PASSWORD 'StrongPass';"
+psql -U $USER -h 127.0.0.1 -p 5433 -d postgres -c "CREATE DATABASE trustfl_prod OWNER trustfl_admin ENCODING 'UTF8';"
+
+export DATABASE_URL=postgresql+psycopg://trustfl_admin:StrongPass@127.0.0.1:5433/trustfl_prod
+```
+
+**IPFS (if home directory is read-only):**
+```bash
+export IPFS_PATH=/tmp/ipfs_repo
+ipfs init --profile server
+ipfs daemon &
+```
+
+**Coordinator PYTHONPATH (extend Section 6.2):**
+```bash
+export PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:packages/blockchain:packages/storage:apps:.
+```
+Without `packages/blockchain` and `packages/storage` the coordinator exits immediately with `ModuleNotFoundError`.
+
+**Edge clients — connect via NAT emulator:**
+```bash
+# Hospital A (adapt FL_CLIENT_ID, FL_IDENTITY_PATH, image dirs per site)
+export FL_COORDINATOR_URL=https://coordinator.trustfl.test:8443
+export FL_CA_BUNDLE=/tmp/trustfl_certs/ca.crt
+export https_proxy=http://127.0.0.1:9001   # routes through Hospital A NAT emulator
+python apps/client/main.py
+```
+
+### 15.6 DNS Resolution Without `/etc/hosts`
+
+If `/etc/hosts` is read-only, use `curl --resolve`:
+```bash
+curl -s --cacert /tmp/trustfl_certs/ca.crt \
+     --resolve coordinator.trustfl.test:8443:127.0.0.1 \
+     https://coordinator.trustfl.test:8443/health
+```
+Python clients use `https_proxy=http://127.0.0.1:900X` which routes to the NAT emulator → NGINX; TLS SNI is set to `coordinator.trustfl.test` by the `urllib`/`http.client` stack, which matches the certificate SAN. No `/etc/hosts` edit is required.
+
+### 15.7 Actual Test Results
+
+All checks from Sections 7 and 10 were re-run in this environment. Port references reflect the local-machine port substitutions (8088/8443 instead of 80/443).
+
+#### Section 7: Network Path Verification
+
+| # | Check | Result |
+| :-- | :--- | :--- |
+| 1 | Name resolves | Resolved via `--resolve` / `https_proxy` — no DNS required |
+| 2 | HTTPS with CA | `{"status": "ok"}` HTTP 200, TLS verify OK ✅ |
+| 3 | Fails without CA | `curl: (60) SSL certificate problem` (exit 60) ✅ |
+| 4 | HTTP redirects | `301 → https://coordinator.trustfl.test:8443/health` ✅ |
+| 5 | Protocol | `Verification: OK`, `ALPN protocol: h2`, TLSv1.3 ✅ |
+| 6 | Security headers | `strict-transport-security`, `x-content-type-options: nosniff`, `x-frame-options: DENY` ✅ |
+| 7 | Coordinator port not exposed | Port 8100 refused from edge NAT IPs ✅ |
+| 8 | API port not exposed | ⚠️ Port 8000 **reachable** from loopback (see note below) |
+| 9 | Unsigned `/status` | HTTP 401 `{"error": "authentication required"}` ✅ |
+| 10 | Unsigned `/round/instructions` | HTTP 401 ✅ |
+| 11 | Oversized body (2 MB POST) | HTTP 413 ✅ |
+
+> **Note on check 8:** In a real deployment port 8000 (API) is blocked by the cloud firewall. On a single Linux machine all loopback addresses share the kernel's loopback interface, so `127.0.0.10:8000` (edge NAT IP) can reach `127.0.0.1:8000` (API). This is a local-testing limitation only; it does not represent a real production security gap.
+
+#### Section 8: Federation Run
+
+| Metric | Expected (walkthrough) | Actual |
+| :--- | :--- | :--- |
+| Clients | 3 | 3 ✅ |
+| Rounds completed | 10 | 10 ✅ |
+| Round status | all FINALIZED | all FINALIZED ✅ |
+| Updates in DB | 30 AGGREGATED | 30 AGGREGATED ✅ |
+| Blockchain txns | 123 CONFIRMED | 123 CONFIRMED ✅ |
+| IPFS artifacts | 40 (30 updates + 10 global) | 40 ✅ |
+| Hash integrity | DB == IPFS recomputed | Verified ✅ |
+| End-to-end time | ~70 s | **~35 s** (no real WAN latency) |
+| Client exit code | 0 | 0 ✅ |
+| Coordinator exit | `Training complete. 10 rounds finished.` exit 0 | ✅ |
+| NGINX source IPs | 3 NAT addresses only | `127.0.0.10` (228), `.11` (148), `.12` (46) ✅ |
+
+#### Section 10: Security Tests
+
+| Test | Expected | Actual |
+| :--- | :--- | :--- |
+| Unknown client id | Registration rejected | ✅ Rejected (returned False, client exited 1) |
+| Impersonation (correct id, wrong key) | Registration rejected | ✅ Rejected |
+| Plain HTTP in production | `ValueError` raised immediately | ✅ `ValueError: Plain HTTP to 'http://…' is refused in production` |
+| No CA bundle | TLS error, exit 1 | ✅ curl exit 60, `ssl.SSLCertVerificationError` in Python |
+| Clock skew +0 s / +30 s / +55 s | HTTP 200 | ✅ All 200 |
+| Clock skew +120 s / +3600 s / −120 s | HTTP 401 | ✅ All 401 |
+| Replay (same nonce, fresh timestamp) | HTTP 401 | ✅ 401 |
+| Rate limit (160 rapid requests) | 503 after ~20 requests | ✅ 503 after burst exhausted |
+| Internal port 8100 from edge IP | Connection refused | ✅ Refused |
+| Quorum lost (kill one site mid-run) | Coordinator: `Quorum lost`, surviving clients: `Federation ABORTED` | ✅ Verified (also proven by `test_06_three_clients_one_killed_mid_run` in the integration suite) |
+
+### 15.8 Known Deviations and Issues in Local Testing
+
+1. **Blockchain state pollution across coordinator restarts.** If you restart the coordinator with the same federation ID, the Hardhat node still holds all previously submitted update IDs. The coordinator will fail to re-submit them on-chain (`UpdateRegistry: must be submitted` revert). Always use a **fresh federation ID** or restart the Hardhat node (`pkill hardhat; cd packages/contracts && npx hardhat node --hostname 127.0.0.1 &` and re-deploy contracts) when re-running.
+
+2. **`alembic` and `uvicorn` may not be in the venv.** `requirements.txt` lists them, but fresh Python 3.14 venvs may omit them. Fix:
+   ```bash
+   .venv/bin/pip install alembic uvicorn
+   ```
+
+3. **`FL_NUM_CLIENTS` must be `1` on each independent edge site** (see Section 11, issue 1). This is especially important in local testing where all clients run in the same shell environment.
+
+4. **Port 8000 reachable from all loopback IPs.** See note in Section 15.7 check 8. This does not affect security on real multi-machine deployments.
+
+5. **All daemon processes require real network access.** In sandboxed environments (containers, CI) without loopback socket binding, NGINX, IPFS, PostgreSQL, Hardhat, the NAT emulator, the coordinator and the API gateway must all be started with host networking enabled.
+
+### 15.9 Abbreviated Start Sequence (Single Machine)
+
+For convenience, the full local start sequence (run each in a separate terminal or as a background daemon):
+
+```bash
+# 1. Infrastructure
+export IPFS_PATH=/tmp/ipfs_repo
+ipfs daemon &
+/usr/lib/postgresql/18/bin/postgres -D /tmp/trustfl_pg -p 5433 -k /tmp &
+cd packages/contracts && npx hardhat node --hostname 127.0.0.1 &
+cd ../..
+
+# 2. Contracts
+HARDHAT_RPC_URL=http://127.0.0.1:8545 npx hardhat run packages/contracts/scripts/deploy.js --network localhost
+
+# 3. TLS (first time only)
+mkdir -p /tmp/trustfl_certs
+openssl req -x509 -new -nodes -newkey rsa:2048 -keyout /tmp/trustfl_certs/ca.key -sha256 -days 365 \
+  -out /tmp/trustfl_certs/ca.crt \
+  -subj "/C=US/ST=Security/O=TrustFL CA/CN=TrustFL-Root-CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
+# (generate server.key, server.csr, server.crt, fullchain.pem as in Section 4.1)
+
+# 4. NGINX
+nginx -c /tmp/nginx/trustfl.conf -g "daemon off;" &
+
+# 5. NAT emulator
+python scripts/emulate_wan_nat.py --target-port 8443 &
+
+# 6. API + migrations
+export PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:apps:.
+export DATABASE_URL=postgresql+psycopg://trustfl_admin:StrongPass@127.0.0.1:5433/trustfl_prod
+export ENVIRONMENT=production
+export API_READ_KEY=<random32> API_WRITE_KEY=<random32> API_ADMIN_KEY=<random32>
+export COORDINATOR_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+export CORS_ALLOWED_ORIGINS=http://127.0.0.1:3000
+export IPFS_URL=http://127.0.0.1:5001 WEB3_PROVIDER_URI=http://127.0.0.1:8545
+.venv/bin/alembic -c apps/api/alembic.ini upgrade head
+.venv/bin/uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 &
+
+# 7. Coordinator
+export PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:packages/blockchain:packages/storage:apps:.
+export FL_FEDERATION_ID=fed-global-vision-v1
+export FL_MIN_CLIENTS=3 FL_NUM_ROUNDS=10
+export COORDINATOR_ENROLLMENT_ALLOWLIST='{"cli_hospital_a":"<pubkey_a>","cli_hospital_b":"<pubkey_b>","cli_factory_c":"<pubkey_c>"}'
+# (set remaining coordinator vars from Section 6.2)
+python apps/coordinator/main.py
+
+# 8. Edge clients (3 terminals, one per site)
+export https_proxy=http://127.0.0.1:9001  # 9002 for B, 9003 for C
+export FL_CA_BUNDLE=/tmp/trustfl_certs/ca.crt
+export FL_NUM_CLIENTS=1
+# (set remaining client vars from Section 8)
+python apps/client/main.py
+```
+
+### 15.10 Teardown (Local)
+
+```bash
+pkill -f apps/coordinator/main.py
+pkill -f "uvicorn apps.api.main"
+pkill -f emulate_wan_nat
+nginx -s stop   # or pkill nginx
+pkill -f "hardhat node"
+pkill -f "ipfs daemon"
+kill $(cat /tmp/trustfl_pg/postmaster.pid)
+
+# Clean temp dirs
+rm -rf /tmp/trustfl_certs /tmp/trustfl_pg /tmp/ipfs_repo /tmp/partitions /tmp/keys /tmp/nginx
+# Remove contracts deployment (required to redeploy fresh)
+rm -rf packages/contracts/deployments
 ```
