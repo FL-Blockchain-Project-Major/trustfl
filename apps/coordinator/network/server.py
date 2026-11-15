@@ -27,7 +27,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from apps.coordinator.zkp_verifier import ZKPVerifier
+from apps.coordinator.zkp_verifier import ZKPVerifier, field_from_text
 from packages.crypto.trustfl_crypto.canonical import (
     canonical_artifact_bytes,
     hash_parameters,
@@ -504,10 +504,10 @@ class CoordinatorState:
                     return False
                 model_version = str(metadata.get("model_version", ""))
                 expected_signals = [
-                    str(int.from_bytes(cid.encode(), "big")),
-                    str(int.from_bytes(os.getenv("FL_FEDERATION_ID", "fed-default").encode(), "big")),
+                    field_from_text(cid),
+                    field_from_text(os.getenv("FL_FEDERATION_ID", "fed-default")),
                     str(round_id),
-                    str(int.from_bytes(model_version.encode(), "big")),
+                    field_from_text(model_version),
                     str(metadata.get("public_commitment", "")),
                 ]
                 result = self.zkp_verifier.verify(

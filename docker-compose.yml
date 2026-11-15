@@ -131,8 +131,12 @@ services:
       context: .
       dockerfile: apps/coordinator/Dockerfile
     environment:
+      - ENVIRONMENT=development
       - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
       - COORDINATOR_REQUIRE_SIGNATURES=true
+      - COORDINATOR_REQUIRE_ZKP=true
+      - ZKP_VERIFY_COMMAND=node /app/packages/zkp/src/verify-cli.js
+      - ZKP_ARTIFACTS_DIR=/zkp-artifacts
       - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
       # client-init writes allowlist.json into the shared keys volume.
       # The coordinator reads it at startup to enforce allowlist enrollment.
@@ -157,6 +161,7 @@ services:
     volumes:
       - contract_deployments:/contracts-deployments
       - client_keys:/var/lib/trustfl/keys:ro
+      - ./packages/zkp/artifacts:/zkp-artifacts:ro
     ports:
       - "127.0.0.1:${COORDINATOR_HOST_PORT:-8100}:8100"
     healthcheck:
@@ -190,6 +195,7 @@ services:
       - FL_NUM_CLIENTS=${FL_NUM_CLIENTS:-2}
       - FL_KEYS_DIR=/var/lib/trustfl/keys
       - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
+      - ZKP_ARTIFACTS_DIR=/zkp-artifacts
       - FL_COORDINATOR_URL=http://coordinator:8100
       - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:-trustfl-coordinator-dev}
       - FL_DATASET_DIR=/data/dataset
@@ -198,6 +204,7 @@ services:
       - FL_POLL_INTERVAL_SECONDS=${FL_POLL_INTERVAL_SECONDS:-3.0}
     volumes:
       - client_keys:/var/lib/trustfl/keys
+      - ./packages/zkp/artifacts:/zkp-artifacts:ro
       # Mount your raw dataset read-only.  Set FL_DATASET_DIR in .env or on
       # the command line.  If the directory does not exist the sample dataset
       # generator script will create one under datasets/sample.

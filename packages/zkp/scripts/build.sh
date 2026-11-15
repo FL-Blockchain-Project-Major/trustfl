@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build script for TrustFL ZKP circuit.
-# Requires: circom (>= 2.1.5) on PATH, and npx snarkjs available.
+# Requires: circom (>= 2.2.3) on PATH, and npx snarkjs available.
 #
 # Produces:
 #   artifacts/update_commitment.wasm  – WASM witness calculator
@@ -20,7 +20,8 @@ echo "=== [1] Compile Circom circuit ==="
 circom "$CIRCUITS/update_commitment.circom" \
   --r1cs --wasm --sym \
   --output "$ARTIFACTS" \
-  --include "$DIR/node_modules"
+  -l "$DIR"
+cp "$ARTIFACTS/update_commitment_js/update_commitment.wasm" "$ARTIFACTS/update_commitment.wasm"
 
 echo "=== [2] Powers of Tau ceremony (pot12) ==="
 if [ ! -f "$ARTIFACTS/pot12_final.ptau" ]; then

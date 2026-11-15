@@ -1,10 +1,17 @@
 # Zero-Knowledge Proofs
 
 This package contains the independently implemented and tested ZKP runtime.
-Proof generation and verification are an optional integration boundary: the
-coordinator currently enforces signed update metadata and artifact hashes, while
-ZKP verification can be enabled by a future coordinator verifier without
-replacing the real package tests.
+Coordinator update admission requires a real Groth16 proof and fail-closed
+verification. Clients use the same runtime to generate proofs from private
+update commitments; the coordinator verifies them before persistence,
+aggregation, or blockchain submission.
 
-Compiled proving artifacts (`.zkey`, `.ptau`, `.r1cs`, and witnesses) are
-generated on demand and are never committed.
+The circuit proves knowledge of a private commitment whose Poseidon hash is the
+public commitment, bound to the client, federation, round, and model version.
+It does not prove honest training, gradient correctness, model accuracy, or
+privacy.
+
+Compiled proving artifacts (`.zkey`, `.ptau`, `.r1cs`, WASM, and witnesses) are
+generated on demand and are never committed. Development and CI may generate
+ephemeral artifacts with `npm run build`; production must mount externally
+reviewed artifacts and set `ZKP_ARTIFACTS_DIR` explicitly.

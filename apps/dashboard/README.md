@@ -15,5 +15,6 @@ It provides:
 - clickable record detail drawers for operational investigation
 
 See [`../../docs/DASHBOARD.md`](../../docs/DASHBOARD.md) for configuration,
-API requirements, and current limitations. ZKP is optional/deferred in the
-coordinator lifecycle and is not presented as an acceptance guarantee here.
+API requirements, and current limitations. The coordinator requires proof
+verification before accepting updates; dashboard status reflects that pipeline
+but does not replace cryptographic verification.

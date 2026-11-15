@@ -139,6 +139,26 @@ export async function generateAndVerifyProof({
   return { proof, publicSignals, verificationKey: vKey, isValid, publicCommitment };
 }
 
+export async function generateProof({
+  clientId,
+  federationId,
+  roundId,
+  modelVersion,
+  privateUpdateCommitment,
+}) {
+  const result = await generateAndVerifyProof({
+    clientId,
+    federationId,
+    roundId,
+    modelVersion,
+    privateUpdateCommitment,
+  });
+  if (!result.isValid) {
+    throw new Error("generated proof failed local verification");
+  }
+  return result;
+}
+
 export async function verifyProof({ proof, publicSignals }) {
   if (
     !proof ||

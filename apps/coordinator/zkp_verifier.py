@@ -9,6 +9,14 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+
+
+def field_from_text(value: str) -> str:
+    import hashlib
+
+    return str(int.from_bytes(hashlib.sha256(value.encode()).digest(), "big") % FIELD_MODULUS)
+
 
 @dataclass(frozen=True)
 class ProofVerificationResult:

@@ -48,6 +48,7 @@ class UpdateMetadata:
     artifact_hash: str  # "sha256:<64 hex chars>"
     timestamp: int  # Unix epoch seconds
     nonce: str  # replay-guard token
+    public_commitment: str | None = None
 
     # ------------------------------------------------------------------
 
@@ -83,6 +84,7 @@ class UpdateMetadata:
             artifact_hash=d["artifact_hash"],
             timestamp=int(d["timestamp"]),
             nonce=d["nonce"],
+            public_commitment=d.get("public_commitment"),
         )
 
 
@@ -169,6 +171,7 @@ def build_metadata(
     num_examples: int | None = None,
     metrics: dict[str, float] | None = None,
     timestamp: int | None = None,
+    public_commitment: str | None = None,
 ) -> UpdateMetadata:
     """
     Construct a fresh UpdateMetadata for signing.
@@ -186,4 +189,5 @@ def build_metadata(
         artifact_hash=hash_artifact(parameters, num_examples or 0, metrics or {}),
         timestamp=timestamp if timestamp is not None else int(time.time()),
         nonce=generate_nonce(client_id, round_id),
+        public_commitment=public_commitment,
     )

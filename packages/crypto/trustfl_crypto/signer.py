@@ -109,6 +109,7 @@ class UpdateSigner:
         num_examples: int,
         metrics: dict[str, float],
         update_id: str | None = None,
+        public_commitment: str | None = None,
     ) -> SignedUpdate:
         """
         Build UpdateMetadata, sign its canonical hash, return a SignedUpdate.
@@ -125,6 +126,7 @@ class UpdateSigner:
             parameters=parameters,
             num_examples=num_examples,
             metrics=metrics,
+            public_commitment=public_commitment,
         )
 
         # Sign the canonical hash (32 bytes) — deterministic, fast

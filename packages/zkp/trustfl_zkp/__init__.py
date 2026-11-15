@@ -8,11 +8,18 @@ so no circomlibjs Python bindings are needed.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
 
 ZKP_DIR = Path(__file__).parent.parent  # packages/zkp/
+FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+
+
+def field_from_text(value: str) -> int:
+    return int.from_bytes(hashlib.sha256(value.encode()).digest(), "big") % FIELD_MODULUS
 
 
 def _run_node(script: str) -> str:
@@ -49,6 +56,7 @@ const r = await computeCommitment({{
   privateUpdateCommitment: {private_commitment}n,
 }});
 process.stdout.write(r);
+process.exit(0);
 """
     return _run_node(script)
 
@@ -69,6 +77,33 @@ def verify_commitment(
         client_id, federation_id, round_id, model_version, private_commitment
     )
     return computed == str(public_commitment)
+
+
+def generate_groth16_proof(
+    client_id: int,
+    federation_id: int,
+    round_id: int,
+    model_version: int,
+    private_commitment: int,
+) -> dict[str, Any]:
+    """Generate a real Groth16 proof using the provisioned circuit artifacts."""
+    script = f"""
+import {{ generateProof }} from "./src/zkp.js";
+const r = await generateProof({{
+  clientId: {client_id}n,
+  federationId: {federation_id}n,
+  roundId: {round_id}n,
+  modelVersion: {model_version}n,
+  privateUpdateCommitment: {private_commitment}n,
+}});
+process.stdout.write(JSON.stringify({{
+  proof: r.proof,
+  publicSignals: r.publicSignals,
+  publicCommitment: r.publicCommitment,
+}}));
+process.exit(0);
+"""
+    return json.loads(_run_node(script))
 
 
 def build_proof_metadata(

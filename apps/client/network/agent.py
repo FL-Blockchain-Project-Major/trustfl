@@ -16,6 +16,7 @@ Retry logic wraps every HTTP call (max_retries with exponential back-off).
 from __future__ import annotations
 
 import base64
+import hashlib
 import ipaddress
 import json
 import logging
@@ -327,12 +328,32 @@ class DistributedClientAgent:
         metrics: dict[str, float],
         model_version: str,
     ) -> bool:
+        from trustfl_zkp import field_from_text, generate_groth16_proof
+
+        private_commitment = int.from_bytes(
+            hashlib.sha256(
+                json.dumps(
+                    {"parameters": params, "num_examples": n_examples, "metrics": metrics},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).digest(),
+            "big",
+        ) % 21888242871839275222246405745257275088548364400416034343698204186575808495617
+        proof_result = generate_groth16_proof(
+            int(field_from_text(self.client_id)),
+            int(field_from_text(self.federation_id)),
+            round_id,
+            int(field_from_text(model_version)),
+            private_commitment,
+        )
         signed_update = self.signer.sign(
             round_id=round_id,
             model_version=model_version,
             parameters=params,
             num_examples=n_examples,
             metrics=metrics,
+            public_commitment=proof_result["publicCommitment"],
         )
         payload = {
             "client_id": self.client_id,
@@ -342,6 +363,8 @@ class DistributedClientAgent:
             "metrics": metrics,
             "metadata": signed_update.metadata.to_dict(),
             "signature": signed_update.signature_b64,
+            "proof": proof_result["proof"],
+            "public_signals": proof_result["publicSignals"],
         }
         resp = self._post("/submit", payload)
         return bool(resp and resp.get("accepted"))

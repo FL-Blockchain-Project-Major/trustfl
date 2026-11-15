@@ -102,6 +102,11 @@ jobs:
 
       - name: Build images
         run: |
+          cargo install --locked --git https://github.com/iden3/circom.git --tag v2.2.3 circom
+          cd packages/zkp
+          npm ci
+          npm run build
+          cd ../..
           docker build -t trustfl-api -t ghcr.io/sayam-1705/trustfl/api:ci -f apps/api/Dockerfile .
           docker build -t trustfl-coordinator -t ghcr.io/sayam-1705/trustfl/coordinator:ci -f apps/coordinator/Dockerfile .
           docker build -t trustfl-client -t ghcr.io/sayam-1705/trustfl/client:ci -f apps/client/Dockerfile .
@@ -123,6 +128,12 @@ jobs:
 
           docker run --rm trustfl-coordinator \
             python -c "from trustfl_crypto.keys import ClientIdentity; print('coordinator trustfl_crypto OK')"
+
+          docker run --rm \
+            -e ZKP_ARTIFACTS_DIR=/zkp-artifacts \
+            -v "$PWD/packages/zkp/artifacts:/zkp-artifacts:ro" \
+            trustfl-coordinator \
+            sh -c 'test -r /zkp-artifacts/verification_key.json && printf "{\"proof\":{},\"publicSignals\":[]}\\n" | node /app/packages/zkp/src/verify-cli.js; test "$?" -ne 0'
 
           docker run --rm trustfl-api \
             env CORS_ALLOWED_ORIGINS=https://dashboard.example.test \
@@ -168,6 +179,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install Pillow
+
+      - name: Build ephemeral ZKP artifacts for E2E
+        run: |
+          cargo install --locked --git https://github.com/iden3/circom.git --tag v2.2.3 circom
+          cd packages/zkp
+          npm ci
+          npm run build
 
       - name: Run Compose E2E
         shell: bash
