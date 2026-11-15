@@ -21,14 +21,22 @@ def test_malformed_proof_is_rejected_before_command():
 
 def test_public_signal_tampering_is_rejected():
     verifier = ZKPVerifier("true")
-    result = verifier.verify(proof=_proof(), public_signals=["1", "9", "3", "4", "5"], expected_signals=["1", "2", "3", "4", "5"])
+    result = verifier.verify(
+        proof=_proof(),
+        public_signals=["1", "9", "3", "4", "5"],
+        expected_signals=["1", "2", "3", "4", "5"],
+    )
     assert not result.valid
     assert result.reason == "PUBLIC_SIGNALS_MISMATCH"
 
 
 def test_verifier_failure_is_fail_closed():
     verifier = ZKPVerifier("false")
-    result = verifier.verify(proof=_proof(), public_signals=["1", "2", "3", "4", "5"], expected_signals=["1", "2", "3", "4", "5"])
+    result = verifier.verify(
+        proof=_proof(),
+        public_signals=["1", "2", "3", "4", "5"],
+        expected_signals=["1", "2", "3", "4", "5"],
+    )
     assert not result.valid
 
 

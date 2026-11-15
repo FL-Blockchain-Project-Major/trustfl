@@ -516,7 +516,11 @@ class CoordinatorState:
                     expected_signals=expected_signals,
                 )
                 if not result.valid:
-                    logger.warning("Rejecting update from %s: proof verification failed (%s)", cid, result.reason)
+                    logger.warning(
+                        "Rejecting update from %s: proof verification failed (%s)",
+                        cid,
+                        result.reason,
+                    )
                     return False
 
             update_id = f"update_{cid}_{round_id}"

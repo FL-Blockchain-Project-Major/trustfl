@@ -14,7 +14,10 @@ def test_published_compose_is_fail_closed_for_production():
     assert "${COORDINATOR_PRIVATE_KEY:?COORDINATOR_PRIVATE_KEY must be set}" in compose
     assert "${COORDINATOR_ENROLLMENT_TOKEN:?COORDINATOR_ENROLLMENT_TOKEN must be set}" in compose
     assert "${BLOCKCHAIN_RPC_URL:?BLOCKCHAIN_RPC_URL must be set}" in compose
-    assert "${BLOCKCHAIN_CONTRACTS_DIR:?BLOCKCHAIN_CONTRACTS_DIR must point to a directory containing contracts.json}" in compose
+    assert (
+        "${BLOCKCHAIN_CONTRACTS_DIR:?BLOCKCHAIN_CONTRACTS_DIR must point to a directory containing contracts.json}"
+        in compose
+    )
     assert "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}" in compose
     assert "${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}" in compose
     assert "${FL_DATASET_DIR:?FL_DATASET_DIR must point to the client dataset}" in compose

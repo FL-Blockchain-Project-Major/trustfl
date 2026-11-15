@@ -330,16 +330,19 @@ class DistributedClientAgent:
     ) -> bool:
         from trustfl_zkp import field_from_text, generate_groth16_proof
 
-        private_commitment = int.from_bytes(
-            hashlib.sha256(
-                json.dumps(
-                    {"parameters": params, "num_examples": n_examples, "metrics": metrics},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode()
-            ).digest(),
-            "big",
-        ) % 21888242871839275222246405745257275088548364400416034343698204186575808495617
+        private_commitment = (
+            int.from_bytes(
+                hashlib.sha256(
+                    json.dumps(
+                        {"parameters": params, "num_examples": n_examples, "metrics": metrics},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                ).digest(),
+                "big",
+            )
+            % 21888242871839275222246405745257275088548364400416034343698204186575808495617
+        )
         proof_result = generate_groth16_proof(
             int(field_from_text(self.client_id)),
             int(field_from_text(self.federation_id)),

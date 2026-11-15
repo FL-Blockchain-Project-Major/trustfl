@@ -42,11 +42,19 @@ class ZKPVerifier:
     def _valid_public_signals(signals: Any) -> bool:
         if not isinstance(signals, list) or len(signals) != 5:
             return False
-        return all(isinstance(value, (str, int)) and not isinstance(value, bool) for value in signals)
+        return all(
+            isinstance(value, (str, int)) and not isinstance(value, bool) for value in signals
+        )
 
     @staticmethod
     def _valid_proof(proof: Any) -> bool:
-        if not isinstance(proof, dict) or set(proof) != {"pi_a", "pi_b", "pi_c", "protocol", "curve"}:
+        if not isinstance(proof, dict) or set(proof) != {
+            "pi_a",
+            "pi_b",
+            "pi_c",
+            "protocol",
+            "curve",
+        }:
             return False
         if proof["protocol"] != "groth16" or proof["curve"] != "bn128":
             return False
@@ -61,9 +69,7 @@ class ZKPVerifier:
             and all(isinstance(item, list) for item in proof["pi_b"][:2])
             and all(len(item) >= 2 for item in proof["pi_b"][:2])
             and all(
-                isinstance(value, (str, int))
-                for item in proof["pi_b"][:2]
-                for value in item[:2]
+                isinstance(value, (str, int)) for item in proof["pi_b"][:2] for value in item[:2]
             )
             and all(isinstance(item, (str, int)) for item in proof["pi_c"][:2])
         )
