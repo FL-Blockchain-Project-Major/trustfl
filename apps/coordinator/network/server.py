@@ -336,7 +336,11 @@ class CoordinatorState:
     @property
     def active_clients(self) -> list[str]:
         """Clients that are ONLINE (heartbeat OK)."""
-        return [cid for cid, info in self.registered_clients.items() if info["status"] != "OFFLINE"]
+        return [
+            cid
+            for cid, info in self.registered_clients.items()
+            if info["status"] != "OFFLINE" and info.get("lifecycle", "ACTIVE") == "ACTIVE"
+        ]
 
     def _status_label(self) -> str:
         if self.aborted:
@@ -603,24 +607,30 @@ class CoordinatorState:
                 and metadata["artifact_hash"] != artifact_hash
             ):
                 raise ValueError("ARTIFACT_HASH_MISMATCH")
-            if self.blockchain_client:
-                self._chain_call_with_retry(
-                    "BLOCKCHAIN_SUBMIT_FAILED",
-                    self.blockchain_client.submit_update,
-                    update_id,
-                    round_id,
-                    cid,
-                    artifact_hash,
-                    nonce,
-                )
-                if verified:
-                    self._chain_call_with_retry(
-                        "BLOCKCHAIN_VERIFICATION_FAILED",
-                        self.blockchain_client.mark_verification_state,
-                        update_id,
-                        True,
-                    )
             if self.persistence:
+                events = [
+                    {
+                        "id": f"outbox_update_{update_id}",
+                        "idempotency_key": f"update:{update_id}",
+                        "event_type": "UPDATE_SUBMISSION",
+                        "payload": {
+                            "update_id": update_id,
+                            "round_id": round_id,
+                            "client_id": cid,
+                            "artifact_hash": artifact_hash,
+                            "nonce": nonce,
+                        },
+                    }
+                ]
+                if verified:
+                    events.append(
+                        {
+                            "id": f"outbox_proof_{update_id}",
+                            "idempotency_key": f"proof:{update_id}",
+                            "event_type": "UPDATE_VERIFICATION",
+                            "payload": {"update_id": update_id},
+                        }
+                    )
                 self.persistence.record_update(
                     update_id,
                     cid,
@@ -631,7 +641,33 @@ class CoordinatorState:
                     metrics,
                     nonce,
                     verified,
+                    blockchain_events=events,
                 )
+            if self.blockchain_client:
+                self._chain_call_with_retry(
+                    "BLOCKCHAIN_SUBMIT_FAILED",
+                    self.blockchain_client.submit_update,
+                    update_id,
+                    round_id,
+                    cid,
+                    artifact_hash,
+                    nonce,
+                )
+                if self.persistence:
+                    self.persistence.mark_blockchain_processed(
+                        f"outbox_update_{update_id}"
+                    )
+                if verified:
+                    self._chain_call_with_retry(
+                        "BLOCKCHAIN_VERIFICATION_FAILED",
+                        self.blockchain_client.mark_verification_state,
+                        update_id,
+                        True,
+                    )
+                    if self.persistence:
+                        self.persistence.mark_blockchain_processed(
+                            f"outbox_proof_{update_id}"
+                        )
         except OSError as exc:
             # Infrastructure problem (chain RPC, storage, DB). The update itself was
             # not judged invalid, so do NOT write a terminal rejection: release the
@@ -819,6 +855,7 @@ class CoordinatorState:
 
     def monitor_tick(self) -> None:
         """Called periodically. Evicts dead clients; triggers timeout aggregation."""
+        self._process_blockchain_outbox()
         aggregate_timeout = False
         retry_finalize = False
         with self.lock:
@@ -863,6 +900,31 @@ class CoordinatorState:
         elif retry_finalize:
             self._retry_finalization()
 
+    def _process_blockchain_outbox(self) -> None:
+        if not self.persistence or not self.blockchain_client:
+            return
+
+        def submit(event_type: str, payload: dict) -> bool:
+            if event_type == "UPDATE_SUBMISSION":
+                return self.blockchain_client.submit_update(
+                    payload["update_id"],
+                    payload["round_id"],
+                    payload["client_id"],
+                    payload["artifact_hash"],
+                    payload["nonce"],
+                )
+            if event_type == "UPDATE_VERIFICATION":
+                return self.blockchain_client.mark_verification_state(
+                    payload["update_id"], True
+                )
+            if event_type == "ROUND_COMMIT":
+                return self.blockchain_client.finalize_round(
+                    payload["round_id"], payload["model_version"]
+                )
+            raise ValueError(f"unknown blockchain outbox event {event_type}")
+
+        self.persistence.process_blockchain_outbox(submit)
+
     # ------------------------------------------------------------------
     # Internal (must be called while holding self.lock)
     # ------------------------------------------------------------------
@@ -876,6 +938,13 @@ class CoordinatorState:
             self._round_active = False
             round_id = self.current_round
             updates = list(self.pending_updates.values())
+        if self.persistence:
+            self.persistence.transition_round(
+                round_id,
+                {"ACTIVE", "COLLECTING", "VALIDATING"},
+                "VALIDATING",
+            )
+            self.persistence.transition_round(round_id, {"VALIDATING"}, "AGGREGATING")
         try:
             if len(updates) < self.min_clients:
                 if self.persistence:
@@ -908,6 +977,8 @@ class CoordinatorState:
             # client submission order.
             updates.sort(key=lambda u: u.get("client_id", u.get("update_id", "")))
             parameters = _fedavg(updates, self.global_parameters)
+            if self.persistence:
+                self.persistence.transition_round(round_id, {"AGGREGATING"}, "COMMITTING")
             global_artifact = None
             if self.storage_client:
                 global_artifact = self.storage_client.save_artifact(
@@ -931,9 +1002,20 @@ class CoordinatorState:
                         self.blockchain_client.record_aggregation(uid)
                     if self.persistence and hasattr(self.persistence, "record_aggregation"):
                         self.persistence.record_aggregation(uid)
+            model_version = hash_parameters(parameters)
+            if self.persistence and self.blockchain_client:
+                self.persistence.enqueue_blockchain_event(
+                    "ROUND_COMMIT",
+                    f"round:{round_id}:commit:{model_version}",
+                    {"round_id": round_id, "model_version": model_version},
+                )
             finalized = not self.blockchain_client or self.blockchain_client.finalize_round(
-                round_id, hash_parameters(parameters)
+                round_id, model_version
             )
+            if finalized and self.persistence and self.blockchain_client:
+                self.persistence.mark_blockchain_processed(
+                    f"round:{round_id}:commit:{model_version}"
+                )
             if finalized and self.persistence:
                 self.persistence.finalize_round(round_id)
             with self.lock:
@@ -990,9 +1072,19 @@ class CoordinatorState:
             if not self._finalization_pending:
                 return
             round_id, model_version = self.current_round, hash_parameters(self.global_parameters)
+        if self.persistence and self.blockchain_client:
+            self.persistence.enqueue_blockchain_event(
+                "ROUND_COMMIT",
+                f"round:{round_id}:commit:{model_version}",
+                {"round_id": round_id, "model_version": model_version},
+            )
         succeeded = not self.blockchain_client or self.blockchain_client.finalize_round(
             round_id, model_version
         )
+        if succeeded and self.persistence and self.blockchain_client:
+            self.persistence.mark_blockchain_processed(
+                f"round:{round_id}:commit:{model_version}"
+            )
         if succeeded and self.persistence:
             self.persistence.finalize_round(round_id)
         if not succeeded:
@@ -1043,16 +1135,30 @@ class CoordinatorState:
             logger.info("Round 1 started with %d clients", len(self.active_clients))
 
     def _start_round_durable(self, round_id: int, model_version: str) -> None:
-        """Chain and DB transition performed after the in-memory start commit."""
+        """Persist the round before external blockchain side effects."""
+        if self.persistence:
+            try:
+                self.persistence.start_round(round_id, model_version)
+            except (OSError, ValueError) as exc:
+                logger.error("Unable to persist round %d start: %s", round_id, exc)
+                return
         if self.blockchain_client:
             if not self.blockchain_client.create_round(round_id, model_version):
                 logger.error("Blockchain round %d creation failed", round_id)
+                if self.persistence:
+                    self.persistence.transition_round(
+                        round_id, {"COLLECTING"}, "RECOVERY_REQUIRED",
+                        {"reason": "BLOCKCHAIN_ROUND_CREATE_FAILED"},
+                    )
                 return
             if not self.blockchain_client.activate_round(round_id):
                 logger.error("Blockchain round %d activation failed", round_id)
+                if self.persistence:
+                    self.persistence.transition_round(
+                        round_id, {"COLLECTING"}, "RECOVERY_REQUIRED",
+                        {"reason": "BLOCKCHAIN_ROUND_ACTIVATE_FAILED"},
+                    )
                 return
-        if self.persistence:
-            self.persistence.start_round(round_id, model_version)
 
     def _aggregate_round_locked(self, timed_out: bool = False) -> None:
         """Run FedAvg over pending_updates and advance the round counter."""

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -34,6 +35,7 @@ class BlockchainClient:
         self.account = self.w3.eth.account.from_key(private_key)
         self.w3.eth.default_account = self.account.address
         self.max_retries = max_retries
+        self.finality_blocks = max(1, int(os.getenv("BLOCKCHAIN_FINALITY_BLOCKS", "1")))
         self.transaction_recorder = transaction_recorder
         # Serialise allocation, build/sign/send.  A receipt wait happens after
         # send, so independent transactions can still confirm concurrently.
@@ -91,6 +93,7 @@ class BlockchainClient:
                     tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
                     self._next_nonce = nonce + 1
                 receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+                self._wait_for_finality(receipt)
 
                 if receipt.status == 1:
                     self._record_transaction(
@@ -169,6 +172,17 @@ class BlockchainClient:
         )
         return False
 
+    def _wait_for_finality(self, receipt) -> None:
+        required_block = getattr(receipt, "blockNumber", None)
+        if self.finality_blocks <= 1 or required_block is None:
+            return
+        deadline = time.monotonic() + 60
+        target = required_block + self.finality_blocks - 1
+        while self.w3.eth.block_number < target:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("configured blockchain finality was not reached")
+            time.sleep(1)
+
     def reconcile_pending(self) -> dict[str, str]:
         """Resolve uncertain broadcasts from receipt lookup without re-sending them.
 
@@ -180,6 +194,7 @@ class BlockchainClient:
         for key, event in list(self._pending_transactions.items()):
             try:
                 receipt = self.w3.eth.get_transaction_receipt(event["tx_hash"])
+                self._wait_for_finality(receipt)
             except Exception:
                 continue
             status = "CONFIRMED" if receipt.status == 1 else "FAILED"

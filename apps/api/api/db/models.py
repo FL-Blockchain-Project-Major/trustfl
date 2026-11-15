@@ -42,10 +42,15 @@ class FederationStatus(enum.StrEnum):
 
 class RoundStatus(enum.StrEnum):
     CREATED = "CREATED"
+    COLLECTING = "COLLECTING"
+    VALIDATING = "VALIDATING"
     ACTIVE = "ACTIVE"
     AGGREGATING = "AGGREGATING"
+    COMMITTING = "COMMITTING"
+    COMPLETED = "COMPLETED"
     FINALIZED = "FINALIZED"
     FAILED = "FAILED"
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
 
 
 class UpdateStatus(enum.StrEnum):
@@ -77,8 +82,6 @@ class Federation(Base):
 
 
 class Client(Base):
-    __table_args__ = (UniqueConstraint("public_key_b64", name="uq_clients_public_key"),)
-
     __tablename__ = "clients"
     id = Column(String(64), primary_key=True)
     federation_id = Column(
@@ -102,7 +105,10 @@ class Client(Base):
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
     federation = relationship("Federation", back_populates="clients")
     updates = relationship("Update", back_populates="client")
-    __table_args__ = (Index("ix_clients_federation_id", "federation_id"),)
+    __table_args__ = (
+        Index("ix_clients_federation_id", "federation_id"),
+        UniqueConstraint("public_key_b64", name="uq_clients_public_key"),
+    )
 
 
 class Round(Base):
@@ -143,6 +149,8 @@ class Update(Base):
     __table_args__ = (
         Index("ix_updates_round_id", "round_id"),
         Index("ix_updates_client_id", "client_id"),
+        UniqueConstraint("round_id", "client_id", name="uq_updates_round_client"),
+        UniqueConstraint("round_id", "nonce", name="uq_updates_round_nonce"),
     )
 
 
@@ -188,3 +196,22 @@ class BlockchainTransaction(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     confirmed_at = Column(DateTime(timezone=True), nullable=True)
     __table_args__ = (Index("ix_bctx_entity_id", "entity_id"),)
+
+
+class BlockchainOutbox(Base):
+    __tablename__ = "blockchain_outbox"
+    id = Column(String(128), primary_key=True)
+    idempotency_key = Column(String(256), nullable=False, unique=True)
+    event_type = Column(String(64), nullable=False)
+    payload = Column(Text, nullable=False)
+    status = Column(String(32), default="PENDING", nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    next_attempt_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    last_error = Column(Text, nullable=True)
+    tx_hash = Column(String(128), nullable=True)
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
+    __table_args__ = (
+        Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),
+    )

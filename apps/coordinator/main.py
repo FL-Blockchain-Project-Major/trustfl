@@ -85,6 +85,15 @@ def main() -> None:
         ):
             logger.error("Production requires an enrollment allowlist")
             sys.exit(1)
+        try:
+            finality_blocks = int(os.getenv("BLOCKCHAIN_FINALITY_BLOCKS", "1"))
+            outbox_attempts = int(os.getenv("BLOCKCHAIN_OUTBOX_MAX_ATTEMPTS", "8"))
+        except ValueError:
+            logger.error("Blockchain finality and outbox retry settings must be integers")
+            sys.exit(1)
+        if finality_blocks < 1 or outbox_attempts < 1 or outbox_attempts > 32:
+            logger.error("Invalid blockchain finality or outbox retry bounds")
+            sys.exit(1)
 
     # Import here so the module is importable without network deps
     from network.server import CoordinatorServer

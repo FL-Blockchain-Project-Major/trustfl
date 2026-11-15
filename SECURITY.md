@@ -28,6 +28,16 @@ manager configuration via `CLIENT_KEY_STORE`; the API stores only public keys
 and lifecycle metadata. Legacy single-secret authentication and automatic
 enrollment are rejected in production.
 
+## Durable round and blockchain consistency
+
+Round records use guarded `CREATED`/`COLLECTING`/`VALIDATING`/`AGGREGATING`/
+`COMMITTING`/`COMPLETED` transitions. Accepted updates are persisted before
+external blockchain calls and are immutable for a given round/client pair.
+Blockchain work is represented by the database-backed `blockchain_outbox` with
+stable idempotency keys, bounded exponential retry, and explicit submission
+metadata. RPC failure therefore leaves durable recovery work instead of
+silently losing the event.
+
 ## Circuit scope and limitations
 
 `packages/zkp/circuits/update_commitment.circom` proves knowledge of a private

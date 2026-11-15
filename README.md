@@ -170,6 +170,17 @@ to `PENDING`. Private keys stay client-side and must be provisioned through an
 external secret manager (`CLIENT_KEY_STORE=kms` or `secret_manager`); they are
 never sent to the API or stored in the database.
 
+### Recovery and consistency
+
+Round state and accepted update metadata are durable in the control-plane
+database. The coordinator advances rounds through guarded validation,
+aggregation, and commit states; duplicate client/round updates are rejected.
+Blockchain audit work is recorded in a transactional outbox with stable
+idempotency keys and bounded exponential retries, so an RPC outage leaves
+operator-visible recovery work rather than losing the event. A queued or
+submitted event must not be treated as final until the configured blockchain
+confirmation policy has been satisfied.
+
 ---
 
 ## 📜 License
