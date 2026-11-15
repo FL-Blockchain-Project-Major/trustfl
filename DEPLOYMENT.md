@@ -190,19 +190,31 @@ Pre-built images are pushed to GHCR on every tagged release (`v*`):
 ```bash
 export TRUSTFL_VERSION=0.1.0
 
+# Set required production values before starting. Do not use development keys.
+export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+export API_READ_KEY="$(openssl rand -hex 32)"
+export API_WRITE_KEY="$(openssl rand -hex 32)"
+export API_ADMIN_KEY="$(openssl rand -hex 32)"
+export DASHBOARD_ACCESS_KEY="$(openssl rand -hex 32)"
+export COORDINATOR_ENROLLMENT_TOKEN="$(openssl rand -hex 32)"
+export CORS_ALLOWED_ORIGINS=https://dashboard.example.com
+export BLOCKCHAIN_RPC_URL=https://your-evm-rpc.example
+export BLOCKCHAIN_CONTRACTS_DIR=/srv/trustfl/contracts
+export COORDINATOR_PRIVATE_KEY=0x...
+export FL_DATASET_DIR=/srv/trustfl/dataset
+
 # Pull application images (API, coordinator, client, dashboard)
 docker compose -f docker-compose.published.yml pull
 
 # Start the stack
-cp .env.example .env   # set FL_DATASET_DIR and secrets
 docker compose -f docker-compose.published.yml up
 ```
 
-> **Note on Contract Deployment:** The Python application services (API, coordinator, client, dashboard)
-> run entirely from published images. The local Hardhat development node and contract deployer
-> mount `./packages/contracts` from the repository root because Solidity smart contracts must be
-> compiled and deployed fresh to the local in-memory blockchain on startup. Host-side Node.js/Python
-> is still not required as Hardhat runs inside the `node:22.13-alpine` container.
+> **Production contract requirement:** The published stack does not start a local Hardhat
+> development chain or deploy contracts. Deploy the contracts to the configured EVM network
+> through a controlled release process, then place its `contracts.json` manifest in
+> `BLOCKCHAIN_CONTRACTS_DIR`. Keep the coordinator signing key in a secret manager or
+> container secret injection mechanism.
 
 Available images:
 

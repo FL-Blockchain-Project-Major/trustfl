@@ -201,8 +201,6 @@ HOSTNAME=0.0.0.0
 PORT=3000
 INTERNAL_API_URL=http://api:8000
 DASHBOARD_ACCESS_KEY=trustfl-dashboard-dev
-NEXT_PUBLIC_API_READ_KEY=trustfl-read-dev
-NEXT_PUBLIC_DASHBOARD_ACCESS_KEY=trustfl-dashboard-dev
 ```
 
 ---

@@ -54,7 +54,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
     export namespace RoleAdminChangedEvent {
       export type InputTuple = [role: BytesLike, previousAdminRole: BytesLike, newAdminRole: BytesLike];
       export type OutputTuple = [role: string, previousAdminRole: string, newAdminRole: string];
-      export interface OutputObject {role: string, previousAdminRole: string, newAdminRole: string };
+      export interface OutputObject {role: string, previousAdminRole: string, newAdminRole: string }
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -66,7 +66,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
     export namespace RoleGrantedEvent {
       export type InputTuple = [role: BytesLike, account: AddressLike, sender: AddressLike];
       export type OutputTuple = [role: string, account: string, sender: string];
-      export interface OutputObject {role: string, account: string, sender: string };
+      export interface OutputObject {role: string, account: string, sender: string }
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -78,7 +78,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
     export namespace RoleRevokedEvent {
       export type InputTuple = [role: BytesLike, account: AddressLike, sender: AddressLike];
       export type OutputTuple = [role: string, account: string, sender: string];
-      export interface OutputObject {role: string, account: string, sender: string };
+      export interface OutputObject {role: string, account: string, sender: string }
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -90,7 +90,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
     export namespace UpdateRejectedEvent {
       export type InputTuple = [updateId: string, reasonCode: string];
       export type OutputTuple = [updateId: string, reasonCode: string];
-      export interface OutputObject {updateId: string, reasonCode: string };
+      export interface OutputObject {updateId: string, reasonCode: string }
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -102,7 +102,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
     export namespace UpdateStatusChangedEvent {
       export type InputTuple = [updateId: string, status: BigNumberish];
       export type OutputTuple = [updateId: string, status: bigint];
-      export interface OutputObject {updateId: string, status: bigint };
+      export interface OutputObject {updateId: string, status: bigint }
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>
@@ -114,7 +114,7 @@ decodeFunctionResult(functionFragment: 'supportsInterface', data: BytesLike): Re
     export namespace UpdateSubmittedEvent {
       export type InputTuple = [updateId: string, roundId: BigNumberish, clientId: string];
       export type OutputTuple = [updateId: string, roundId: bigint, clientId: string];
-      export interface OutputObject {updateId: string, roundId: bigint, clientId: string };
+      export interface OutputObject {updateId: string, roundId: bigint, clientId: string }
       export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>
       export type Filter = TypedDeferredTopicFilter<Event>
       export type Log = TypedEventLog<Event>

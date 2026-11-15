@@ -5,9 +5,10 @@ const READ_ONLY_PREFIXES = ["federations", "rounds", "updates", "clients", "arti
 
 export async function GET(
   request: NextRequest,
-  context: { params: { path: string[] } },
+  context: { params: Promise<{ path: string[] }> },
 ) {
-  const first = context.params.path[0];
+  const { path: routePath } = await context.params;
+  const first = routePath[0];
   if (!first || !READ_ONLY_PREFIXES.includes(first)) {
     return NextResponse.json({ detail: "Path is not available through dashboard proxy" }, { status: 404 });
   }
@@ -29,7 +30,7 @@ export async function GET(
     }
   }
 
-  const path = context.params.path.map((part) => encodeURIComponent(part)).join("/");
+  const path = routePath.map((part) => encodeURIComponent(part)).join("/");
   const needsTrailingSlash = first === "federations" || first === "health" || request.nextUrl.pathname.endsWith("/");
   const search = request.nextUrl.search || "";
   const endpoint = `/${path}${needsTrailingSlash ? "/" : ""}${search}`;
@@ -57,4 +58,3 @@ export async function GET(
     return NextResponse.json({ detail: "Dashboard API is unavailable" }, { status: 503 });
   }
 }
-

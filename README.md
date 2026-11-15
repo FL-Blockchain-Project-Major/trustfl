@@ -105,13 +105,31 @@ The dashboard is accessible at http://localhost:3000 once services are healthy.
 
 ### 5. Published Images (Clean-machine deployment)
 
-Pre-built images are published to GitHub Container Registry (GHCR):
+Pre-built images are published to GitHub Container Registry (GHCR). The
+published stack is a strict production template: it requires pinned image
+versions, real secrets, a deployed contract manifest, an external EVM RPC
+endpoint, and a real dataset path. Use the regular `docker compose` stack for
+the local Hardhat demo.
 
 ```bash
 export TRUSTFL_VERSION=0.1.0
+export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+export API_READ_KEY="$(openssl rand -hex 32)"
+export API_WRITE_KEY="$(openssl rand -hex 32)"
+export API_ADMIN_KEY="$(openssl rand -hex 32)"
+export DASHBOARD_ACCESS_KEY="$(openssl rand -hex 32)"
+export COORDINATOR_ENROLLMENT_TOKEN="$(openssl rand -hex 32)"
+export CORS_ALLOWED_ORIGINS=https://dashboard.example.com
+export BLOCKCHAIN_RPC_URL=https://your-evm-rpc.example
+export BLOCKCHAIN_CONTRACTS_DIR=/srv/trustfl/contracts
+export COORDINATOR_PRIVATE_KEY=0x...
+export FL_DATASET_DIR=/srv/trustfl/dataset
 docker compose -f docker-compose.published.yml pull
 docker compose -f docker-compose.published.yml up
 ```
+
+`BLOCKCHAIN_CONTRACTS_DIR` must contain the deployed `contracts.json` manifest.
+The published stack does not start Hardhat or deploy contracts automatically.
 
 ### 6. Monitor & Shutdown
 

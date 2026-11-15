@@ -25,6 +25,11 @@ persistence volumes. Published ports are loopback-only; IPFS's API is container-
 Do not expose it to the public internet. Production TLS ingress must enforce HTTPS and HSTS.
 For safe IPFS diagnostics, run `docker compose exec ipfs ipfs id`; do not publish port 5001.
 
+The published-image stack is separate from this local profile. It runs with
+`ENVIRONMENT=production`, requires explicit secrets and origins, and expects a
+real EVM RPC endpoint plus a deployed `contracts.json` manifest. It deliberately
+does not start Hardhat or use Hardhat's public development key.
+
 `FL_MAX_CLIENT_WEIGHT_SHARE` (default `0.5`) clips a client’s effective FedAvg
 weight only after all updates are collected. This makes the defense independent
 of submission order; `FL_MAX_NUM_EXAMPLES_PER_UPDATE` remains the hard input cap.

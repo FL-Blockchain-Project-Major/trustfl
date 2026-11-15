@@ -156,7 +156,8 @@ The Next.js dashboard uses a server-side proxy route (`/app/api/dashboard/[...pa
 
 - Set `INTERNAL_API_URL=http://api:8000` (container internal network) or `https://api.internal.trustfl.io`.
 - Set `API_READ_KEY` on the dashboard container so the proxy can authenticate to the FastAPI backend.
-- (Optional) Set `DASHBOARD_ACCESS_KEY` to password-protect the dashboard web interface itself.
+- Set `DASHBOARD_ACCESS_KEY` to protect requests arriving from outside the dashboard origin.
+- Do not set `NEXT_PUBLIC_API_READ_KEY` or `NEXT_PUBLIC_DASHBOARD_ACCESS_KEY`; browser bundles must not contain API credentials.
 
 ### 3.5. Scenario 1 Profile: Single-Host Real VisDrone Execution
 
@@ -211,8 +212,6 @@ HOSTNAME=0.0.0.0
 PORT=3000
 INTERNAL_API_URL=http://api:8000
 DASHBOARD_ACCESS_KEY=trustfl-dashboard-dev
-NEXT_PUBLIC_API_READ_KEY=trustfl-read-dev
-NEXT_PUBLIC_DASHBOARD_ACCESS_KEY=trustfl-dashboard-dev
 ```
 
 Key nuances for Scenario 1:
@@ -233,4 +232,3 @@ Key nuances for Scenario 1:
 - [ ] `CORS_ALLOWED_ORIGINS` specifies exact HTTPS production domains without wildcards.
 - [ ] `COORDINATOR_PRIVATE_KEY` is loaded securely via KMS or container secret injection.
 - [ ] `FL_COORDINATOR_URL` uses `https://` for all remote network calls.
-
