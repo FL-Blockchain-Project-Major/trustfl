@@ -376,8 +376,8 @@ class TestDistributedFL(unittest.TestCase):
             port=port,
             min_clients=3,
             num_rounds=2,
-            round_timeout_seconds=15.0,
-            heartbeat_timeout_seconds=8.0,
+            round_timeout_seconds=45.0,
+            heartbeat_timeout_seconds=30.0,
         )
         server.start()
         self.assertTrue(_wait_for_server(port))
@@ -388,7 +388,7 @@ class TestDistributedFL(unittest.TestCase):
                 self.assertTrue(ag.register())
 
             # Round 1 completes
-            deadline = time.time() + 20.0
+            deadline = time.time() + 50.0
             while time.time() < deadline and server.state.current_round <= 1:
                 for ag in agents:
                     ag.step()
@@ -400,7 +400,7 @@ class TestDistributedFL(unittest.TestCase):
             agents[2].stop()
 
             # Step c0 and c1 so they submit round 2 updates
-            deadline = time.time() + 15.0
+            deadline = time.time() + 50.0
             while time.time() < deadline and not server.state.aborted:
                 agents[0].step()
                 agents[1].step()

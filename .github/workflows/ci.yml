@@ -19,10 +19,28 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+          cache: npm
+          cache-dependency-path: packages/zkp/package-lock.json
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+
+      - name: Install ZKP runtime dependencies
+        working-directory: packages/zkp
+        run: npm ci
+
+      - name: Smoke-test Node ZKP runtime
+        run: |
+          node --input-type=module -e \
+            "import('./packages/zkp/src/zkp.js').then(({computeCommitment}) => \
+            computeCommitment({clientId: 1n, federationId: 2n, roundId: 1n, \
+            modelVersion: 3n, privateUpdateCommitment: 4n}).then(value => { \
+            if (!value) process.exit(1); console.log('ZKP runtime OK'); }))"
 
       - name: Lint
         run: ruff check .
