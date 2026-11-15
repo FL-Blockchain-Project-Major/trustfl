@@ -178,7 +178,6 @@ services:
       - INTERNAL_API_URL=http://api:8000
       - API_READ_KEY=${API_READ_KEY:?API_READ_KEY must be set}
       - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:?DASHBOARD_ACCESS_KEY must be set}
-      - ZKP_ARTIFACTS_DIR=${ZKP_ARTIFACTS_DIR:?ZKP_ARTIFACTS_DIR must contain verification_key.json}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
