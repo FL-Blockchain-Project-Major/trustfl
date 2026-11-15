@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -76,6 +77,8 @@ class Federation(Base):
 
 
 class Client(Base):
+    __table_args__ = (UniqueConstraint("public_key_b64", name="uq_clients_public_key"),)
+
     __tablename__ = "clients"
     id = Column(String(64), primary_key=True)
     federation_id = Column(

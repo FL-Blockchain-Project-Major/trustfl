@@ -36,6 +36,7 @@ def upgrade() -> None:
     op.add_column("clients", sa.Column("suspended_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("clients", sa.Column("enrollment_id", sa.String(length=128), nullable=True))
     op.create_unique_constraint("uq_clients_enrollment_id", "clients", ["enrollment_id"])
+    op.create_unique_constraint("uq_clients_public_key", "clients", ["public_key_b64"])
     op.execute(
         "UPDATE clients SET enrolled_at = registered_at "
         "WHERE lifecycle_status = 'ACTIVE' AND enrolled_at IS NULL"
@@ -44,6 +45,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint("uq_clients_enrollment_id", "clients", type_="unique")
+    op.drop_constraint("uq_clients_public_key", "clients", type_="unique")
     for name in (
         "enrollment_id",
         "suspended_at",
