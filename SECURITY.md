@@ -14,6 +14,20 @@ production. The verifier command must use the reviewed circuit and verification
 key mounted through `ZKP_ARTIFACTS_DIR`; a missing or invalid key fails closed.
 Proofs and private witnesses are never written to logs.
 
+## Client identity lifecycle
+
+Production enrollment is coordinator- and administrator-controlled. API
+registration creates a `PENDING` client record, and only the dedicated admin
+credential may approve, suspend, revoke, or rotate a client key. The coordinator
+requires an allow-listed Ed25519 proof of possession and rejects identities
+whose lifecycle is not `ACTIVE`. Public keys are immutable until an explicit
+rotation, which requires re-enrollment.
+
+Private keys remain on clients. Production requires an external KMS or secret
+manager configuration via `CLIENT_KEY_STORE`; the API stores only public keys
+and lifecycle metadata. Legacy single-secret authentication and automatic
+enrollment are rejected in production.
+
 ## Circuit scope and limitations
 
 `packages/zkp/circuits/update_commitment.circom` proves knowledge of a private

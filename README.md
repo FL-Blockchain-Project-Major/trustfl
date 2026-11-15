@@ -160,6 +160,16 @@ when `COORDINATOR_REQUIRE_SIGNATURES=true`; ZKP is independently tested but
 mandatory in production; configure `ZKP_VERIFY_COMMAND` and a reviewed
 `verification_key.json`/circuit artifact directory before starting the services.
 
+### Client identity and enrollment
+
+Production clients use durable Ed25519 identities. Registration creates a
+`PENDING` enrollment; an administrator must approve it before the client can
+heartbeat or submit updates. `SUSPENDED` and `REVOKED` identities are rejected,
+public keys cannot be replaced in place, and key rotation returns the identity
+to `PENDING`. Private keys stay client-side and must be provisioned through an
+external secret manager (`CLIENT_KEY_STORE=kms` or `secret_manager`); they are
+never sent to the API or stored in the database.
+
 ---
 
 ## 📜 License
