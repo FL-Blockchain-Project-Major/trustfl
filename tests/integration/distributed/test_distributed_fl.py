@@ -213,7 +213,10 @@ class TestDistributedFL(unittest.TestCase):
             port=port,
             min_clients=2,
             num_rounds=1,
-            round_timeout_seconds=2.0,  # short timeout to make test fast
+            # Real Groth16 proof generation can take several seconds on a
+            # cold Node.js process; keep the timeout short without expiring
+            # before a valid update can be submitted.
+            round_timeout_seconds=8.0,
             heartbeat_timeout_seconds=30.0,
         )
         server.start()
@@ -226,7 +229,7 @@ class TestDistributedFL(unittest.TestCase):
             self.assertTrue(c0.register())
             self.assertTrue(c1.register())
 
-            deadline = time.time() + 6.0
+            deadline = time.time() + 15.0
             while time.time() < deadline and server.state.current_round <= server.state.num_rounds:
                 c0.step()  # c0 trains and submits
                 # c1 deliberately does NOT step (simulates crash)
@@ -325,7 +328,7 @@ class TestDistributedFL(unittest.TestCase):
             port=port,
             min_clients=1,  # round starts when the first client registers
             num_rounds=1,
-            round_timeout_seconds=1.5,
+            round_timeout_seconds=8.0,
             heartbeat_timeout_seconds=30.0,
         )
         server.start()
@@ -338,13 +341,13 @@ class TestDistributedFL(unittest.TestCase):
             self.assertTrue(c1.register())  # joins but won't submit
 
             # c0 submits its update; c1 never steps
-            deadline = time.time() + 3.0
+            deadline = time.time() + 12.0
             while time.time() < deadline:
                 c0.step()  # c0 trains and submits for round 1
                 time.sleep(0.1)
 
             # Wait for timeout to fire and aggregate
-            server.state.wait_until_done(timeout=5.0)
+            server.state.wait_until_done(timeout=15.0)
         finally:
             server.stop()
             c0.stop()
@@ -373,8 +376,8 @@ class TestDistributedFL(unittest.TestCase):
             port=port,
             min_clients=3,
             num_rounds=2,
-            round_timeout_seconds=2.0,
-            heartbeat_timeout_seconds=1.0,  # fast heartbeat timeout for testing
+            round_timeout_seconds=15.0,
+            heartbeat_timeout_seconds=8.0,
         )
         server.start()
         self.assertTrue(_wait_for_server(port))
@@ -385,7 +388,7 @@ class TestDistributedFL(unittest.TestCase):
                 self.assertTrue(ag.register())
 
             # Round 1 completes
-            deadline = time.time() + 6.0
+            deadline = time.time() + 20.0
             while time.time() < deadline and server.state.current_round <= 1:
                 for ag in agents:
                     ag.step()
@@ -397,7 +400,7 @@ class TestDistributedFL(unittest.TestCase):
             agents[2].stop()
 
             # Step c0 and c1 so they submit round 2 updates
-            deadline = time.time() + 6.0
+            deadline = time.time() + 15.0
             while time.time() < deadline and not server.state.aborted:
                 agents[0].step()
                 agents[1].step()
