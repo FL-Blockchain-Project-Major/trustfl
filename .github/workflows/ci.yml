@@ -172,6 +172,7 @@ jobs:
           API_READ_KEY=ci-read \
           API_WRITE_KEY=ci-write \
           API_ADMIN_KEY=ci-admin \
+          CLIENT_KEY_STORE=secret_manager \
           DASHBOARD_ACCESS_KEY=ci-dashboard \
           COORDINATOR_ENROLLMENT_TOKEN=ci-coordinator \
           CORS_ALLOWED_ORIGINS=https://dashboard.example.test \
