@@ -5,8 +5,12 @@ COPY pyproject.toml requirements.txt README.md ./
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 COPY apps/coordinator/ ./apps/coordinator/
+COPY packages/zkp/package.json packages/zkp/package-lock.json ./packages/zkp/
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --no-deps .
+    pip install --no-cache-dir --no-deps . && \
+    apt-get update && apt-get install -y --no-install-recommends nodejs npm && \
+    cd packages/zkp && npm ci --omit=dev && \
+    rm -rf /var/lib/apt/lists/*
 # PYTHONPATH must include each package subdirectory so sub-packages are
 # importable as top-level modules.  See apps/client/Dockerfile for details.
 ENV PYTHONPATH=/app/packages/crypto:/app/packages/ml_core:/app/packages/schemas:/app/packages/storage:/app/packages/fl_core:/app/packages/blockchain:/app

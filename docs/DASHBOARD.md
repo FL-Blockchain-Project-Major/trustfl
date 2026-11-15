@@ -35,7 +35,8 @@ proxy adds `API_READ_KEY` (or the explicitly supported development
 
 Artifacts show their SHA-256 hash and storage URI/CID when the API has recorded
 one. ZKP status is not presented as proof of coordinator acceptance because ZKP
-verification is optional/deferred in the current runtime.
+verification is mandatory for production coordinator updates; metadata-only proof
+records are rejected unless the configured verifier accepts the supplied proof.
 
 ## API requirements
 

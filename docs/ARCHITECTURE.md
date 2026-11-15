@@ -19,7 +19,7 @@ TrustFL provides a verifiable, privacy-preserving, and auditable Federated Learn
 | `packages/blockchain/`| Abstraction and client driver for EVM / smart contract interaction (Web3). |
 | `packages/storage/` | Storage abstraction with local and IPFS adapters for canonical model artifacts. |
 | `packages/contracts/` | Smart contracts (Solidity) implementing the on-chain audit log, client registration, round progression, and update verification state. |
-| `packages/zkp/` | Independently implemented and tested zero-knowledge proof runtime. ZKP verification is an optional/deferred coordinator boundary; signed metadata and artifact hashes are the current mandatory update checks. |
+| `packages/zkp/` | Groth16 proof runtime. Production coordinator admission requires its proof and public-signal verification before any update side effect. |
 | `datasets/tools/` | Tooling for synthetic dataset generation, Dirichlet non-IID data partitioning, and data format validation. |
 | `infrastructure/` | Deployment definitions, Docker Compose setups for local development (IPFS node, local Ethereum testnet, MinIO), and Kubernetes/Helm charts. |
 | `tests/` | Comprehensive test suites, separated into `unit/`, `integration/`, and end-to-end tests across modules. |

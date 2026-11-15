@@ -128,6 +128,8 @@ class SubmitUpdateRequest:
     # Cryptographic fields added in Stage 07
     metadata: dict[str, Any] | None = None
     signature: str | None = None
+    proof: dict[str, Any] | None = None
+    public_signals: list[str] | None = None
 
     def to_json(self) -> str:
         return _to_json(self)

@@ -71,6 +71,8 @@ services:
       - IPFS_URL=http://ipfs:5001
       - WEB3_PROVIDER_URI=${BLOCKCHAIN_RPC_URL:?BLOCKCHAIN_RPC_URL must be set}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      - COORDINATOR_REQUIRE_ZKP=true
+      - ZKP_VERIFY_COMMAND=node /app/packages/zkp/src/verify-cli.js
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -104,6 +106,9 @@ services:
     environment:
       - FL_FEDERATION_ID=${FL_FEDERATION_ID:-fed-default}
       - COORDINATOR_REQUIRE_SIGNATURES=true
+      - COORDINATOR_REQUIRE_ZKP=true
+      - ZKP_VERIFY_COMMAND=node /app/packages/zkp/src/verify-cli.js
+      - ZKP_ARTIFACTS_DIR=/zkp-artifacts
       - COORDINATOR_ENROLLMENT_TOKEN=${COORDINATOR_ENROLLMENT_TOKEN:?COORDINATOR_ENROLLMENT_TOKEN must be set}
       - COORDINATOR_ENROLLMENT_ALLOWLIST_FILE=/var/lib/trustfl/keys/allowlist.json
       - COORDINATOR_INSECURE_DEV_AUTH=${COORDINATOR_INSECURE_DEV_AUTH:-false}
@@ -123,6 +128,7 @@ services:
     volumes:
       - ${BLOCKCHAIN_CONTRACTS_DIR:?BLOCKCHAIN_CONTRACTS_DIR must point to a directory containing contracts.json}:/contracts-deployments:ro
       - client_keys:/var/lib/trustfl/keys:ro
+      - ${ZKP_ARTIFACTS_DIR:?ZKP_ARTIFACTS_DIR must contain the pinned ZKP artifacts}:/zkp-artifacts:ro
     ports:
       - "127.0.0.1:${COORDINATOR_HOST_PORT:-8100}:8100"
     healthcheck:
@@ -172,6 +178,7 @@ services:
       - INTERNAL_API_URL=http://api:8000
       - API_READ_KEY=${API_READ_KEY:?API_READ_KEY must be set}
       - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY:?DASHBOARD_ACCESS_KEY must be set}
+      - ZKP_ARTIFACTS_DIR=${ZKP_ARTIFACTS_DIR:?ZKP_ARTIFACTS_DIR must contain verification_key.json}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

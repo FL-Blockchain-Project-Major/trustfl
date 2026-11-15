@@ -76,7 +76,8 @@ The following remain deployment responsibilities or deferred capabilities:
 - Deploy contracts to a reviewed network and manage ABI/address configuration.
 - Add a durable blockchain outbox/reconciliation worker before claiming
   database/chain atomicity.
-- Integrate and enforce ZKP verification if proof-backed updates are required.
+- Provision the reviewed ZKP verification key and verifier command
+  (`ZKP_ARTIFACTS_DIR`, `ZKP_VERIFY_COMMAND`) before production startup.
 - Add an identity provider if operator identity, token rotation, tenant
   isolation, and per-user audit attribution are required.
 
@@ -114,9 +115,9 @@ finalized. Persist client private keys on the per-client Compose volumes; key
 rotation must be an authenticated re-registration and should retain an
 old-key signature audit trail.
 
-ZKP artifacts are standalone and are not used as coordinator admission proofs.
-Do not treat a stored proof’s validity field as verification; only a dedicated
-verifier may set it.
+Production coordinator admission requires a verified ZKP before storage,
+aggregation, or blockchain submission. Do not treat a stored proof’s validity
+field as verification; only the configured dedicated verifier may set it.
 
 ## TLS / transport security
 

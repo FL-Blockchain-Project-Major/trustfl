@@ -8,7 +8,7 @@ All protocol exchanges between edge workers, coordinators, API layers, and the u
 ### Core Protocol Principles
 1. **Explicit Identification**: All entities have deterministic prefixes guaranteeing unambiguous types and scopes.
 2. **Deterministic Lifecycle Progression**: Round states follow a strict finite-state machine (FSM). Out-of-order transitions are rejected with `InvalidStateTransitionError`.
-3. **Cryptographic Grounding**: Every update and round outcome contains verifiable hashes (SHA-256), digital signatures, and optional Zero-Knowledge proof commitments.
+3. **Cryptographic Grounding**: Every update and round outcome contains verifiable hashes (SHA-256), digital signatures, and a mandatory Zero-Knowledge proof commitment in production.
 4. **Separation of Metadata and Storage**: Raw tensors are never inlined; only immutable `ModelArtifact` references (e.g. IPFS CIDs) and hashes are exchanged.
 
 ---

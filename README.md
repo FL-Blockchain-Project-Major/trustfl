@@ -5,7 +5,7 @@
 - **Immutable On-Chain Auditability** (Solidity contracts and the Web3 client)
 - **Cryptographic Model Verification** (Ed25519 signatures and canonical SHA-256 artifacts)
 - **Verifiable Artifact Storage** (local development storage or IPFS)
-- **Zero-Knowledge Proofs (ZKP)** (an independently implemented and tested optional verifier boundary; coordinator updates currently require signatures and artifact hashes)
+- **Zero-Knowledge Proofs (ZKP)** (a mandatory production verifier boundary for every coordinator update)
 - **Extensible API Gateway & Real-Time Dashboard** (FastAPI & Next.js)
 
 ---
@@ -157,7 +157,8 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for full environment variable reference, arch
 The dashboard is read-only and uses a server-side API proxy so credentials are
 never shipped to the browser. Signed updates and artifact hashes are mandatory
 when `COORDINATOR_REQUIRE_SIGNATURES=true`; ZKP is independently tested but
-optional/deferred in the coordinator lifecycle.
+mandatory in production; configure `ZKP_VERIFY_COMMAND` and a reviewed
+`verification_key.json`/circuit artifact directory before starting the services.
 
 ---
 

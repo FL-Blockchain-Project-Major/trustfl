@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from apps.api.api.db.models import Proof
 from apps.api.api.repositories.proofs import ProofRepository
 from apps.api.api.schemas.proofs import ProofSubmit
+from apps.coordinator.zkp_verifier import ZKPVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,28 @@ class ProofService:
     def submit(self, payload: ProofSubmit) -> Proof:
         if self.repo.get(payload.id):
             raise HTTPException(status.HTTP_409_CONFLICT, f"Proof '{payload.id}' already exists")
-        proof = Proof(**payload.model_dump())
+        if payload.proof is None or payload.public_signals is None:
+            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Mandatory proof is missing")
+        else:
+            verifier = ZKPVerifier()
+            result = verifier.verify(
+                proof=payload.proof,
+                public_signals=payload.public_signals,
+                expected_signals=[
+                    payload.client_id,
+                    payload.federation_id,
+                    payload.round_id,
+                    payload.model_version or "",
+                    payload.public_commitment,
+                ],
+            )
+            if not result.valid:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Proof verification failed")
+        proof = Proof(
+            **payload.model_dump(exclude={"proof", "public_signals"}),
+            is_valid=payload.proof is not None,
+        )
         logger.info("Recording proof %s for update %s", payload.id, payload.update_id)
         return self.repo.create(proof)
 

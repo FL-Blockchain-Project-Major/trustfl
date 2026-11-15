@@ -80,6 +80,10 @@ def check_config(_app: FastAPI) -> None:
             value = os.getenv(name, "")
             if not value or value in ("CHANGE_ME_IN_PRODUCTION", "changeme_in_production"):
                 errors.append(f"{name} is not configured. Set it through a secret manager.")
+        if os.getenv("COORDINATOR_REQUIRE_ZKP", "true").lower() != "true":
+            errors.append("Production requires COORDINATOR_REQUIRE_ZKP=true")
+        if not os.getenv("ZKP_VERIFY_COMMAND"):
+            errors.append("Production requires ZKP_VERIFY_COMMAND")
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")

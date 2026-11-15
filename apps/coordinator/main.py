@@ -19,6 +19,7 @@ import os
 import signal
 import sys
 import time
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +66,17 @@ def main() -> None:
             args.num_clients,
         )
         sys.exit(1)
+    if os.getenv("ENVIRONMENT", "production").lower() == "production":
+        if os.getenv("COORDINATOR_REQUIRE_ZKP", "true").lower() != "true":
+            logger.error("Production requires COORDINATOR_REQUIRE_ZKP=true")
+            sys.exit(1)
+        if not os.getenv("ZKP_VERIFY_COMMAND"):
+            logger.error("Production requires ZKP_VERIFY_COMMAND")
+            sys.exit(1)
+        artifacts_dir = Path(os.getenv("ZKP_ARTIFACTS_DIR", ""))
+        if not (artifacts_dir / "verification_key.json").is_file():
+            logger.error("Production requires ZKP_ARTIFACTS_DIR/verification_key.json")
+            sys.exit(1)
 
     # Import here so the module is importable without network deps
     from network.server import CoordinatorServer
@@ -128,6 +140,7 @@ def main() -> None:
         blockchain_client=blockchain_client,
         storage_client=storage_client,
         persistence=persistence,
+        require_zkp=os.getenv("COORDINATOR_REQUIRE_ZKP", "true").lower() == "true",
     )
 
     def _shutdown(signum, _frame):  # noqa: ANN001

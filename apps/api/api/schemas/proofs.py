@@ -14,6 +14,8 @@ class ProofSubmit(BaseModel):
     model_version: str | None = None
     public_commitment: str
     protocol: str = "poseidon_commitment_v1"
+    proof: dict | None = None
+    public_signals: list[str] | None = None
 
 
 class ProofOut(BaseModel):

@@ -27,6 +27,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from apps.coordinator.zkp_verifier import ZKPVerifier
 from packages.crypto.trustfl_crypto.canonical import (
     canonical_artifact_bytes,
     hash_parameters,
@@ -226,6 +227,8 @@ class CoordinatorState:
         require_signatures: bool | None = None,
         storage_client=None,
         persistence=None,
+        zkp_verifier: ZKPVerifier | None = None,
+        require_zkp: bool | None = None,
     ) -> None:
         if not isinstance(min_clients, int) or isinstance(min_clients, bool) or min_clients < 1:
             raise ValueError(f"min_clients must be an integer >= 1 (got {min_clients!r})")
@@ -236,6 +239,14 @@ class CoordinatorState:
         self.blockchain_client = blockchain_client
         self.storage_client = storage_client
         self.persistence = persistence
+        self.require_zkp = (
+            require_zkp
+            if require_zkp is not None
+            else os.getenv("ENVIRONMENT", "development").lower() == "production"
+        )
+        self.zkp_verifier = zkp_verifier
+        if self.require_zkp and self.zkp_verifier is None:
+            self.zkp_verifier = ZKPVerifier()
         self.require_signatures = (
             require_signatures
             if require_signatures is not None
@@ -457,6 +468,8 @@ class CoordinatorState:
         metrics: dict[str, float],
         metadata: dict[str, Any] | None = None,
         signature: str | None = None,
+        proof: dict[str, Any] | None = None,
+        public_signals: list[str] | None = None,
     ) -> bool:
         """Reserve under the lock, then perform all blocking I/O unlocked.
 
@@ -484,6 +497,27 @@ class CoordinatorState:
             if not self._valid_update_parameters(parameters, num_examples, metrics):
                 logger.warning("Rejecting malformed update from %s", cid)
                 return False
+
+            if self.require_zkp:
+                if self.zkp_verifier is None or not metadata or not public_signals or not proof:
+                    logger.warning("Rejecting update from %s: missing mandatory ZKP", cid)
+                    return False
+                model_version = str(metadata.get("model_version", ""))
+                expected_signals = [
+                    str(int.from_bytes(cid.encode(), "big")),
+                    str(int.from_bytes(os.getenv("FL_FEDERATION_ID", "fed-default").encode(), "big")),
+                    str(round_id),
+                    str(int.from_bytes(model_version.encode(), "big")),
+                    str(metadata.get("public_commitment", "")),
+                ]
+                result = self.zkp_verifier.verify(
+                    proof=proof,
+                    public_signals=public_signals,
+                    expected_signals=expected_signals,
+                )
+                if not result.valid:
+                    logger.warning("Rejecting update from %s: proof verification failed (%s)", cid, result.reason)
+                    return False
 
             update_id = f"update_{cid}_{round_id}"
             nonce = metadata.get("nonce") if metadata else f"nonce_{update_id}"
@@ -1280,6 +1314,8 @@ class _Handler(BaseHTTPRequestHandler):
                 req.metrics,
                 req.metadata,
                 req.signature,
+                req.proof,
+                req.public_signals,
             )
             resp = SubmitUpdateResponse(accepted=ok)
             self._respond_json(200, resp.__dict__)
@@ -1416,6 +1452,8 @@ class CoordinatorServer:
         require_signatures: bool | None = None,
         storage_client=None,
         persistence=None,
+        zkp_verifier: ZKPVerifier | None = None,
+        require_zkp: bool | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -1431,6 +1469,8 @@ class CoordinatorServer:
             require_signatures=require_signatures,
             storage_client=storage_client,
             persistence=persistence,
+            zkp_verifier=zkp_verifier,
+            require_zkp=require_zkp,
         )
 
         # Build the HTTP server with the state injected via closure

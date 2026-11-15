@@ -21,10 +21,13 @@ import { fileURLToPath } from "url";
 import * as snarkjs from "snarkjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ARTIFACTS_DIR = path.join(__dirname, "..", "artifacts");
+const ARTIFACTS_DIR = process.env.ZKP_ARTIFACTS_DIR || path.join(__dirname, "..", "artifacts");
 const PTAU_PATH = path.join(ARTIFACTS_DIR, "pot12_final.ptau");
 const ZKEY_PATH = path.join(ARTIFACTS_DIR, "update_commitment.zkey");
 const VK_PATH = path.join(ARTIFACTS_DIR, "verification_key.json");
+export { VK_PATH };
+
+const FIELD_MODULUS = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 /**
  * Build the minimal R1CS circuit description programmatically.
@@ -134,6 +137,37 @@ export async function generateAndVerifyProof({
   const isValid = await snarkjs.groth16.verify(vKey, publicSignals, proof);
 
   return { proof, publicSignals, verificationKey: vKey, isValid, publicCommitment };
+}
+
+export async function verifyProof({ proof, publicSignals }) {
+  if (
+    !proof ||
+    proof.protocol !== "groth16" ||
+    proof.curve !== "bn128" ||
+    !Array.isArray(publicSignals) ||
+    publicSignals.length !== 5 ||
+    publicSignals.some((value) => {
+      try {
+        const n = BigInt(value);
+        return n < 0n || n >= FIELD_MODULUS;
+      } catch {
+        return true;
+      }
+    })
+  ) {
+    return false;
+  }
+  if (!existsSync(VK_PATH)) {
+    throw new Error("verification key is missing");
+  }
+  const verificationKey = JSON.parse(readFileSync(VK_PATH, "utf8"));
+  if (verificationKey.protocol !== "groth16" || verificationKey.curve !== "bn128") {
+    throw new Error("verification key circuit metadata is invalid");
+  }
+  if (verificationKey.nPublic !== undefined && Number(verificationKey.nPublic) !== 5) {
+    throw new Error("verification key public-input schema is invalid");
+  }
+  return Boolean(await snarkjs.groth16.verify(verificationKey, publicSignals, proof));
 }
 
 /**
