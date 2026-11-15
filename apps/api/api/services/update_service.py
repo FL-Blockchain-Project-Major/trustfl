@@ -13,18 +13,25 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from apps.api.api.db.models import Update, UpdateStatus
+from apps.api.api.db.models import Client, Round, Update, UpdateStatus
 from apps.api.api.repositories.updates import UpdateRepository
 from apps.api.api.schemas.updates import UpdateStatusChange, UpdateSubmit
+from apps.api.api.security.auth import AuthContext, require_federation_access
 
 logger = logging.getLogger(__name__)
 
 
 class UpdateService:
     def __init__(self, db: Session):
+        self.db = db
         self.repo = UpdateRepository(db)
 
-    def submit(self, payload: UpdateSubmit) -> Update:
+    def submit(self, payload: UpdateSubmit, context: AuthContext) -> Update:
+        round_record = self.db.query(Round).filter(Round.id == payload.round_id).one_or_none()
+        client = self.db.query(Client).filter(Client.id == payload.client_id).one_or_none()
+        if round_record is None or client is None or round_record.federation_id != client.federation_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found")
+        require_federation_access(context, round_record.federation_id)
         # 1. Reject duplicate update ID
         if self.repo.get(payload.id):
             raise HTTPException(

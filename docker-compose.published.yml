@@ -58,6 +58,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     image: ghcr.io/sayam-1705/trustfl/api:${TRUSTFL_VERSION:?TRUSTFL_VERSION must be set to a pinned release}
     environment:
@@ -74,6 +85,7 @@ services:
       - IPFS_URL=http://ipfs:5001
       - WEB3_PROVIDER_URI=${BLOCKCHAIN_RPC_URL:?BLOCKCHAIN_RPC_URL must be set}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      - REDIS_URL=redis://redis:6379/0
       - COORDINATOR_REQUIRE_ZKP=true
       - ZKP_VERIFY_COMMAND=node /app/packages/zkp/src/verify-cli.js
     ports:
@@ -82,6 +94,8 @@ services:
       db:
         condition: service_healthy
       ipfs:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
@@ -190,4 +204,5 @@ services:
 volumes:
   db_data:
   ipfs_data:
+  redis_data:
   client_keys:

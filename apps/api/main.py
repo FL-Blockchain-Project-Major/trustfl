@@ -84,10 +84,18 @@ async def require_production_api_key(request: Request, call_next):
             legacy = os.getenv("API_SECRET_KEY", "")
             valid = bool(legacy and hmac.compare_digest(supplied, legacy))
         if not valid:
+            logger.warning(
+                "security_event=authentication_failure method=%s path=%s",
+                request.method,
+                request.url.path,
+            )
             return JSONResponse(
                 status_code=401,
                 content={"success": False, "message": "Authentication required.", "data": None},
             )
+    if auth_required and not is_public:
+        from apps.api.api.security.auth import authenticate
+        request.state.auth = authenticate(request)
     return await call_next(request)
 
 

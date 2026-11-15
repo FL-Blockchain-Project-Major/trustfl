@@ -143,6 +143,7 @@ regex==2026.9.29
 requests==2.34.2
     # via web3
 slowapi==0.1.9
+redis==6.4.0
     # via trustfl (pyproject.toml)
 SQLAlchemy==2.0.43
     # via trustfl (pyproject.toml)

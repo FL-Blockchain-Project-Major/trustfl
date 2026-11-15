@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from apps.api.api.db.models import Federation
 from apps.api.api.repositories.federations import FederationRepository
 from apps.api.api.schemas.federations import FederationCreate, FederationUpdate
+from apps.api.api.security.auth import AuthContext, require_federation_access
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,19 @@ class FederationService:
             )
         return fed
 
-    def list_all(self, skip: int = 0, limit: int = 100) -> list[Federation]:
-        return self.repo.get_all(skip=skip, limit=limit)
+    def list_all(self, context: AuthContext, skip: int = 0, limit: int = 100) -> list[Federation]:
+        if "*" in context.federations:
+            return self.repo.get_all(skip=skip, limit=limit)
+        return (
+            self.repo.db.query(Federation)
+            .filter(Federation.id.in_(context.federations))
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    def authorize(self, context: AuthContext, federation_id: str) -> None:
+        require_federation_access(context, federation_id)
 
     def update(self, federation_id: str, payload: FederationUpdate) -> Federation:
         fed = self.get_or_404(federation_id)

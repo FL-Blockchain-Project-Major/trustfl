@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ def _client_ip(request: Request) -> str:
 
 # 1 MB limit on request bodies
 MAX_BODY_BYTES = 1 * 1024 * 1024
+MAX_PROOF_BODY_BYTES = 256 * 1024
 
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -64,10 +66,11 @@ class RequestSizeLimitMiddleware:
             return
         headers = dict(scope.get("headers", []))
         raw_length = headers.get(b"content-length", b"")
-        if raw_length.isdigit() and int(raw_length) > MAX_BODY_BYTES:
+        max_body = MAX_PROOF_BODY_BYTES if b"/proof" in scope.get("path", "").encode() else MAX_BODY_BYTES
+        if raw_length.isdigit() and int(raw_length) > max_body:
             response = JSONResponse(
                 status_code=413,
-                content={"detail": "Request body too large. Maximum allowed: 1 MB."},
+                content={"detail": "Request body too large."},
             )
             await response(scope, receive, send)
             return
@@ -79,7 +82,7 @@ class RequestSizeLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 size += len(message.get("body", b""))
-                if size > MAX_BODY_BYTES:
+                if size > max_body:
                     exceeded = True
                     # Starlette turns a disconnect during body consumption
                     # into a controlled request failure.  We replace it with
@@ -99,7 +102,7 @@ class RequestSizeLimitMiddleware:
         if exceeded:
             response = JSONResponse(
                 status_code=413,
-                content={"detail": "Request body too large. Maximum allowed: 1 MB."},
+                content={"detail": "Request body too large."},
             )
             await response(scope, receive, send)
 
@@ -119,6 +122,18 @@ class GlobalRateLimitMiddleware:
         self.limit = limit
         self._lock = threading.Lock()
         self._windows: dict[str, tuple[float, int]] = {}
+        self._redis = None
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            try:
+                import redis
+
+                self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
+                self._redis.ping()
+            except Exception as exc:
+                if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                    raise RuntimeError("REDIS_URL is configured but Redis is unavailable") from exc
+                logger.warning("Redis rate limiter unavailable; using development-only local limiter")
 
     @staticmethod
     def _parse(value: str) -> tuple[int, float]:
@@ -144,14 +159,49 @@ class GlobalRateLimitMiddleware:
             }
             forwarded = headers.get(b"x-forwarded-for", b"").decode("latin-1").split(",")[0].strip()
             key = forwarded if peer in trusted and forwarded else peer
-            with self._lock:
-                started, count = self._windows.get(key, (now, 0))
-                if now - started >= period:
-                    started, count = now, 0
-                count += 1
-                self._windows[key] = (started, count)
-            if count > limit:
-                response = JSONResponse(status_code=429, content={"detail": "Rate limit exceeded."})
+            path = scope.get("path", "")
+            configured_limit = (
+                os.getenv("API_ZKP_RATE_LIMIT", "10/minute")
+                if "/proof" in path
+                else os.getenv("API_UPDATE_RATE_LIMIT", "30/minute")
+                if "/update" in path
+                else self.limit or os.getenv("API_RATE_LIMIT", "100/minute")
+            )
+            limit, period = self._parse(configured_limit)
+            identity = hashlib.sha256(
+                headers.get(b"authorization", b"").strip()
+            ).hexdigest()[:16]
+            keys = {f"{key}:{path}", f"identity:{identity}:{path}"}
+            counts = []
+            if self._redis is not None:
+                for rate_key in keys:
+                    bucket = f"trustfl:ratelimit:{rate_key}:{path}:{int(time.time() // period)}"
+                    current = int(self._redis.incr(bucket))
+                    if current == 1:
+                        self._redis.expire(bucket, int(period) + 1)
+                    counts.append(current)
+            else:
+                with self._lock:
+                    for rate_key in keys:
+                        started, count = self._windows.get(rate_key, (now, 0))
+                        if now - started >= period:
+                            started, count = now, 0
+                        count += 1
+                        self._windows[rate_key] = (started, count)
+                        counts.append(count)
+            if any(count > limit for count in counts):
+                retry_after = max(1, int(period - (time.time() % period)))
+                logger.warning(
+                    "security_event=rate_limit_violation method=%s path=%s client_ip=%s",
+                    scope.get("method"),
+                    path,
+                    key,
+                )
+                response = JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded."},
+                    headers={"Retry-After": str(retry_after)},
+                )
                 await response(scope, receive, send)
                 return
         await self.app(scope, receive, send)

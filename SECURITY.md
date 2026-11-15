@@ -28,6 +28,27 @@ manager configuration via `CLIENT_KEY_STORE`; the API stores only public keys
 and lifecycle metadata. Legacy single-secret authentication and automatic
 enrollment are rejected in production.
 
+## API authorization, tenant isolation, and abuse protection
+
+Non-public API routes require role-scoped bearer credentials. Read, write, and
+administrator permissions are enforced at the route boundary, while federation
+scope is derived from the authenticated credential rather than trusted from a
+request body. Federation lists, client registration, round creation, artifact
+creation, proof submission, and update submission re-check that scope in the
+service layer. Cross-federation access returns a non-disclosing `404`.
+
+Production requires Redis for distributed fixed-window rate limiting. Limits are
+applied independently per client IP and credential identity, with tighter
+limits for update and proof endpoints and `Retry-After` on rejection. Request
+bodies are capped at 1 MiB generally and 256 KiB for proof routes. Development
+may use the local limiter only when `ENVIRONMENT=development`; production
+startup fails when `REDIS_URL` is absent or unavailable.
+
+The API does not expose private credentials or proof material in errors or
+logs. Direct resource endpoints that cannot safely derive federation ownership
+are administrator-only; this is deliberately conservative until a dedicated
+resource authorization policy is introduced.
+
 ## Durable round and blockchain consistency
 
 Round records use guarded `CREATED`/`COLLECTING`/`VALIDATING`/`AGGREGATING`/

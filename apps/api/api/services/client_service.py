@@ -12,6 +12,7 @@ from apps.api.api.db.models import Client, ClientLifecycleStatus
 from apps.api.api.repositories.clients import ClientRepository
 from apps.api.api.repositories.federations import FederationRepository
 from apps.api.api.schemas.clients import ClientRegister
+from apps.api.api.security.auth import AuthContext, require_federation_access
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ class ClientService:
         self.repo = ClientRepository(db)
         self.fed_repo = FederationRepository(db)
 
-    def register(self, payload: ClientRegister) -> Client:
+    def register(self, payload: ClientRegister, context: AuthContext) -> Client:
+        require_federation_access(context, payload.federation_id)
         if not self.fed_repo.get(payload.federation_id):
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, f"Federation '{payload.federation_id}' not found"
@@ -66,7 +68,8 @@ class ClientService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Client '{client_id}' not found")
         return c
 
-    def list_by_federation(self, federation_id: str) -> list[Client]:
+    def list_by_federation(self, federation_id: str, context: AuthContext) -> list[Client]:
+        require_federation_access(context, federation_id)
         return self.repo.get_by_federation(federation_id)
 
     def heartbeat(self, client_id: str) -> Client:

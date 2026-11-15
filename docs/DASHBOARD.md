@@ -16,9 +16,10 @@ Open <http://localhost:3000>. In Compose, the dashboard is started with
 `docker compose up --build`.
 
 The browser calls `/api/dashboard/*` on the Next.js server. That server-side
-proxy adds `API_READ_KEY` (or the explicitly supported development
-`API_SECRET_KEY`) and forwards only GET requests to `INTERNAL_API_URL` or
-`NEXT_PUBLIC_API_URL`. Do not prefix an API credential with `NEXT_PUBLIC_`.
+proxy adds the scoped `API_READ_KEY` and forwards only GET requests to
+`INTERNAL_API_URL` or `NEXT_PUBLIC_API_URL`. Do not prefix an API credential
+with `NEXT_PUBLIC_`; the legacy `API_SECRET_KEY` compatibility path is
+development-only and must be disabled in production.
 
 ## Console features
 

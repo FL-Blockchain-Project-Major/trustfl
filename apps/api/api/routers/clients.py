@@ -12,6 +12,7 @@ from apps.api.api.schemas.clients import (
     ClientRegister,
 )
 from apps.api.api.schemas.common import APIResponse
+from apps.api.api.security.auth import AuthContext, require_permission
 from apps.api.api.services.client_service import ClientService
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -30,14 +31,22 @@ def get_service(db: Session = Depends(get_db)) -> ClientService:  # noqa: B008
 
 
 @router.post("/", response_model=APIResponse[ClientOut])
-def register_client(payload: ClientRegister, service: ClientService = Depends(get_service)):  # noqa: B008
-    client = service.register(payload)
+def register_client(
+    payload: ClientRegister,
+    context: AuthContext = Depends(require_permission("write")),  # noqa: B008
+    service: ClientService = Depends(get_service),  # noqa: B008
+):  # noqa: B008
+    client = service.register(payload, context)
     return APIResponse(data=ClientOut.from_orm_with_caps(client))
 
 
 @router.get("/federation/{federation_id}", response_model=APIResponse[list[ClientOut]])
-def list_federation_clients(federation_id: str, service: ClientService = Depends(get_service)):  # noqa: B008
-    clients = service.list_by_federation(federation_id)
+def list_federation_clients(
+    federation_id: str,
+    context: AuthContext = Depends(require_permission("read")),  # noqa: B008
+    service: ClientService = Depends(get_service),  # noqa: B008
+):  # noqa: B008
+    clients = service.list_by_federation(federation_id, context)
     return APIResponse(data=[ClientOut.from_orm_with_caps(c) for c in clients])
 
 

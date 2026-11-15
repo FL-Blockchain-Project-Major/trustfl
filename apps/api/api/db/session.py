@@ -107,6 +107,8 @@ def check_config(_app: FastAPI) -> None:
             errors.append("CLIENT_ENROLLMENT_AUTO_APPROVE must be false in production")
         if os.getenv("CLIENT_KEY_STORE", "").lower() not in {"kms", "secret_manager"}:
             errors.append("CLIENT_KEY_STORE must be kms or secret_manager in production")
+        if not os.getenv("REDIS_URL"):
+            errors.append("Production requires REDIS_URL for distributed rate limiting")
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")

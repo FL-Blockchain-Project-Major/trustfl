@@ -69,7 +69,11 @@ This guide provides an exhaustive, production-ready specification for configurin
 | **`CLIENT_KEY_STORE`** | API / Client | *(unset)* | **YES** | Production secret-management mode: `kms` or `secret_manager`; private keys are never sent to the API. |
 | **`BLOCKCHAIN_FINALITY_BLOCKS`** | Coordinator | `1` | Recommended | Required confirmations before an audit event is reported final. |
 | **`BLOCKCHAIN_OUTBOX_MAX_ATTEMPTS`** | Coordinator | `8` | No | Maximum bounded retry attempts for an unavailable blockchain RPC. |
-| **`API_RATE_LIMIT`** | API | `100/minute` | Recommended | Global per-client IP sliding window rate limit. |
+| **`API_RATE_LIMIT`** | API | `100/minute` | Recommended | Global per-client IP and credential fixed-window rate limit. Production requires Redis. |
+| **`API_UPDATE_RATE_LIMIT`** | API | `30/minute` | Recommended | Per-IP and per-credential limit for update routes. |
+| **`API_ZKP_RATE_LIMIT`** | API | `10/minute` | Recommended | Per-IP and per-credential limit for proof routes. |
+| **`REDIS_URL`** | API | `redis://redis:6379/0` | **YES in prod** | Shared rate-limit backend; production startup fails when absent or unavailable. |
+| **`API_READ_FEDERATIONS` / `API_WRITE_FEDERATIONS`** | API | `*` | Recommended | Comma-separated federation scopes for read/write credentials; admin is unrestricted. |
 | **`TRUSTED_PROXY_IPS`** | API | *(empty)* | If proxied | Comma-separated list of reverse proxy IP addresses for safe client IP header parsing. |
 | **`CORS_ALLOWED_ORIGINS`**| API | `http://localhost:3000`| **YES** | Comma-separated list of allowed browser origins. Wildcard `*` rejected in production. |
 | **`LOG_LEVEL`** | API | `INFO` | No | Standard Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |

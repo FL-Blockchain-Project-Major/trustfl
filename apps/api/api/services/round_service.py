@@ -8,6 +8,7 @@ from apps.api.api.db.models import Round, RoundStatus
 from apps.api.api.repositories.federations import FederationRepository
 from apps.api.api.repositories.rounds import RoundRepository
 from apps.api.api.schemas.rounds import RoundCreate, RoundStatusUpdate
+from apps.api.api.security.auth import AuthContext, require_federation_access
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,8 @@ class RoundService:
         self.repo = RoundRepository(db)
         self.fed_repo = FederationRepository(db)
 
-    def create(self, payload: RoundCreate) -> Round:
+    def create(self, payload: RoundCreate, context: AuthContext) -> Round:
+        require_federation_access(context, payload.federation_id)
         if not self.fed_repo.get(payload.federation_id):
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND, f"Federation '{payload.federation_id}' not found"
@@ -42,7 +44,8 @@ class RoundService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Round '{round_id}' not found")
         return r
 
-    def list_by_federation(self, federation_id: str) -> list[Round]:
+    def list_by_federation(self, federation_id: str, context: AuthContext) -> list[Round]:
+        require_federation_access(context, federation_id)
         return self.repo.get_by_federation(federation_id)
 
     def update_status(self, round_id: str, payload: RoundStatusUpdate) -> Round:
