@@ -4,6 +4,7 @@ WORKDIR /app
 COPY pyproject.toml requirements.txt README.md ./
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
+COPY apps/coordinator/ ./apps/coordinator/
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --no-deps .
 # PYTHONPATH must include each package subdirectory so sub-packages are
