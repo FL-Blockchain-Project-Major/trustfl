@@ -384,12 +384,17 @@ class CoordinatorState:
             if self.blockchain_client and not self.blockchain_client.register_client(cid, pubkey):
                 return False
             if self.persistence:
-                self.persistence.register_client(cid, pubkey or "", capabilities)
+                try:
+                    self.persistence.register_client(cid, pubkey or "", capabilities)
+                except (PermissionError, ValueError) as exc:
+                    logger.warning("Client %s enrollment persistence rejected: %s", cid, exc)
+                    return False
             with self.lock:
                 if cid in self.registered_clients:
                     return False
                 self.registered_clients[cid] = {
                     "status": "ONLINE",
+                    "lifecycle": "ACTIVE",
                     "last_heartbeat": time.time(),
                     "registered_at": time.time(),
                     "capabilities": capabilities,
@@ -421,6 +426,8 @@ class CoordinatorState:
         with self.lock:
             if cid not in self.registered_clients:
                 return None
+            if self.registered_clients[cid].get("lifecycle") != "ACTIVE":
+                return None
             self.registered_clients[cid]["last_heartbeat"] = time.time()
             self.registered_clients[cid]["status"] = status if status != "OFFLINE" else "ONLINE"
             return self.current_round
@@ -433,6 +440,8 @@ class CoordinatorState:
         with self.lock:
             if cid not in self.registered_clients:
                 raise PermissionError("client is not registered")
+            if self.registered_clients[cid].get("lifecycle") != "ACTIVE":
+                raise PermissionError("client identity is not active")
             is_active = (
                 self.current_round > 0
                 and self.current_round <= self.num_rounds
@@ -790,7 +799,7 @@ class CoordinatorState:
             if expiry and expiry > now:
                 return False
             info = self.registered_clients.get(cid)
-            if not info or not info.get("pubkey"):
+            if not info or info.get("lifecycle") != "ACTIVE" or not info.get("pubkey"):
                 return False
             valid = _verify_public_key_signature(
                 info["pubkey"],

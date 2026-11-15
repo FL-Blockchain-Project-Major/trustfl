@@ -67,6 +67,9 @@ services:
       - API_READ_KEY=${API_READ_KEY:?API_READ_KEY must be set}
       - API_WRITE_KEY=${API_WRITE_KEY:?API_WRITE_KEY must be set}
       - API_ADMIN_KEY=${API_ADMIN_KEY:?API_ADMIN_KEY must be set}
+      - API_LEGACY_AUTH_COMPAT=false
+      - CLIENT_ENROLLMENT_AUTO_APPROVE=false
+      - CLIENT_KEY_STORE=${CLIENT_KEY_STORE:?CLIENT_KEY_STORE must be kms or secret_manager}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-trustfl}
       - IPFS_URL=http://ipfs:5001
       - WEB3_PROVIDER_URI=${BLOCKCHAIN_RPC_URL:?BLOCKCHAIN_RPC_URL must be set}

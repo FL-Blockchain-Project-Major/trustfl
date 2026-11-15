@@ -9,7 +9,7 @@ import os
 from collections.abc import Generator
 
 from fastapi import FastAPI
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
@@ -54,6 +54,23 @@ def create_all_tables() -> None:
     from apps.api.api.db.models import Base
 
     Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        # Development databases may predate the Phase 3 migration. Keep local
+        # startup compatible; production schema changes are owned by Alembic.
+        columns = {column["name"] for column in inspect(engine).get_columns("clients")}
+        additions = {
+            "lifecycle_status": "VARCHAR(16) NOT NULL DEFAULT 'ACTIVE'",
+            "key_version": "INTEGER NOT NULL DEFAULT 1",
+            "key_expires_at": "DATETIME",
+            "enrolled_at": "DATETIME",
+            "revoked_at": "DATETIME",
+            "suspended_at": "DATETIME",
+            "enrollment_id": "VARCHAR(128)",
+        }
+        with engine.begin() as connection:
+            for name, definition in additions.items():
+                if name not in columns:
+                    connection.execute(text(f"ALTER TABLE clients ADD COLUMN {name} {definition}"))
 
 
 def check_config(_app: FastAPI) -> None:
@@ -84,6 +101,12 @@ def check_config(_app: FastAPI) -> None:
             errors.append("Production requires COORDINATOR_REQUIRE_ZKP=true")
         if not os.getenv("ZKP_VERIFY_COMMAND"):
             errors.append("Production requires ZKP_VERIFY_COMMAND")
+        if os.getenv("API_LEGACY_AUTH_COMPAT", "false").lower() == "true":
+            errors.append("API_LEGACY_AUTH_COMPAT must be false in production")
+        if os.getenv("CLIENT_ENROLLMENT_AUTO_APPROVE", "false").lower() == "true":
+            errors.append("CLIENT_ENROLLMENT_AUTO_APPROVE must be false in production")
+        if os.getenv("CLIENT_KEY_STORE", "").lower() not in {"kms", "secret_manager"}:
+            errors.append("CLIENT_KEY_STORE must be kms or secret_manager in production")
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")

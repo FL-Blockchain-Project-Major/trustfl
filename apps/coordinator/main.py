@@ -77,6 +77,14 @@ def main() -> None:
         if not (artifacts_dir / "verification_key.json").is_file():
             logger.error("Production requires ZKP_ARTIFACTS_DIR/verification_key.json")
             sys.exit(1)
+        if os.getenv("COORDINATOR_INSECURE_DEV_AUTH", "false").lower() == "true":
+            logger.error("COORDINATOR_INSECURE_DEV_AUTH cannot be enabled in production")
+            sys.exit(1)
+        if not os.getenv("COORDINATOR_ENROLLMENT_ALLOWLIST") and not os.getenv(
+            "COORDINATOR_ENROLLMENT_ALLOWLIST_FILE"
+        ):
+            logger.error("Production requires an enrollment allowlist")
+            sys.exit(1)
 
     # Import here so the module is importable without network deps
     from network.server import CoordinatorServer

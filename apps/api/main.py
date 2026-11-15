@@ -62,6 +62,7 @@ async def require_production_api_key(request: Request, call_next):
         role = (
             "admin"
             if request.method == "DELETE"
+            or request.url.path.startswith("/clients/") and request.method in {"PUT", "PATCH"}
             else ("read" if request.method in {"GET", "HEAD"} else "write")
         )
         keys = {
@@ -75,9 +76,11 @@ async def require_production_api_key(request: Request, call_next):
             and (key_role == role or key_role == "admin")
             for key_role, expected in keys.items()
         )
-        if not valid and (
-            os.getenv("API_LEGACY_AUTH_COMPAT", "false").lower() == "true" or not any(keys.values())
-        ):
+        legacy_allowed = (
+            os.getenv("ENVIRONMENT", "development").lower() != "production"
+            and os.getenv("API_LEGACY_AUTH_COMPAT", "false").lower() == "true"
+        )
+        if not valid and legacy_allowed:
             legacy = os.getenv("API_SECRET_KEY", "")
             valid = bool(legacy and hmac.compare_digest(supplied, legacy))
         if not valid:

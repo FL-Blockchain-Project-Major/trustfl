@@ -21,6 +21,7 @@ class CoordinatorPersistence:
     def __init__(self) -> None:
         from apps.api.api.db.models import (
             Client,
+            ClientLifecycleStatus,
             Federation,
             FederationStatus,
             ModelArtifact,
@@ -40,6 +41,7 @@ class CoordinatorPersistence:
         self.FederationStatus = FederationStatus
         self.RoundStatus = RoundStatus
         self.UpdateStatus = UpdateStatus
+        self.ClientLifecycleStatus = ClientLifecycleStatus
         self.federation_id = os.getenv("FL_FEDERATION_ID", "fed-default")
 
     def _session(self):
@@ -63,13 +65,18 @@ class CoordinatorPersistence:
         with self._session() as db:
             row = db.get(self.Client, client_id)
             if row is None:
+                if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                    raise PermissionError(f"client {client_id} must be enrolled before coordinator registration")
                 row = self.Client(
                     id=client_id,
                     federation_id=self.federation_id,
                     public_key_b64=public_key,
                 )
                 db.add(row)
-            row.public_key_b64 = public_key
+            elif row.public_key_b64 and row.public_key_b64 != public_key:
+                raise ValueError(f"public key substitution rejected for client {client_id}")
+            elif row.lifecycle_status != self.ClientLifecycleStatus.ACTIVE:
+                raise PermissionError(f"client {client_id} is not actively enrolled")
             row.is_active = True
             row.last_seen_at = datetime.now(UTC)
             row.capabilities = json.dumps(capabilities, sort_keys=True)

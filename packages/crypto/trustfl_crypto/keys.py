@@ -23,6 +23,7 @@ import base64
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -158,6 +159,41 @@ class ClientIdentity:
 
     def __repr__(self) -> str:
         return f"ClientIdentity(client_id={self.client_id!r}, pubkey={self.public_key_b64[:12]}...)"
+
+
+class IdentityKeyStore(Protocol):
+    """Secret-manager boundary used by clients; private keys never leave the client."""
+
+    def load(self, client_id: str) -> ClientIdentity:
+        ...
+
+
+class FileIdentityKeyStore:
+    """Development/local operator key store with strict file permissions."""
+
+    def __init__(self, path: Path):
+        self.path = path
+
+    def load(self, client_id: str) -> ClientIdentity:
+        if not self.path.is_file():
+            raise FileNotFoundError(f"identity key is missing: {self.path}")
+        if self.path.stat().st_mode & 0o077:
+            raise PermissionError("identity key file must not be group/world accessible")
+        return ClientIdentity.load_pem(client_id, self.path.read_bytes())
+
+
+class EnvironmentIdentityKeyStore:
+    """Adapter for a container secret injected by an external secret manager."""
+
+    def load(self, client_id: str) -> ClientIdentity:
+        encoded = os.getenv("FL_PRIVATE_KEY_PEM_B64", "")
+        if not encoded:
+            raise RuntimeError("FL_PRIVATE_KEY_PEM_B64 is not configured")
+        try:
+            pem = base64.b64decode(encoded, validate=True)
+        except ValueError:
+            raise RuntimeError("FL_PRIVATE_KEY_PEM_B64 is malformed") from None
+        return ClientIdentity.load_pem(client_id, pem)
 
 
 # ---------------------------------------------------------------------------

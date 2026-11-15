@@ -64,7 +64,9 @@ This guide provides an exhaustive, production-ready specification for configurin
 | **`API_READ_KEY`** | API / Dash | *(unset)* | **YES** | High-entropy bearer secret granting `GET` and `HEAD` access to control plane. |
 | **`API_WRITE_KEY`** | API | *(unset)* | **YES** | High-entropy bearer secret granting `POST` and `PUT` mutation access. |
 | **`API_ADMIN_KEY`** | API | *(unset)* | **YES** | High-entropy bearer secret granting `DELETE` and full administrative access. |
-| **`API_LEGACY_AUTH_COMPAT`** | API | `false` | No | Fallback compatibility for legacy single-secret `API_SECRET_KEY`. |
+| **`API_LEGACY_AUTH_COMPAT`** | API | `false` | No | Development-only fallback compatibility for legacy single-secret `API_SECRET_KEY`; forbidden in production. |
+| **`CLIENT_ENROLLMENT_AUTO_APPROVE`** | API | `false` in production | **NO (MUST BE FALSE)** | Development-only automatic activation of newly registered clients. |
+| **`CLIENT_KEY_STORE`** | API / Client | *(unset)* | **YES** | Production secret-management mode: `kms` or `secret_manager`; private keys are never sent to the API. |
 | **`API_RATE_LIMIT`** | API | `100/minute` | Recommended | Global per-client IP sliding window rate limit. |
 | **`TRUSTED_PROXY_IPS`** | API | *(empty)* | If proxied | Comma-separated list of reverse proxy IP addresses for safe client IP header parsing. |
 | **`CORS_ALLOWED_ORIGINS`**| API | `http://localhost:3000`| **YES** | Comma-separated list of allowed browser origins. Wildcard `*` rejected in production. |

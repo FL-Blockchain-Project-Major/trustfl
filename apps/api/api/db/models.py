@@ -54,6 +54,13 @@ class UpdateStatus(enum.StrEnum):
     REJECTED = "REJECTED"
 
 
+class ClientLifecycleStatus(enum.StrEnum):
+    PENDING = "PENDING"
+    ACTIVE = "ACTIVE"
+    SUSPENDED = "SUSPENDED"
+    REVOKED = "REVOKED"
+
+
 class Federation(Base):
     __tablename__ = "federations"
     id = Column(String(64), primary_key=True)
@@ -76,6 +83,17 @@ class Client(Base):
     )
     public_key_b64 = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    lifecycle_status = Column(
+        SAEnum(ClientLifecycleStatus),
+        default=ClientLifecycleStatus.ACTIVE,
+        nullable=False,
+    )
+    key_version = Column(Integer, default=1, nullable=False)
+    key_expires_at = Column(DateTime(timezone=True), nullable=True)
+    enrolled_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    suspended_at = Column(DateTime(timezone=True), nullable=True)
+    enrollment_id = Column(String(128), nullable=True, unique=True)
     capabilities = Column(Text, nullable=True)  # JSON string
     registered_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     last_seen_at = Column(DateTime(timezone=True), nullable=True)

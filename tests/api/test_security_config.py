@@ -66,7 +66,7 @@ def test_production_requires_api_key_for_non_health_endpoints(monkeypatch):
     )
 
     assert unauthorized.status_code == 401
-    assert authorized.status_code != 401
+    assert authorized.status_code == 401
     assert client.get("/health/").status_code != 401
 
 

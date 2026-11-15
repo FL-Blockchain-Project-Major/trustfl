@@ -32,7 +32,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from packages.crypto.trustfl_crypto.keys import ClientIdentity
+from packages.crypto.trustfl_crypto.keys import ClientIdentity, EnvironmentIdentityKeyStore
 from packages.crypto.trustfl_crypto.signer import UpdateSigner
 
 logger = logging.getLogger(__name__)
@@ -122,15 +122,20 @@ class DistributedClientAgent:
         if identity is not None:
             self.identity = identity
         else:
-            try:
-                self.identity = ClientIdentity.load_or_generate(client_id, target_identity_path)
-            except OSError:
-                logger.warning(
-                    "[%s] Key path %s is not writable; falling back to ephemeral in-memory identity",
-                    client_id,
-                    target_identity_path,
-                )
-                self.identity = ClientIdentity.generate(client_id)
+            if os.getenv("ENVIRONMENT", "development").lower() == "production":
+                if os.getenv("FL_KEY_STORE", "").lower() != "environment":
+                    raise RuntimeError("Production clients require FL_KEY_STORE=environment")
+                self.identity = EnvironmentIdentityKeyStore().load(client_id)
+            else:
+                try:
+                    self.identity = ClientIdentity.load_or_generate(client_id, target_identity_path)
+                except OSError:
+                    logger.warning(
+                        "[%s] Key path %s is not writable; falling back to ephemeral in-memory identity",
+                        client_id,
+                        target_identity_path,
+                    )
+                    self.identity = ClientIdentity.generate(client_id)
         self.signer = UpdateSigner(self.identity, federation_id)
         self.enrollment_token = os.getenv("COORDINATOR_ENROLLMENT_TOKEN", "")
 
