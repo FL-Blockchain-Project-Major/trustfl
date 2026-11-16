@@ -74,6 +74,8 @@ This guide provides an exhaustive, production-ready specification for configurin
 | **`API_ZKP_RATE_LIMIT`** | API | `10/minute` | Recommended | Per-IP and per-credential limit for proof routes. |
 | **`REDIS_URL`** | API | `redis://redis:6379/0` | **YES in prod** | Shared rate-limit backend; production startup fails when absent or unavailable. |
 | **`API_READ_FEDERATIONS` / `API_WRITE_FEDERATIONS`** | API | `*` | Recommended | Comma-separated federation scopes for read/write credentials; admin is unrestricted. |
+| **`OBSERVABILITY_LOG_LEVEL`** | API / coordinator | `INFO` | No | Structured telemetry log level. |
+| **`OBSERVABILITY_TRACE_SAMPLE_RATE`** | API / coordinator | `0.1` | No | Reserved sampling setting for exported traces; local propagation remains enabled. |
 | **`TRUSTED_PROXY_IPS`** | API | *(empty)* | If proxied | Comma-separated list of reverse proxy IP addresses for safe client IP header parsing. |
 | **`CORS_ALLOWED_ORIGINS`**| API | `http://localhost:3000`| **YES** | Comma-separated list of allowed browser origins. Wildcard `*` rejected in production. |
 | **`LOG_LEVEL`** | API | `INFO` | No | Standard Python logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |

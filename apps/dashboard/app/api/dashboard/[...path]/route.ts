@@ -38,6 +38,10 @@ export async function GET(
   const headers: HeadersInit = {
     Accept: "application/json",
   };
+  const traceparent = request.headers.get("traceparent");
+  if (traceparent) {
+    headers.traceparent = traceparent;
+  }
   const key = process.env.API_READ_KEY || process.env.API_SECRET_KEY || process.env.API_ADMIN_KEY;
   if (key) {
     headers.Authorization = `Bearer ${key}`;

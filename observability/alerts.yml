@@ -1,0 +1,35 @@
+groups:
+  - name: trustfl-production
+    rules:
+      - alert: TrustFLApiErrorRateHigh
+        expr: sum(rate(trustfl_api_errors_total[5m])) / sum(rate(trustfl_api_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API error rate is above 5%
+          runbook: docs/runbooks/api-errors.md
+      - alert: TrustFLApiLatencyHigh
+        expr: max(trustfl_api_request_duration_seconds{quantile="0.99"}) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API p99 latency exceeds two seconds
+          runbook: docs/runbooks/api-latency.md
+      - alert: TrustFLReadinessDegraded
+        expr: trustfl_readiness == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: TrustFL API readiness checks are degraded
+          runbook: docs/runbooks/dependencies.md
+      - alert: TrustFLRateLimitSpikes
+        expr: sum(rate(trustfl_api_errors_total{status="429"}[10m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Rate-limit violations are elevated
+          runbook: docs/runbooks/security-events.md

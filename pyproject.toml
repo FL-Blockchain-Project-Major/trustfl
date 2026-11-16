@@ -80,6 +80,7 @@ pythonpath = [
     "packages/blockchain",
     "packages/core",
     "packages/zkp",
+    "packages/observability",
 ]
 testpaths = [
     "tests",

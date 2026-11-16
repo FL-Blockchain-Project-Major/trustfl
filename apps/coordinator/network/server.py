@@ -27,6 +27,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from trustfl_observability import metrics as observability_metrics
+
 from apps.coordinator.zkp_verifier import ZKPVerifier, field_from_text
 from packages.crypto.trustfl_crypto.canonical import (
     canonical_artifact_bytes,
@@ -362,18 +364,21 @@ class CoordinatorState:
             existing = self.registered_clients.get(cid)
             if existing and existing.get("pubkey") != pubkey:
                 logger.warning("Rejecting key substitution for enrolled client %s", cid)
+                observability_metrics.inc("trustfl_client_registrations_total", {"result": "rejected"})
                 return False
             if cid not in self.registered_clients:
                 if cid in self._inflight_registrations:
                     return False
                 if self.require_signatures and not pubkey:
                     logger.warning("Rejecting client %s without a public key", cid)
+                    observability_metrics.inc("trustfl_client_registrations_total", {"result": "rejected"})
                     return False
                 if pubkey:
                     try:
                         self.key_registry.register(cid, pubkey)
                     except (TypeError, ValueError):
                         logger.warning("Rejecting client %s with an invalid public key", cid)
+                        observability_metrics.inc("trustfl_client_registrations_total", {"result": "rejected"})
                         return False
                 self._inflight_registrations.add(cid)
             else:
@@ -411,6 +416,7 @@ class CoordinatorState:
                     self.current_round if before_round == 0 and self.current_round == 1 else 0
                 )
             logger.info("Client registered: %s", cid)
+            observability_metrics.inc("trustfl_client_registrations_total", {"result": "accepted"})
             if started_round:
                 self._start_round_durable(started_round, INITIAL_MODEL_VERSION)
                 with self.lock:
@@ -491,6 +497,7 @@ class CoordinatorState:
         commit checks the round again so a timeout cannot race a slow upload.
         """
         rejection: tuple[str, str, str, str] | None = None
+        submit_started = time.perf_counter()
         with self.lock:
             if cid not in self.registered_clients:
                 logger.warning("Rejecting update from unknown client %s", cid)
@@ -523,10 +530,20 @@ class CoordinatorState:
                     field_from_text(model_version),
                     str(metadata.get("public_commitment", "")),
                 ]
+                zkp_started = time.perf_counter()
                 result = self.zkp_verifier.verify(
                     proof=proof,
                     public_signals=public_signals,
                     expected_signals=expected_signals,
+                )
+                observability_metrics.observe(
+                    "trustfl_zkp_verification_seconds",
+                    time.perf_counter() - zkp_started,
+                    {"result": "valid" if result.valid else "invalid"},
+                )
+                observability_metrics.inc(
+                    "trustfl_zkp_verifications_total",
+                    {"result": "valid" if result.valid else "invalid"},
                 )
                 if not result.valid:
                     logger.warning(
@@ -585,6 +602,10 @@ class CoordinatorState:
                 self._inflight_nonces.add(nonce)
         if rejection:
             self._audit_rejection(update_id, cid, round_id, *rejection[1:])
+            observability_metrics.inc("trustfl_updates_total", {"result": "rejected"})
+            observability_metrics.observe(
+                "trustfl_update_processing_seconds", time.perf_counter() - submit_started
+            )
             return False
         try:
             artifact_data = canonical_artifact_bytes(parameters, num_examples, metrics)
@@ -678,7 +699,11 @@ class CoordinatorState:
             with self.lock:
                 self._inflight_updates.discard(cid)
                 self._inflight_nonces.discard(nonce)
-            return False
+            observability_metrics.inc("trustfl_updates_total", {"result": "accepted"})
+            observability_metrics.observe(
+                "trustfl_update_processing_seconds", time.perf_counter() - submit_started
+            )
+            return True
         except (TypeError, ValueError) as exc:
             reason = str(exc) if str(exc).isupper() else "DURABLE_WRITE_FAILED"
             self._audit_rejection(update_id, cid, round_id, nonce, "sha256:rejected", reason)
@@ -1162,6 +1187,8 @@ class CoordinatorState:
 
     def _aggregate_round_locked(self, timed_out: bool = False) -> None:
         """Run FedAvg over pending_updates and advance the round counter."""
+        aggregation_started = time.perf_counter()
+        observability_metrics.inc("trustfl_round_aggregations_total", {"status": "started"})
         updates = list(self.pending_updates.values())
         quorum_met = len(updates) >= self.min_clients
         if not quorum_met:
@@ -1180,6 +1207,10 @@ class CoordinatorState:
             )
             if self.persistence:
                 self.persistence.fail_round(self.current_round)
+            observability_metrics.inc("trustfl_round_aggregations_total", {"status": "failed"})
+            observability_metrics.observe(
+                "trustfl_round_aggregation_seconds", time.perf_counter() - aggregation_started
+            )
             if len(self.active_clients) < self.min_clients:
                 self._abort_locked(
                     f"Quorum lost in round {self.current_round}: "
@@ -1206,6 +1237,10 @@ class CoordinatorState:
             )
             if self.persistence:
                 self.persistence.fail_round(self.current_round)
+            observability_metrics.inc("trustfl_round_aggregations_total", {"status": "failed"})
+            observability_metrics.observe(
+                "trustfl_round_aggregation_seconds", time.perf_counter() - aggregation_started
+            )
             self._advance_round_locked(finalize=False)
             return
         if updates:
@@ -1231,6 +1266,10 @@ class CoordinatorState:
             self.current_round,
             len(updates),
             timed_out,
+        )
+        observability_metrics.inc("trustfl_round_aggregations_total", {"status": "completed"})
+        observability_metrics.observe(
+            "trustfl_round_aggregation_seconds", time.perf_counter() - aggregation_started
         )
 
         self._advance_round_locked()

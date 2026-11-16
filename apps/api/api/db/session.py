@@ -6,11 +6,13 @@ Supports SQLite (dev) and PostgreSQL (prod) via DATABASE_URL env var.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Generator
 
 from fastapi import FastAPI
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
+from trustfl_observability import metrics
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./trustfl.db")
@@ -38,6 +40,29 @@ else:
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(engine, "connect")
+def _connection_opened(_dbapi_connection, _connection_record) -> None:
+    metrics.inc("trustfl_db_connections_total", {"event": "opened"})
+
+
+@event.listens_for(engine, "checkout")
+def _connection_checked_out(_dbapi_connection, _connection_record, _connection_proxy) -> None:
+    metrics.inc("trustfl_db_pool_checkouts_total")
+
+
+@event.listens_for(engine, "before_cursor_execute")
+def _query_started(_conn, _cursor, _statement, _parameters, context, _executemany) -> None:
+    context._trustfl_query_started = time.perf_counter()
+
+
+@event.listens_for(engine, "after_cursor_execute")
+def _query_finished(_conn, _cursor, _statement, _parameters, context, _executemany) -> None:
+    started = getattr(context, "_trustfl_query_started", None)
+    if started is not None:
+        metrics.inc("trustfl_db_queries_total")
+        metrics.observe("trustfl_db_query_seconds", time.perf_counter() - started)
 
 
 def get_db() -> Generator[Session, None, None]:

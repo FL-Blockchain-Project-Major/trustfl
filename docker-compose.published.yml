@@ -30,6 +30,22 @@
 #   production so deployments are reproducible.
 
 services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    depends_on:
+      api:
+        condition: service_started
+
   db:
     image: postgres:15-alpine
     environment:
@@ -206,3 +222,4 @@ volumes:
   ipfs_data:
   redis_data:
   client_keys:
+  prometheus_data:

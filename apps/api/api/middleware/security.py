@@ -21,6 +21,8 @@ from collections.abc import Callable
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from trustfl_observability import metrics
+from trustfl_observability.tracing import trace_context
 
 logger = logging.getLogger("trustfl.audit")
 
@@ -212,12 +214,30 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = str(uuid.uuid4())
+        trace = trace_context(request.headers.get("traceparent"))
+        request.state.trace_id = trace.trace_id
+        request.state.span_id = trace.span_id
         start = time.perf_counter()
-
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            metrics.inc("trustfl_api_requests_total", {"method": request.method, "route": _route_label(request.url.path), "status": "500"})
+            raise
 
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
         client_ip = _client_ip(request)
+        route = _route_label(request.url.path)
+        metrics.inc(
+            "trustfl_api_requests_total",
+            {"method": request.method, "route": route, "status": str(response.status_code)},
+        )
+        metrics.observe(
+            "trustfl_api_request_duration_seconds",
+            duration_ms / 1000,
+            {"method": request.method, "route": route},
+        )
+        if response.status_code >= 400:
+            metrics.inc("trustfl_api_errors_total", {"route": route, "status": str(response.status_code)})
 
         log_entry = {
             "event": "api_request",
@@ -227,6 +247,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             "status_code": response.status_code,
             "client_ip": client_ip,
             "duration_ms": duration_ms,
+            "trace_id": trace.trace_id,
         }
 
         if response.status_code >= 400:
@@ -238,5 +259,20 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         for header, value in SECURITY_HEADERS.items():
             response.headers[header] = value
         response.headers["X-Request-ID"] = request_id
+        response.headers["Traceparent"] = trace.traceparent
 
         return response
+
+
+def _route_label(path: str) -> str:
+    """Keep metric labels bounded by replacing resource identifiers."""
+    parts = path.strip("/").split("/")
+    normalized = []
+    for part in parts:
+        if not part:
+            continue
+        if len(part) >= 16 or part.startswith(("fed_", "client_", "round_", "update_", "proof_", "artifact_", "tx_")):
+            normalized.append("{id}")
+        else:
+            normalized.append(part)
+    return "/" + "/".join(normalized) if normalized else "/"

@@ -1,0 +1,10 @@
+{
+  "title": "TrustFL Production Overview",
+  "schemaVersion": 39,
+  "panels": [
+    {"type": "stat", "title": "API availability", "targets": [{"expr": "1 - sum(rate(trustfl_api_errors_total{status=~\"5..\"}[5m])) / sum(rate(trustfl_api_requests_total[5m]))"}]},
+    {"type": "timeseries", "title": "API request rate", "targets": [{"expr": "sum by (status) (rate(trustfl_api_requests_total[5m]))"}]},
+    {"type": "timeseries", "title": "API latency", "targets": [{"expr": "trustfl_api_request_duration_seconds"}]},
+    {"type": "stat", "title": "Readiness", "targets": [{"expr": "trustfl_readiness"}]}
+  ]
+}

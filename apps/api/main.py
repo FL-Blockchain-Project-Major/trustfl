@@ -1,4 +1,5 @@
 import hmac
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -6,6 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.responses import Response
+from trustfl_observability import metrics
 
 from apps.api.api.db.session import create_all_tables
 from apps.api.api.middleware.security import (
@@ -25,7 +28,30 @@ from apps.api.api.routers import (
 )
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps(
+            {
+                "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+                "severity": record.levelname,
+                "service": "api",
+                "environment": os.getenv("ENVIRONMENT", "development"),
+                "logger": record.name,
+                "message": record.getMessage(),
+            },
+            separators=(",", ":"),
+        )
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(
+    _JsonFormatter()
+    if os.getenv("ENVIRONMENT", "development").lower() == "production"
+    else logging.Formatter("%(asctime)s %(levelname)s %(name)s | %(message)s")
+)
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), handlers=[handler], force=True)
 
 
 @asynccontextmanager
@@ -49,7 +75,7 @@ app = FastAPI(
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
     """Require a role-scoped API key for non-public production endpoints."""
-    is_public = request.url.path == "/health/" or request.method == "OPTIONS"
+    is_public = request.url.path in {"/health/", "/health/live", "/health/ready", "/metrics"} or request.method == "OPTIONS"
     configured = os.getenv("API_AUTH_REQUIRED")
     auth_required = (
         configured.lower() == "true"
@@ -97,6 +123,11 @@ async def require_production_api_key(request: Request, call_next):
         from apps.api.api.security.auth import authenticate
         request.state.auth = authenticate(request)
     return await call_next(request)
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint() -> Response:
+    return Response(metrics.render(), media_type="text/plain; version=0.0.4")
 
 
 def configured_cors_origins() -> list[str]:

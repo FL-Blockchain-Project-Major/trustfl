@@ -51,12 +51,12 @@ format: ## Run code formatters
 test: ## Run test suites
 	@echo "==> Running test suites..."
 	@if [ -x "$(VENV)/bin/pytest" ]; then \
-		PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:apps:. $(VENV)/bin/pytest tests; \
+		PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:packages/observability:apps:. $(VENV)/bin/pytest tests; \
 	elif command -v pytest >/dev/null 2>&1; then \
-		PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:apps:. pytest tests; \
+		PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:packages/observability:apps:. pytest tests; \
 	else \
 		echo "Pytest not found in environment; falling back to python unittest..."; \
-		PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:apps:. $(PYTHON) -m unittest discover -s tests -p "test_*.py"; \
+		PYTHONPATH=packages/schemas:packages/fl_core:packages/ml_core:packages/crypto:packages/observability:apps:. $(PYTHON) -m unittest discover -s tests -p "test_*.py"; \
 	fi
 
 simulate: ## Run minimal federated learning simulation
