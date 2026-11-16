@@ -61,6 +61,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
 
   ipfs:
     image: ipfs/kubo:v0.32.1
@@ -179,6 +188,15 @@ services:
         condition: service_healthy
       client-init:
         condition: service_completed_successfully
+    deploy:
+      replicas: ${COORDINATOR_REPLICAS:-1}
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
 
   client:
     image: ghcr.io/sayam-1705/trustfl/client:${TRUSTFL_VERSION:?TRUSTFL_VERSION must be set to a pinned release}

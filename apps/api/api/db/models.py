@@ -215,3 +215,14 @@ class BlockchainOutbox(Base):
     __table_args__ = (
         Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),
     )
+
+
+class CoordinatorLease(Base):
+    """Database-backed fencing lease for the active coordinator."""
+
+    __tablename__ = "coordinator_leases"
+    federation_id = Column(String(64), primary_key=True)
+    holder_id = Column(String(128), nullable=False)
+    fencing_token = Column(Integer, nullable=False, default=0)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)

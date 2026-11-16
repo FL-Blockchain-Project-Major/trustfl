@@ -880,6 +880,12 @@ class CoordinatorState:
 
     def monitor_tick(self) -> None:
         """Called periodically. Evicts dead clients; triggers timeout aggregation."""
+        if self.persistence and hasattr(self.persistence, "acquire_lease"):
+            if not self.persistence.acquire_lease():
+                logger.error("Coordinator lease lost; fencing this instance")
+                with self.lock:
+                    self._abort_locked("COORDINATOR_LEASE_LOST")
+                return
         self._process_blockchain_outbox()
         aggregate_timeout = False
         retry_finalize = False
@@ -1681,6 +1687,8 @@ class CoordinatorServer:
         logger.info("CoordinatorServer started on %s:%d", self.host, self.port)
 
     def stop(self) -> None:
+        if getattr(self, "persistence", None) and hasattr(self.persistence, "release_lease"):
+            self.persistence.release_lease()
         self._stop_event.set()
         self._httpd.shutdown()
         if self._http_thread:

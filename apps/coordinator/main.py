@@ -141,6 +141,9 @@ def main() -> None:
 
     persistence = CoordinatorPersistence()
     persistence.ensure_federation(args.min_clients, args.num_rounds)
+    if not persistence.acquire_lease():
+        logger.error("Another coordinator currently owns the federation lease")
+        sys.exit(1)
 
     server = CoordinatorServer(
         host=args.host,

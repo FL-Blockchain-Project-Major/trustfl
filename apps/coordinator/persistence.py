@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
+import uuid
 from datetime import UTC, datetime, timedelta
+
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,7 @@ class CoordinatorPersistence:
             BlockchainOutbox,
             Client,
             ClientLifecycleStatus,
+            CoordinatorLease,
             Federation,
             FederationStatus,
             ModelArtifact,
@@ -44,10 +49,53 @@ class CoordinatorPersistence:
         self.UpdateStatus = UpdateStatus
         self.BlockchainOutbox = BlockchainOutbox
         self.ClientLifecycleStatus = ClientLifecycleStatus
+        self.CoordinatorLease = CoordinatorLease
         self.federation_id = os.getenv("FL_FEDERATION_ID", "fed-default")
+        self.holder_id = os.getenv("COORDINATOR_INSTANCE_ID", f"{socket.gethostname()}-{uuid.uuid4().hex}")
 
     def _session(self):
         return self.SessionLocal()
+
+    def acquire_lease(self, ttl_seconds: int = 30) -> bool:
+        """Acquire or renew the federation lease; increment fencing on takeover."""
+        now = datetime.now(UTC)
+        try:
+            with self._session() as db:
+                row = (
+                    db.query(self.CoordinatorLease)
+                    .filter(self.CoordinatorLease.federation_id == self.federation_id)
+                    .with_for_update()
+                    .one_or_none()
+                )
+                if row is None:
+                    row = self.CoordinatorLease(
+                        federation_id=self.federation_id,
+                        holder_id=self.holder_id,
+                        fencing_token=1,
+                        expires_at=now + timedelta(seconds=ttl_seconds),
+                    )
+                    db.add(row)
+                else:
+                    expires_at = row.expires_at
+                    if expires_at.tzinfo is None:
+                        expires_at = expires_at.replace(tzinfo=UTC)
+                    if row.holder_id != self.holder_id and expires_at > now:
+                        return False
+                    if row.holder_id != self.holder_id:
+                        row.fencing_token += 1
+                    row.holder_id = self.holder_id
+                    row.expires_at = now + timedelta(seconds=ttl_seconds)
+                db.commit()
+                return True
+        except IntegrityError:
+            return False
+
+    def release_lease(self) -> None:
+        with self._session() as db:
+            row = db.get(self.CoordinatorLease, self.federation_id)
+            if row is not None and row.holder_id == self.holder_id:
+                row.expires_at = datetime.now(UTC)
+                db.commit()
 
     def ensure_federation(self, min_clients: int, max_rounds: int) -> None:
         with self._session() as db:
