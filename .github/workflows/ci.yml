@@ -76,9 +76,7 @@ jobs:
             npm --prefix "$directory" audit --audit-level=high
           done
       - name: Scan workflows with zizmor
-        uses: zizmorcore/zizmor@5fbfaebd18a0c93de39eb5888e02607cb7205c9b
-        with:
-          persona: pedantic
+        run: zizmor --persona pedantic .github/workflows
       - name: Scan repository filesystem with Trivy
         uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee
         with:
