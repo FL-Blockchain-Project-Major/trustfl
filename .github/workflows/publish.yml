@@ -30,23 +30,24 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   # ── Release gate: Python tests and lint ──────────────────────────────────
   python-tests:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -r requirements-dev.txt
+          pip install --no-deps -e .
 
       - name: Lint
         run: ruff check .
@@ -54,12 +55,17 @@ jobs:
       - name: Test
         run: pytest tests/
 
+      - name: Validate release supply-chain policy
+        run: python scripts/validate_supply_chain.py
+
   javascript-tests:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "22.13"
 
@@ -90,8 +96,10 @@ jobs:
   docker-verify:
     needs: [python-tests, javascript-tests]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Build all images
         run: |
@@ -136,6 +144,10 @@ jobs:
   publish:
     needs: [docker-verify]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     strategy:
       fail-fast: true
       matrix:
@@ -154,10 +166,10 @@ jobs:
             dockerfile: apps/dashboard/Dockerfile
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
         with:
           registry: ghcr.io
           # github.repository_owner is the org/user that owns the repo.
@@ -168,7 +180,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893
         with:
           # Image name uses github.repository_owner (lowercase) to match the
           # GHCR namespace.  The ${{ lower(…) }} expression ensures no case
@@ -180,10 +192,11 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@a254f8ca60a858f3136a2f1f23a60969f2c402dd
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -192,3 +205,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
+      - name: Sign and verify image digest
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/trustfl/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "$IMAGE"
+          cosign verify "$IMAGE" \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/trustfl/${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

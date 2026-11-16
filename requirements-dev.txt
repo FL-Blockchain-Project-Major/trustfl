@@ -1,0 +1,11 @@
+# Deterministic development environment. Runtime dependencies are locked in
+# requirements.txt; this file is the only development install input used by CI.
+-r requirements.txt
+
+hatchling==1.33.0
+mypy==2.4.0
+pip-audit==2.9.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+ruff==0.16.10

@@ -2,6 +2,7 @@
   "name": "trustfl-zkp",
   "version": "0.1.0",
   "description": "ZKP circuit for TrustFL update commitment",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "bash scripts/build.sh",

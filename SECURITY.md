@@ -14,6 +14,16 @@ production. The verifier command must use the reviewed circuit and verification
 key mounted through `ZKP_ARTIFACTS_DIR`; a missing or invalid key fails closed.
 Proofs and private witnesses are never written to logs.
 
+## Supply-chain and release integrity
+
+CI installs committed Python and npm lockfiles, audits resolved dependencies,
+scans workflows and repository contents for secrets, and checks declared
+licenses. Third-party Actions are pinned to immutable commit SHAs. Release
+images are built with SBOM and provenance attestations, signed with Cosign
+keyless signing through GitHub OIDC, and verified before publishing completes.
+See [release-integrity](docs/production/release-integrity.md) for verification
+and incident procedures.
+
 ## Client identity lifecycle
 
 Production enrollment is coordinator- and administrator-controlled. API

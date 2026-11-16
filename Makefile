@@ -1,4 +1,4 @@
-.PHONY: help install check lint format test clean venv audit
+.PHONY: help install check lint format test clean venv audit supply-chain
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -20,11 +20,13 @@ venv: ## Create virtual environment using uv or standard python venv
 install: venv ## Install project and development dependencies
 	@if command -v uv >/dev/null 2>&1; then \
 		echo "Installing dependencies with uv..."; \
-		uv pip install -e ".[dev]"; \
+		uv pip install -r requirements-dev.txt; \
+		uv pip install --no-deps -e .; \
 	else \
 		echo "Installing dependencies with pip..."; \
 		$(VENV)/bin/pip install --upgrade pip; \
-		$(VENV)/bin/pip install -e ".[dev]"; \
+		$(VENV)/bin/pip install -r requirements-dev.txt; \
+		$(VENV)/bin/pip install --no-deps -e .; \
 	fi
 
 lint: ## Run code linter and static analysis
@@ -72,6 +74,9 @@ audit: ## Check git repository against forbidden patterns (Zero-Git principle)
 	@echo "==> Auditing repository for unauthorized artifacts, data, or secrets..."
 	@! git ls-files | grep -E '\.(pt|pth|bin|safetensors|onnx|npy|h5|csv|key|pem|secret)$$' || (echo "ERROR: Forbidden files found in git index!" && exit 1)
 	@echo "Audit passed: No sensitive data, weights or keys detected."
+
+supply-chain: ## Validate lockfiles, immutable Actions, licenses, and tracked secrets
+	@$(PYTHON) scripts/validate_supply_chain.py
 
 check: lint test audit ## Run all code quality checks, tests, and security audits
 	@echo "==> All checks completed successfully."

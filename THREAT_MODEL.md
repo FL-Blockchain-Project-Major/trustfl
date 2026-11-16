@@ -14,6 +14,9 @@
 4. **Duplicate Submissions**: Addressed in `UpdateService` to reject a second update from the same `client_id` in a given `round_id`.
 5. **Contract Vulnerabilities**: Solved Slither findings (missing interface inheritance, missing `immutable` descriptors on registries).
 6. **Denial of Service (Storage)**: IPFS add/cat operations use explicit connect/read timeouts to prevent hanging connections.
+7. **Supply-chain compromise**: CI uses committed lockfiles, immutable Action
+   references, dependency and secret scanning, and release image SBOM,
+   provenance, Cosign signing, and verification gates.
 7. **Auditability**: Implemented `AuditLogMiddleware` for structured, JSON-based mutation logging, emitting an `X-Request-ID` and timing metrics.
 
 ## 3. Unresolved Security Issues (Accepted/Deferred Risks)
@@ -28,3 +31,9 @@
 9. **Enrollment identity**: Production registration requires an operator-provisioned per-client public-key allow-list and a signed proof of possession. API enrollment starts in `PENDING` and requires administrator approval before participation. Coordinator reads, heartbeats, and submissions require signed, timestamped, nonce-protected requests. Suspended and revoked identities are rejected.
 10. **Key management**: Private client keys remain client-side and are never stored in the control-plane database. Production requires an external secret-manager/KMS policy (`CLIENT_KEY_STORE`) and rejects ephemeral key fallback.
 11. **Crash recovery**: Round transitions, accepted update identity, and blockchain outbox work are durable in the control-plane database. Concurrent writers are rejected by guarded transitions and unique round/client and idempotency constraints. An outbox event is not equivalent to blockchain finality until a transaction hash and configured confirmation policy are recorded.
+12. **Release identity**: A stolen maintainer account or compromised protected
+   tag can still authorize a workflow. Branch protection, tag protection,
+   minimal OIDC trust, and rapid revocation remain operational requirements.
+13. **Dependency disclosure delay**: Scanners only detect advisories already
+   published by their data sources; SBOMs improve response but do not prove
+   absence of undisclosed vulnerabilities.
