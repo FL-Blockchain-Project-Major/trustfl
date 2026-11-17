@@ -8,7 +8,7 @@ LABEL org.opencontainers.image.description="Federated learning client service"
 WORKDIR /app
 
 # Client optionally uses Pillow for image loading
-RUN pip install --no-cache-dir pillow==10.3.0
+RUN pip install --no-cache-dir pillow==13.0.0
 
 COPY packages/schemas  /app/packages/schemas
 COPY packages/fl_core  /app/packages/fl_core
@@ -22,6 +22,9 @@ VOLUME ["/data"]
 
 ENV FL_IMAGES_DIR=/data/images
 ENV FL_ANNOTATIONS_DIR=/data/annotations
+
+RUN useradd --create-home --uid 10001 trustfl && chown -R trustfl:trustfl /app
+USER trustfl
 
 WORKDIR /app/apps/client
 

@@ -17,10 +17,17 @@ SECRET_FILE_RE = re.compile(
 
 
 def tracked_files() -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True, text=False
-    )
-    return [item for item in result.stdout.decode().split("\0") if item]
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True, text=False
+        )
+        return [item for item in result.stdout.decode().split("\0") if item]
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return [
+            str(p.relative_to(ROOT))
+            for p in ROOT.rglob("*")
+            if p.is_file() and ".git" not in p.parts
+        ]
 
 
 def check_no_sensitive_files(files: list[str]) -> None:
