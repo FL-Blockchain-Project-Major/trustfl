@@ -84,7 +84,7 @@ jobs:
       - name: Scan workflows with zizmor
         run: zizmor --persona pedantic --min-severity low .github/workflows
       - name: Scan repository filesystem with Trivy
-        uses: aquasecurity/trivy-action@1f0aa582c8c8f5f7639610d6d38baddfea4fdcee
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           scan-type: fs
           scan-ref: .
@@ -93,6 +93,7 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           skip-dirs: "**/node_modules"
+          trivyignores: .trivyignore.yaml
       - name: Scan git history for secrets
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
         env:

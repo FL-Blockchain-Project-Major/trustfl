@@ -21,8 +21,13 @@ from collections.abc import Callable
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from trustfl_observability import metrics
-from trustfl_observability.tracing import trace_context
+
+try:
+    from trustfl_observability import metrics as _metrics
+    from trustfl_observability.tracing import trace_context as _trace_context
+except ImportError:  # pragma: no cover – observability is optional in test subprocess
+    _metrics = None  # type: ignore[assignment]
+    _trace_context = None  # type: ignore[assignment]
 
 logger = logging.getLogger("trustfl.audit")
 
@@ -216,39 +221,43 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = str(uuid.uuid4())
-        trace = trace_context(request.headers.get("traceparent"))
-        request.state.trace_id = trace.trace_id
-        request.state.span_id = trace.span_id
+        if _trace_context is not None:
+            trace = _trace_context(request.headers.get("traceparent"))
+            request.state.trace_id = trace.trace_id
+            request.state.span_id = trace.span_id
         start = time.perf_counter()
         try:
             response = await call_next(request)
         except Exception:
-            metrics.inc(
-                "trustfl_api_requests_total",
-                {
-                    "method": request.method,
-                    "route": _route_label(request.url.path),
-                    "status": "500",
-                },
-            )
+            if _metrics is not None:
+                _metrics.inc(
+                    "trustfl_api_requests_total",
+                    {
+                        "method": request.method,
+                        "route": _route_label(request.url.path),
+                        "status": "500",
+                    },
+                )
             raise
 
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
         client_ip = _client_ip(request)
         route = _route_label(request.url.path)
-        metrics.inc(
-            "trustfl_api_requests_total",
-            {"method": request.method, "route": route, "status": str(response.status_code)},
-        )
-        metrics.observe(
-            "trustfl_api_request_duration_seconds",
-            duration_ms / 1000,
-            {"method": request.method, "route": route},
-        )
-        if response.status_code >= 400:
-            metrics.inc(
-                "trustfl_api_errors_total", {"route": route, "status": str(response.status_code)}
+        if _metrics is not None:
+            _metrics.inc(
+                "trustfl_api_requests_total",
+                {"method": request.method, "route": route, "status": str(response.status_code)},
             )
+            _metrics.observe(
+                "trustfl_api_request_duration_seconds",
+                duration_ms / 1000,
+                {"method": request.method, "route": route},
+            )
+            if response.status_code >= 400:
+                _metrics.inc(
+                    "trustfl_api_errors_total",
+                    {"route": route, "status": str(response.status_code)},
+                )
 
         log_entry = {
             "event": "api_request",

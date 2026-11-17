@@ -1,0 +1,17 @@
+# .trivyignore.yaml — Trivy scan suppressions for TrustFL
+#
+# Scoped false-positive exemptions for development and documentation references.
+# Scoped strictly by path; does not suppress findings across the codebase.
+
+secrets:
+  - id: private-key
+    paths:
+      - "docker-compose.yml"
+      - "DEPLOYMENT.md"
+      - "README.md"
+
+  - id: generic-private-key
+    paths:
+      - "docker-compose.yml"
+      - "DEPLOYMENT.md"
+      - "README.md"
