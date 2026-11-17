@@ -14,7 +14,11 @@ def get_service(db: Session = Depends(get_db)) -> FederationService:  # noqa: B0
     return FederationService(db)
 
 
-@router.post("/", response_model=APIResponse[FederationOut], dependencies=[Depends(require_permission("admin"))])
+@router.post(
+    "/",
+    response_model=APIResponse[FederationOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def create_federation(
     payload: FederationCreate,
     service: FederationService = Depends(get_service),  # noqa: B008
@@ -34,7 +38,11 @@ def list_federations(
     return APIResponse(data=feds)
 
 
-@router.get("/{federation_id}", response_model=APIResponse[FederationOut], dependencies=[Depends(require_permission("read"))])
+@router.get(
+    "/{federation_id}",
+    response_model=APIResponse[FederationOut],
+    dependencies=[Depends(require_permission("read"))],
+)
 def get_federation(federation_id: str, service: FederationService = Depends(get_service)):  # noqa: B008
     fed = service.get_or_404(federation_id)
     return APIResponse(data=fed)

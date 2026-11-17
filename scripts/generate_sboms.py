@@ -6,7 +6,7 @@ import argparse
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,13 +26,15 @@ def parse_requirements(req_path: Path) -> list[dict[str, str]]:
         if match:
             pkg_name, pkg_version = match.groups()
             clean_name = re.sub(r"\[.*\]", "", pkg_name).strip()
-            components.append({
-                "type": "library",
-                "name": clean_name,
-                "version": pkg_version,
-                "purl": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
-                "bom-ref": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
-            })
+            components.append(
+                {
+                    "type": "library",
+                    "name": clean_name,
+                    "version": pkg_version,
+                    "purl": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
+                    "bom-ref": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
+                }
+            )
     return components
 
 
@@ -57,13 +59,15 @@ def parse_package_lock(lock_path: Path) -> list[dict[str, str]]:
             else:
                 name = pkg_path
         version = info.get("version", "0.0.0")
-        components.append({
-            "type": "library",
-            "name": name,
-            "version": version,
-            "purl": f"pkg:npm/{name}@{version}",
-            "bom-ref": f"pkg:npm/{name}@{version}",
-        })
+        components.append(
+            {
+                "type": "library",
+                "name": name,
+                "version": version,
+                "purl": f"pkg:npm/{name}@{version}",
+                "bom-ref": f"pkg:npm/{name}@{version}",
+            }
+        )
     return components
 
 
@@ -73,7 +77,7 @@ def build_cyclonedx_bom(
     components: list[dict[str, str]],
 ) -> dict:
     bom_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"trustfl.{component_name}.{component_version}"))
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     return {
         "bomFormat": "CycloneDX",
@@ -107,7 +111,7 @@ def build_spdx_bom(
     components: list[dict[str, str]],
 ) -> dict:
     doc_namespace = f"https://github.com/FL-Blockchain-Project-Major/trustfl/spdx/{component_name}-{component_version}"
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     packages = [
         {
@@ -122,20 +126,22 @@ def build_spdx_bom(
     ]
 
     for idx, c in enumerate(sorted(components, key=lambda x: (x["name"], x["version"])), start=1):
-        packages.append({
-            "SPDXID": f"SPDXRef-Package-{idx}",
-            "name": c["name"],
-            "versionInfo": c["version"],
-            "downloadLocation": "NOASSERTION",
-            "filesAnalyzed": False,
-            "externalRefs": [
-                {
-                    "referenceCategory": "PACKAGE-MANAGER",
-                    "referenceType": "purl",
-                    "referenceLocator": c["purl"],
-                }
-            ],
-        })
+        packages.append(
+            {
+                "SPDXID": f"SPDXRef-Package-{idx}",
+                "name": c["name"],
+                "versionInfo": c["version"],
+                "downloadLocation": "NOASSERTION",
+                "filesAnalyzed": False,
+                "externalRefs": [
+                    {
+                        "referenceCategory": "PACKAGE-MANAGER",
+                        "referenceType": "purl",
+                        "referenceLocator": c["purl"],
+                    }
+                ],
+            }
+        )
 
     return {
         "spdxVersion": "SPDX-2.3",

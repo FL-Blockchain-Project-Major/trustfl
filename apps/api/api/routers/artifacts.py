@@ -34,6 +34,10 @@ def list_artifacts(
     return APIResponse(data=a)
 
 
-@router.get("/{artifact_id}", response_model=APIResponse[ArtifactOut], dependencies=[Depends(require_permission("admin"))])
+@router.get(
+    "/{artifact_id}",
+    response_model=APIResponse[ArtifactOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def get_artifact(artifact_id: str, service: ArtifactService = Depends(get_service)):  # noqa: B008
     return APIResponse(data=service.get_or_404(artifact_id))

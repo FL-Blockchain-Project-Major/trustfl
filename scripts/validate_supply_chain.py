@@ -73,11 +73,15 @@ def check_lockfiles() -> None:
 
 
 def check_manifests() -> None:
-    for relative in ("apps/dashboard/package.json", "packages/contracts/package.json", "packages/zkp/package.json"):
+    for relative in (
+        "apps/dashboard/package.json",
+        "packages/contracts/package.json",
+        "packages/zkp/package.json",
+    ):
         data = json.loads((ROOT / relative).read_text(encoding="utf-8"))
         if not data.get("license"):
             raise SystemExit(f"{relative}: missing license declaration")
-    if "license = \"MIT\"" not in (ROOT / "pyproject.toml").read_text(encoding="utf-8"):
+    if 'license = "MIT"' not in (ROOT / "pyproject.toml").read_text(encoding="utf-8"):
         raise SystemExit("pyproject.toml: missing MIT license declaration")
 
 

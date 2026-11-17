@@ -21,8 +21,4 @@ class ClientRepository(BaseRepository[Client]):
         )
 
     def get_by_public_key(self, public_key_b64: str) -> Client | None:
-        return (
-            self.db.query(Client)
-            .filter(Client.public_key_b64 == public_key_b64)
-            .first()
-        )
+        return self.db.query(Client).filter(Client.public_key_b64 == public_key_b64).first()

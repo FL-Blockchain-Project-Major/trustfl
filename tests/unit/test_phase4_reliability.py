@@ -49,7 +49,11 @@ def test_blockchain_outbox_is_idempotent_and_retries_are_bounded():
         {"round_id": "phase4-round"},
     )
 
-    events = [event for event in persistence.pending_blockchain_events() if event["idempotency_key"] == event_key]
+    events = [
+        event
+        for event in persistence.pending_blockchain_events()
+        if event["idempotency_key"] == event_key
+    ]
     assert len(events) == 1
     event_id = events[0]["id"]
     for _ in range(8):

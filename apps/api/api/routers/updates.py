@@ -24,13 +24,21 @@ def submit_update(
     return APIResponse(data=upd)
 
 
-@router.get("/round/{round_id}", response_model=APIResponse[list[UpdateOut]], dependencies=[Depends(require_permission("admin"))])
+@router.get(
+    "/round/{round_id}",
+    response_model=APIResponse[list[UpdateOut]],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def list_updates(round_id: str, service: UpdateService = Depends(get_service)):  # noqa: B008
     upds = service.list_by_round(round_id)
     return APIResponse(data=upds)
 
 
-@router.get("/federation/{federation_id}", response_model=APIResponse[list[UpdateOut]], dependencies=[Depends(require_permission("read"))])
+@router.get(
+    "/federation/{federation_id}",
+    response_model=APIResponse[list[UpdateOut]],
+    dependencies=[Depends(require_permission("read"))],
+)
 def list_federation_updates(
     federation_id: str,
     service: UpdateService = Depends(get_service),  # noqa: B008
@@ -38,7 +46,11 @@ def list_federation_updates(
     return APIResponse(data=service.list_by_federation(federation_id))
 
 
-@router.put("/{update_id}/status", response_model=APIResponse[UpdateOut], dependencies=[Depends(require_permission("admin"))])
+@router.put(
+    "/{update_id}/status",
+    response_model=APIResponse[UpdateOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def update_status(
     update_id: str,
     payload: UpdateStatusChange,

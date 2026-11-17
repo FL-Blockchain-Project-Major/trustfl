@@ -16,7 +16,7 @@ def test_ci_has_security_gates():
     for marker in (
         "supply-chain:",
         "pip-audit",
-        "npm --prefix \"$directory\" audit --omit=dev --audit-level=high",
+        'npm --prefix "$directory" audit --omit=dev --audit-level=high',
         "trivy",
         "zizmor",
         "gitleaks",
@@ -40,7 +40,7 @@ def test_python_ci_uses_lockfile():
     for relative in (".github/workflows/ci.yml", ".github/workflows/publish.yml"):
         workflow = (ROOT / relative).read_text(encoding="utf-8")
         assert "pip install -r requirements-dev.txt" in workflow
-        assert "pip install -e \".[dev]\"" not in workflow
+        assert 'pip install -e ".[dev]"' not in workflow
 
 
 def test_workflows_use_immutable_actions_and_no_credential_persistence():
@@ -49,12 +49,18 @@ def test_workflows_use_immutable_actions_and_no_credential_persistence():
     for wf in workflow_dir.glob("*.y*ml"):
         content = wf.read_text(encoding="utf-8")
         for action in action_re.findall(content):
-            assert re.fullmatch(r".+@[0-9a-f]{40}", action), f"{wf}: action not pinned to SHA: {action}"
+            assert re.fullmatch(r".+@[0-9a-f]{40}", action), (
+                f"{wf}: action not pinned to SHA: {action}"
+            )
         # Every actions/checkout must set persist-credentials: false
-        checkouts = [m.start() for m in re.finditer(r"uses:\s*actions/checkout@[0-9a-f]{40}", content)]
+        checkouts = [
+            m.start() for m in re.finditer(r"uses:\s*actions/checkout@[0-9a-f]{40}", content)
+        ]
         for pos in checkouts:
             snippet = content[pos : pos + 300]
-            assert "persist-credentials: false" in snippet, f"{wf}: checkout missing persist-credentials: false"
+            assert "persist-credentials: false" in snippet, (
+                f"{wf}: checkout missing persist-credentials: false"
+            )
 
 
 def test_sbom_generator_generates_valid_sboms(tmp_path: Path):
@@ -81,7 +87,9 @@ def test_sbom_generator_generates_valid_sboms(tmp_path: Path):
 
 
 def test_dockerfiles_have_non_root_users():
-    dockerfiles = list(ROOT.glob("apps/*/Dockerfile")) + list(ROOT.glob("infrastructure/docker/Dockerfile.*"))
+    dockerfiles = list(ROOT.glob("apps/*/Dockerfile")) + list(
+        ROOT.glob("infrastructure/docker/Dockerfile.*")
+    )
     assert len(dockerfiles) >= 5
     for df in dockerfiles:
         content = df.read_text(encoding="utf-8")
@@ -91,7 +99,11 @@ def test_dockerfiles_have_non_root_users():
 def test_secret_scanner_configuration_present():
     ignore_file = ROOT / ".gitleaksignore"
     assert ignore_file.is_file(), "Missing .gitleaksignore file"
-    lines = [line.strip() for line in ignore_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    lines = [
+        line.strip()
+        for line in ignore_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     assert len(lines) > 0, ".gitleaksignore must not be empty"
 
 

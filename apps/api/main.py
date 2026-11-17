@@ -75,7 +75,10 @@ app = FastAPI(
 @app.middleware("http")
 async def require_production_api_key(request: Request, call_next):
     """Require a role-scoped API key for non-public production endpoints."""
-    is_public = request.url.path in {"/health/", "/health/live", "/health/ready", "/metrics"} or request.method == "OPTIONS"
+    is_public = (
+        request.url.path in {"/health/", "/health/live", "/health/ready", "/metrics"}
+        or request.method == "OPTIONS"
+    )
     configured = os.getenv("API_AUTH_REQUIRED")
     auth_required = (
         configured.lower() == "true"
@@ -88,7 +91,8 @@ async def require_production_api_key(request: Request, call_next):
         role = (
             "admin"
             if request.method == "DELETE"
-            or request.url.path.startswith("/clients/") and request.method in {"PUT", "PATCH"}
+            or request.url.path.startswith("/clients/")
+            and request.method in {"PUT", "PATCH"}
             else ("read" if request.method in {"GET", "HEAD"} else "write")
         )
         keys = {
@@ -121,6 +125,7 @@ async def require_production_api_key(request: Request, call_next):
             )
     if auth_required and not is_public:
         from apps.api.api.security.auth import authenticate
+
         request.state.auth = authenticate(request)
     return await call_next(request)
 

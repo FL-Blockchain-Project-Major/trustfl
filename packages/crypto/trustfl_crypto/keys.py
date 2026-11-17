@@ -164,8 +164,7 @@ class ClientIdentity:
 class IdentityKeyStore(Protocol):
     """Secret-manager boundary used by clients; private keys never leave the client."""
 
-    def load(self, client_id: str) -> ClientIdentity:
-        ...
+    def load(self, client_id: str) -> ClientIdentity: ...
 
 
 class FileIdentityKeyStore:

@@ -41,7 +41,9 @@ class ClientService:
                 raw_key = base64.b64decode(payload.public_key_b64, validate=True)
                 Ed25519PublicKey.from_public_bytes(raw_key)
             except (ValueError, TypeError):
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid Ed25519 public key") from None
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid Ed25519 public key"
+                ) from None
         now = datetime.now(UTC)
         production = os.getenv("ENVIRONMENT", "development").lower() == "production"
         lifecycle = (
@@ -87,7 +89,9 @@ class ClientService:
         now = datetime.now(UTC)
         if lifecycle == ClientLifecycleStatus.ACTIVE:
             if client.lifecycle_status == ClientLifecycleStatus.REVOKED:
-                raise HTTPException(status.HTTP_409_CONFLICT, "Revoked identities cannot be reactivated")
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, "Revoked identities cannot be reactivated"
+                )
             client.enrolled_at = client.enrolled_at or now
             client.suspended_at = None
             client.is_active = True
@@ -109,7 +113,9 @@ class ClientService:
         if client.lifecycle_status == ClientLifecycleStatus.REVOKED:
             raise HTTPException(status.HTTP_409_CONFLICT, "Revoked identities cannot rotate keys")
         if client.public_key_b64 == public_key_b64:
-            raise HTTPException(status.HTTP_409_CONFLICT, "New public key must differ from current key")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "New public key must differ from current key"
+            )
         client.public_key_b64 = public_key_b64
         client.key_version += 1
         client.is_active = False

@@ -22,9 +22,11 @@ class AuthContext:
 
 def _configured() -> bool:
     value = os.getenv("API_AUTH_REQUIRED")
-    return value.lower() == "true" if value is not None else os.getenv(
-        "ENVIRONMENT", "development"
-    ).lower() != "development"
+    return (
+        value.lower() == "true"
+        if value is not None
+        else os.getenv("ENVIRONMENT", "development").lower() != "development"
+    )
 
 
 def authenticate(request: Request) -> AuthContext:

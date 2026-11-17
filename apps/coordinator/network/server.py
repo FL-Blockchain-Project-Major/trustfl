@@ -364,21 +364,27 @@ class CoordinatorState:
             existing = self.registered_clients.get(cid)
             if existing and existing.get("pubkey") != pubkey:
                 logger.warning("Rejecting key substitution for enrolled client %s", cid)
-                observability_metrics.inc("trustfl_client_registrations_total", {"result": "rejected"})
+                observability_metrics.inc(
+                    "trustfl_client_registrations_total", {"result": "rejected"}
+                )
                 return False
             if cid not in self.registered_clients:
                 if cid in self._inflight_registrations:
                     return False
                 if self.require_signatures and not pubkey:
                     logger.warning("Rejecting client %s without a public key", cid)
-                    observability_metrics.inc("trustfl_client_registrations_total", {"result": "rejected"})
+                    observability_metrics.inc(
+                        "trustfl_client_registrations_total", {"result": "rejected"}
+                    )
                     return False
                 if pubkey:
                     try:
                         self.key_registry.register(cid, pubkey)
                     except (TypeError, ValueError):
                         logger.warning("Rejecting client %s with an invalid public key", cid)
-                        observability_metrics.inc("trustfl_client_registrations_total", {"result": "rejected"})
+                        observability_metrics.inc(
+                            "trustfl_client_registrations_total", {"result": "rejected"}
+                        )
                         return False
                 self._inflight_registrations.add(cid)
             else:
@@ -675,9 +681,7 @@ class CoordinatorState:
                     nonce,
                 )
                 if self.persistence:
-                    self.persistence.mark_blockchain_processed(
-                        f"outbox_update_{update_id}"
-                    )
+                    self.persistence.mark_blockchain_processed(f"outbox_update_{update_id}")
                 if verified:
                     self._chain_call_with_retry(
                         "BLOCKCHAIN_VERIFICATION_FAILED",
@@ -686,9 +690,7 @@ class CoordinatorState:
                         True,
                     )
                     if self.persistence:
-                        self.persistence.mark_blockchain_processed(
-                            f"outbox_proof_{update_id}"
-                        )
+                        self.persistence.mark_blockchain_processed(f"outbox_proof_{update_id}")
         except OSError as exc:
             # Infrastructure problem (chain RPC, storage, DB). The update itself was
             # not judged invalid, so do NOT write a terminal rejection: release the
@@ -945,9 +947,7 @@ class CoordinatorState:
                     payload["nonce"],
                 )
             if event_type == "UPDATE_VERIFICATION":
-                return self.blockchain_client.mark_verification_state(
-                    payload["update_id"], True
-                )
+                return self.blockchain_client.mark_verification_state(payload["update_id"], True)
             if event_type == "ROUND_COMMIT":
                 return self.blockchain_client.finalize_round(
                     payload["round_id"], payload["model_version"]
@@ -1113,9 +1113,7 @@ class CoordinatorState:
             round_id, model_version
         )
         if succeeded and self.persistence and self.blockchain_client:
-            self.persistence.mark_blockchain_processed(
-                f"round:{round_id}:commit:{model_version}"
-            )
+            self.persistence.mark_blockchain_processed(f"round:{round_id}:commit:{model_version}")
         if succeeded and self.persistence:
             self.persistence.finalize_round(round_id)
         if not succeeded:
@@ -1178,7 +1176,9 @@ class CoordinatorState:
                 logger.error("Blockchain round %d creation failed", round_id)
                 if self.persistence:
                     self.persistence.transition_round(
-                        round_id, {"COLLECTING"}, "RECOVERY_REQUIRED",
+                        round_id,
+                        {"COLLECTING"},
+                        "RECOVERY_REQUIRED",
                         {"reason": "BLOCKCHAIN_ROUND_CREATE_FAILED"},
                     )
                 return
@@ -1186,7 +1186,9 @@ class CoordinatorState:
                 logger.error("Blockchain round %d activation failed", round_id)
                 if self.persistence:
                     self.persistence.transition_round(
-                        round_id, {"COLLECTING"}, "RECOVERY_REQUIRED",
+                        round_id,
+                        {"COLLECTING"},
+                        "RECOVERY_REQUIRED",
                         {"reason": "BLOCKCHAIN_ROUND_ACTIVATE_FAILED"},
                     )
                 return

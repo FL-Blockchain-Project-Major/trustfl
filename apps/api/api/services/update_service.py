@@ -29,7 +29,11 @@ class UpdateService:
     def submit(self, payload: UpdateSubmit, context: AuthContext) -> Update:
         round_record = self.db.query(Round).filter(Round.id == payload.round_id).one_or_none()
         client = self.db.query(Client).filter(Client.id == payload.client_id).one_or_none()
-        if round_record is None or client is None or round_record.federation_id != client.federation_id:
+        if (
+            round_record is None
+            or client is None
+            or round_record.federation_id != client.federation_id
+        ):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found")
         require_federation_access(context, round_record.federation_id)
         # 1. Reject duplicate update ID

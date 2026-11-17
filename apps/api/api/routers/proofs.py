@@ -24,12 +24,20 @@ def submit_proof(
     return APIResponse(data=p)
 
 
-@router.get("/update/{update_id}", response_model=APIResponse[list[ProofOut]], dependencies=[Depends(require_permission("admin"))])
+@router.get(
+    "/update/{update_id}",
+    response_model=APIResponse[list[ProofOut]],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def list_proofs(update_id: str, service: ProofService = Depends(get_service)):  # noqa: B008
     p = service.list_by_update(update_id)
     return APIResponse(data=p)
 
 
-@router.get("/{proof_id}", response_model=APIResponse[ProofOut], dependencies=[Depends(require_permission("admin"))])
+@router.get(
+    "/{proof_id}",
+    response_model=APIResponse[ProofOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def get_proof(proof_id: str, service: ProofService = Depends(get_service)):  # noqa: B008
     return APIResponse(data=service.get_or_404(proof_id))

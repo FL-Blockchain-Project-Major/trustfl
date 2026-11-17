@@ -57,14 +57,20 @@ def test_body_tenant_ids_are_checked_against_authenticated_scope(client):
 
 
 def test_admin_only_blockchain_and_status_operations(client):
-    assert client.get(
-        "/blockchain/transactions",
-        headers={"Authorization": "Bearer read-secret"},
-    ).status_code == 403
-    assert client.get(
-        "/blockchain/transactions",
-        headers={"Authorization": "Bearer admin-secret"},
-    ).status_code != 401
+    assert (
+        client.get(
+            "/blockchain/transactions",
+            headers={"Authorization": "Bearer read-secret"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.get(
+            "/blockchain/transactions",
+            headers={"Authorization": "Bearer admin-secret"},
+        ).status_code
+        != 401
+    )
 
 
 def test_rate_limit_returns_retry_after(monkeypatch):

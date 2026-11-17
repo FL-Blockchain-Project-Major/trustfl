@@ -34,7 +34,11 @@ def list_rounds(
     return APIResponse(data=rnds)
 
 
-@router.put("/{round_id}/status", response_model=APIResponse[RoundOut], dependencies=[Depends(require_permission("admin"))])
+@router.put(
+    "/{round_id}/status",
+    response_model=APIResponse[RoundOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def update_round_status(
     round_id: str,
     payload: RoundStatusUpdate,

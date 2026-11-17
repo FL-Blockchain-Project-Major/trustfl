@@ -68,7 +68,9 @@ class RequestSizeLimitMiddleware:
             return
         headers = dict(scope.get("headers", []))
         raw_length = headers.get(b"content-length", b"")
-        max_body = MAX_PROOF_BODY_BYTES if b"/proof" in scope.get("path", "").encode() else MAX_BODY_BYTES
+        max_body = (
+            MAX_PROOF_BODY_BYTES if b"/proof" in scope.get("path", "").encode() else MAX_BODY_BYTES
+        )
         if raw_length.isdigit() and int(raw_length) > max_body:
             response = JSONResponse(
                 status_code=413,
@@ -135,7 +137,9 @@ class GlobalRateLimitMiddleware:
             except Exception as exc:
                 if os.getenv("ENVIRONMENT", "development").lower() == "production":
                     raise RuntimeError("REDIS_URL is configured but Redis is unavailable") from exc
-                logger.warning("Redis rate limiter unavailable; using development-only local limiter")
+                logger.warning(
+                    "Redis rate limiter unavailable; using development-only local limiter"
+                )
 
     @staticmethod
     def _parse(value: str) -> tuple[int, float]:
@@ -170,9 +174,7 @@ class GlobalRateLimitMiddleware:
                 else self.limit or os.getenv("API_RATE_LIMIT", "100/minute")
             )
             limit, period = self._parse(configured_limit)
-            identity = hashlib.sha256(
-                headers.get(b"authorization", b"").strip()
-            ).hexdigest()[:16]
+            identity = hashlib.sha256(headers.get(b"authorization", b"").strip()).hexdigest()[:16]
             keys = {f"{key}:{path}", f"identity:{identity}:{path}"}
             counts = []
             if self._redis is not None:
@@ -221,7 +223,14 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception:
-            metrics.inc("trustfl_api_requests_total", {"method": request.method, "route": _route_label(request.url.path), "status": "500"})
+            metrics.inc(
+                "trustfl_api_requests_total",
+                {
+                    "method": request.method,
+                    "route": _route_label(request.url.path),
+                    "status": "500",
+                },
+            )
             raise
 
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -237,7 +246,9 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             {"method": request.method, "route": route},
         )
         if response.status_code >= 400:
-            metrics.inc("trustfl_api_errors_total", {"route": route, "status": str(response.status_code)})
+            metrics.inc(
+                "trustfl_api_errors_total", {"route": route, "status": str(response.status_code)}
+            )
 
         log_entry = {
             "event": "api_request",
@@ -271,7 +282,9 @@ def _route_label(path: str) -> str:
     for part in parts:
         if not part:
             continue
-        if len(part) >= 16 or part.startswith(("fed_", "client_", "round_", "update_", "proof_", "artifact_", "tx_")):
+        if len(part) >= 16 or part.startswith(
+            ("fed_", "client_", "round_", "update_", "proof_", "artifact_", "tx_")
+        ):
             normalized.append("{id}")
         else:
             normalized.append(part)

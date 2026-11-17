@@ -212,9 +212,7 @@ class BlockchainOutbox(Base):
     finalized_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
-    __table_args__ = (
-        Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),
-    )
+    __table_args__ = (Index("ix_outbox_status_next_attempt", "status", "next_attempt_at"),)
 
 
 class CoordinatorLease(Base):

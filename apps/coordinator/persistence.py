@@ -51,7 +51,9 @@ class CoordinatorPersistence:
         self.ClientLifecycleStatus = ClientLifecycleStatus
         self.CoordinatorLease = CoordinatorLease
         self.federation_id = os.getenv("FL_FEDERATION_ID", "fed-default")
-        self.holder_id = os.getenv("COORDINATOR_INSTANCE_ID", f"{socket.gethostname()}-{uuid.uuid4().hex}")
+        self.holder_id = os.getenv(
+            "COORDINATOR_INSTANCE_ID", f"{socket.gethostname()}-{uuid.uuid4().hex}"
+        )
 
     def _session(self):
         return self.SessionLocal()
@@ -116,7 +118,9 @@ class CoordinatorPersistence:
             row = db.get(self.Client, client_id)
             if row is None:
                 if os.getenv("ENVIRONMENT", "development").lower() == "production":
-                    raise PermissionError(f"client {client_id} must be enrolled before coordinator registration")
+                    raise PermissionError(
+                        f"client {client_id} must be enrolled before coordinator registration"
+                    )
                 row = self.Client(
                     id=client_id,
                     federation_id=self.federation_id,
@@ -380,7 +384,9 @@ class CoordinatorPersistence:
                 result = handler(event["event_type"], event["payload"])
                 if result is False:
                     raise OSError("blockchain operation was rejected")
-                self.mark_blockchain_processed(event["id"], result if isinstance(result, str) else None)
+                self.mark_blockchain_processed(
+                    event["id"], result if isinstance(result, str) else None
+                )
             except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 self.mark_blockchain_retry(event["id"], str(exc))
 

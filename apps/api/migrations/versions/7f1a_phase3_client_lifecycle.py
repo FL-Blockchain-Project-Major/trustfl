@@ -16,9 +16,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    status_enum = sa.Enum(
-        "PENDING", "ACTIVE", "SUSPENDED", "REVOKED", name="clientlifecyclestatus"
-    )
+    status_enum = sa.Enum("PENDING", "ACTIVE", "SUSPENDED", "REVOKED", name="clientlifecyclestatus")
     status_enum.create(op.get_bind(), checkfirst=True)
     op.add_column(
         "clients",
@@ -29,7 +27,9 @@ def upgrade() -> None:
             server_default="ACTIVE",
         ),
     )
-    op.add_column("clients", sa.Column("key_version", sa.Integer(), nullable=False, server_default="1"))
+    op.add_column(
+        "clients", sa.Column("key_version", sa.Integer(), nullable=False, server_default="1")
+    )
     op.add_column("clients", sa.Column("key_expires_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("clients", sa.Column("enrolled_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("clients", sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True))
@@ -56,6 +56,6 @@ def downgrade() -> None:
         "lifecycle_status",
     ):
         op.drop_column("clients", name)
-    sa.Enum(
-        "PENDING", "ACTIVE", "SUSPENDED", "REVOKED", name="clientlifecyclestatus"
-    ).drop(op.get_bind(), checkfirst=True)
+    sa.Enum("PENDING", "ACTIVE", "SUSPENDED", "REVOKED", name="clientlifecyclestatus").drop(
+        op.get_bind(), checkfirst=True
+    )

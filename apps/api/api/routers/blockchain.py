@@ -33,7 +33,11 @@ def get_service(db: Session = Depends(get_db)) -> BlockchainTxService:  # noqa: 
     return BlockchainTxService(db)
 
 
-@router.get("/transactions", response_model=APIResponse[list[BlockchainTxOut]], dependencies=[Depends(require_permission("admin"))])
+@router.get(
+    "/transactions",
+    response_model=APIResponse[list[BlockchainTxOut]],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def list_transactions(
     skip: int = 0,
     limit: int = 100,
@@ -42,7 +46,11 @@ def list_transactions(
     return APIResponse(data=service.list_all(skip=skip, limit=min(limit, 100)))
 
 
-@router.post("/transactions", response_model=APIResponse[BlockchainTxOut], dependencies=[Depends(require_permission("admin"))])
+@router.post(
+    "/transactions",
+    response_model=APIResponse[BlockchainTxOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def record_tx(payload: TxCreate, service: BlockchainTxService = Depends(get_service)):  # noqa: B008
     tx = service.record(
         id=payload.id,
@@ -56,13 +64,21 @@ def record_tx(payload: TxCreate, service: BlockchainTxService = Depends(get_serv
     return APIResponse(data=tx)
 
 
-@router.put("/transactions/{tx_id}/confirm", response_model=APIResponse[BlockchainTxOut], dependencies=[Depends(require_permission("admin"))])
+@router.put(
+    "/transactions/{tx_id}/confirm",
+    response_model=APIResponse[BlockchainTxOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def confirm_tx(tx_id: str, payload: TxConfirm, service: BlockchainTxService = Depends(get_service)):  # noqa: B008
     tx = service.confirm(tx_id, payload.tx_hash)
     return APIResponse(data=tx)
 
 
-@router.put("/transactions/{tx_id}/fail", response_model=APIResponse[BlockchainTxOut], dependencies=[Depends(require_permission("admin"))])
+@router.put(
+    "/transactions/{tx_id}/fail",
+    response_model=APIResponse[BlockchainTxOut],
+    dependencies=[Depends(require_permission("admin"))],
+)
 def fail_tx(tx_id: str, payload: TxFail, service: BlockchainTxService = Depends(get_service)):  # noqa: B008
     tx = service.fail(tx_id, payload.error)
     return APIResponse(data=tx)

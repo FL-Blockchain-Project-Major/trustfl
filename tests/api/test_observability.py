@@ -10,7 +10,9 @@ client = TestClient(app)
 
 def test_metrics_endpoint_emits_api_request_and_latency_metrics():
     metrics.reset()
-    response = client.get("/health/live", headers={"traceparent": "00-" + "a" * 32 + "-" + "b" * 16 + "-01"})
+    response = client.get(
+        "/health/live", headers={"traceparent": "00-" + "a" * 32 + "-" + "b" * 16 + "-01"}
+    )
 
     assert response.status_code == 200
     assert response.headers["Traceparent"].startswith("00-" + "a" * 32 + "-")
