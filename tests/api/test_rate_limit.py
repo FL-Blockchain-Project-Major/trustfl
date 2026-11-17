@@ -7,8 +7,12 @@ import sys
 
 
 def _run(script: str) -> str:
+    import os
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
     return subprocess.run(
-        [sys.executable, "-c", script], check=True, capture_output=True, text=True
+        [sys.executable, "-c", script], check=True, capture_output=True, text=True, env=env
     ).stdout.strip()
 
 

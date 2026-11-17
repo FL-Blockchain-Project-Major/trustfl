@@ -22,12 +22,31 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+
+class _FallbackTraceContext:
+    def __init__(self, trace_id: str = "0" * 32, span_id: str = "0" * 16):
+        self.trace_id = trace_id
+        self.span_id = span_id
+
+    @property
+    def traceparent(self) -> str:
+        return f"00-{self.trace_id}-{self.span_id}-01"
+
+
+def _fallback_trace_context(header: str | None = None) -> _FallbackTraceContext:
+    if header and header.startswith("00-"):
+        parts = header.strip().split("-")
+        if len(parts) >= 3:
+            return _FallbackTraceContext(parts[1], parts[2])
+    return _FallbackTraceContext()
+
+
 try:
     from trustfl_observability import metrics as _metrics
     from trustfl_observability.tracing import trace_context as _trace_context
 except ImportError:  # pragma: no cover – observability is optional in test subprocess
     _metrics = None  # type: ignore[assignment]
-    _trace_context = None  # type: ignore[assignment]
+    _trace_context = _fallback_trace_context  # type: ignore[assignment]
 
 logger = logging.getLogger("trustfl.audit")
 
@@ -221,10 +240,9 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = str(uuid.uuid4())
-        if _trace_context is not None:
-            trace = _trace_context(request.headers.get("traceparent"))
-            request.state.trace_id = trace.trace_id
-            request.state.span_id = trace.span_id
+        trace = _trace_context(request.headers.get("traceparent"))
+        request.state.trace_id = trace.trace_id
+        request.state.span_id = trace.span_id
         start = time.perf_counter()
         try:
             response = await call_next(request)

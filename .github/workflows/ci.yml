@@ -48,7 +48,14 @@ jobs:
         run: ruff check .
 
       - name: Test
-        run: pytest tests/
+        run: |
+          pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest.log || {
+            echo "### Pytest Failure Details" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 120 /tmp/pytest.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
   supply-chain:
     runs-on: ubuntu-24.04
