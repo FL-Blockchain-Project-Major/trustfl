@@ -286,7 +286,13 @@ def validate_sboms(sboms: dict[str, Path]) -> bool:
             raise FileNotFoundError(f"SBOM file not generated: {path}")
         data = json.loads(path.read_text(encoding="utf-8"))
 
-        if "cdx" in path.name or "python" in path.name or "dashboard" in path.name or "contracts" in path.name or "zkp" in path.name:
+        if (
+            "cdx" in path.name
+            or "python" in path.name
+            or "dashboard" in path.name
+            or "contracts" in path.name
+            or "zkp" in path.name
+        ):
             assert data.get("bomFormat") == "CycloneDX", f"{path.name}: bad bomFormat"
             assert data.get("specVersion") == "1.5", f"{path.name}: specVersion != 1.5"
             assert "components" in data, f"{path.name}: missing components key"

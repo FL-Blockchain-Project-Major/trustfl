@@ -36,8 +36,9 @@ sys.path.insert(0, str(ROOT / "packages" / "blockchain"))
 sys.path.insert(0, str(ROOT / "packages" / "observability"))
 sys.path.insert(0, str(ROOT / "packages" / "zkp"))
 
-from apps.coordinator.network.server import _fedavg
-from apps.coordinator.zkp_verifier import ZKPVerifier
+# noqa: E402 — sys.path must be populated before project imports
+from apps.coordinator.network.server import _fedavg  # noqa: E402
+from apps.coordinator.zkp_verifier import ZKPVerifier  # noqa: E402
 
 
 def calculate_percentiles(latencies_ms: list[float]) -> dict[str, float]:
@@ -64,12 +65,20 @@ def calculate_percentiles(latencies_ms: list[float]) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 # 1. Federated Aggregation Scaling Benchmark
 # ---------------------------------------------------------------------------
+_DEFAULT_CLIENT_COUNTS = (5, 10, 25, 50, 100)
+_DEFAULT_PARAM_SIZES = (1000, 10000, 50000)
+
+
 def benchmark_aggregation(
-    client_counts: list[int] = [5, 10, 25, 50, 100],
-    param_sizes: list[int] = [1000, 10000, 50000],
+    client_counts: list[int] | None = None,
+    param_sizes: list[int] | None = None,
     iterations: int = 10,
 ) -> dict[str, Any]:
     """Benchmark FedAvg aggregation across varying client counts and weight vector dimensions."""
+    if client_counts is None:
+        client_counts = list(_DEFAULT_CLIENT_COUNTS)
+    if param_sizes is None:
+        param_sizes = list(_DEFAULT_PARAM_SIZES)
     print("--> Benchmarking Federated Aggregation Scaling...")
     results = {}
 
@@ -81,12 +90,14 @@ def benchmark_aggregation(
             updates = []
             for c in range(num_clients):
                 weights = [((c + 1) * 0.01 + (i % 100) * 0.001) for i in range(num_params)]
-                updates.append({
-                    "client_id": f"client_{c:03d}",
-                    "parameters": [weights],
-                    "num_examples": 100 + (c % 5) * 20,
-                    "metrics": {"loss": 0.5 - c * 0.001, "accuracy": 0.8 + c * 0.001},
-                })
+                updates.append(
+                    {
+                        "client_id": f"client_{c:03d}",
+                        "parameters": [weights],
+                        "num_examples": 100 + (c % 5) * 20,
+                        "metrics": {"loss": 0.5 - c * 0.001, "accuracy": 0.8 + c * 0.001},
+                    }
+                )
             ref = [[0.0] * num_params]
 
             # Warm-up run
@@ -174,7 +185,7 @@ def benchmark_database_operations(
     """Benchmark database connection checkout, query latency, and concurrent throughput."""
     print(f"--> Benchmarking Database Operations (concurrency={concurrency})...")
     try:
-        from apps.api.api.db.models import Base, Client, Federation, Round
+        from apps.api.api.db.models import Base, Federation, Round
         from apps.api.api.db.session import SessionLocal, engine
     except ImportError as exc:
         print(f"    [SKIP] Database dependencies not installed in current environment ({exc}).")
@@ -203,16 +214,12 @@ def benchmark_database_operations(
 
     latencies_ms = []
 
-    def worker_task(worker_id: int) -> list[float]:
+    def worker_task(_worker_id: int) -> list[float]:
         worker_lats = []
         with SessionLocal() as db:
-            for i in range(queries_per_worker):
+            for _ in range(queries_per_worker):
                 t0 = time.perf_counter()
-                rounds = (
-                    db.query(Round)
-                    .filter(Round.federation_id == "bench-fed")
-                    .all()
-                )
+                rounds = db.query(Round).filter(Round.federation_id == "bench-fed").all()
                 assert len(rounds) > 0
                 worker_lats.append((time.perf_counter() - t0) * 1000)
         return worker_lats
@@ -245,9 +252,7 @@ def benchmark_database_operations(
 # ---------------------------------------------------------------------------
 # 4. API Endpoints Concurrent Load Benchmark
 # ---------------------------------------------------------------------------
-def benchmark_api_endpoints(
-    concurrency: int = 10, requests_per_worker: int = 30
-) -> dict[str, Any]:
+def benchmark_api_endpoints(concurrency: int = 10, requests_per_worker: int = 30) -> dict[str, Any]:
     """Benchmark FastAPI endpoints using Starlette TestClient under simulated concurrency."""
     print(f"--> Benchmarking API Endpoints under concurrent load (concurrency={concurrency})...")
     try:
@@ -277,11 +282,11 @@ def benchmark_api_endpoints(
     for method, path, req_headers in endpoints:
         latencies_ms = []
 
-        def worker_call() -> list[float]:
+        def worker_call(_path: str = path, _req_headers: dict | None = req_headers) -> list[float]:
             lats = []
             for _ in range(requests_per_worker):
                 t0 = time.perf_counter()
-                resp = client.get(path, headers=req_headers)
+                resp = client.get(_path, headers=_req_headers)
                 lats.append((time.perf_counter() - t0) * 1000)
                 assert resp.status_code in {200, 404, 429}
             return lats
@@ -352,11 +357,7 @@ def evaluate_performance_budgets(report: dict[str, Any]) -> tuple[bool, list[str
     # Budget 4: Ready probe p95 latency must be < 50ms
     api_report = report.get("api", {})
     if api_report.get("status") != "skipped":
-        health_p95 = (
-            api_report.get("/health/ready", {})
-            .get("latencies_ms", {})
-            .get("p95", 0.0)
-        )
+        health_p95 = api_report.get("/health/ready", {}).get("latencies_ms", {}).get("p95", 0.0)
         if health_p95 > 50.0:
             violations.append(f"Health API p95 latency {health_p95}ms exceeds budget 50ms")
 

@@ -30,6 +30,7 @@ from typing import Any
 try:
     from trustfl_observability import metrics as observability_metrics
 except ImportError:
+
     class _FallbackMetrics:
         @staticmethod
         def inc(*_args, **_kwargs) -> None:

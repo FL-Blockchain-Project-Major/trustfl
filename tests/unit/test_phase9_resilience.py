@@ -48,26 +48,26 @@ class _FlakyBlockchainClient:
         self.failures_remaining = failure_count
         self.calls = 0
 
-    def finalize_round(self, *args) -> bool:
+    def finalize_round(self, *_args) -> bool:
         self.calls += 1
         if self.failures_remaining > 0:
             self.failures_remaining -= 1
             return False
         return True
 
-    def register_client(self, *args) -> bool:
+    def register_client(self, *_args) -> bool:
         return True
 
-    def create_round(self, *args) -> bool:
+    def create_round(self, *_args) -> bool:
         return True
 
-    def activate_round(self, *args) -> bool:
+    def activate_round(self, *_args) -> bool:
         return True
 
-    def record_aggregation(self, *args) -> bool:
+    def record_aggregation(self, *_args) -> bool:
         return True
 
-    def submit_update(self, *args) -> bool:
+    def submit_update(self, *_args) -> bool:
         return True
 
 

@@ -108,9 +108,7 @@ def test_fedavg_dimension_mismatch_rejected():
 def test_update_norm_clipping_bounds_delta():
     """Verify that updates exceeding max norm are scaled down properly."""
     # Reference model at [0, 0], update at [30, 40] has L2 norm = 50
-    updates = [
-        {"client_id": "c1", "parameters": [[30.0, 40.0]], "num_examples": 10}
-    ]
+    updates = [{"client_id": "c1", "parameters": [[30.0, 40.0]], "num_examples": 10}]
     ref = [[0.0, 0.0]]
 
     # With MAX_UPDATE_NORM environment setting or logic
