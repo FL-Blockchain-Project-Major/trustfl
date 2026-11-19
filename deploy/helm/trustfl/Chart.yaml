@@ -1,0 +1,17 @@
+apiVersion: v1
+appVersion: "0.1.0"
+description: >
+  TrustFL — Privacy-preserving Federated Learning with ZKP verification
+  and blockchain finalization. For production deployment documentation see
+  docs/production/.
+name: trustfl
+version: "0.1.0"
+home: https://github.com/FL-Blockchain-Project-Major/trustfl
+keywords:
+  - federated-learning
+  - zkp
+  - privacy
+  - blockchain
+maintainers:
+  - name: TrustFL Team
+    url: https://github.com/FL-Blockchain-Project-Major/trustfl

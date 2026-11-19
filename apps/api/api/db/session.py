@@ -116,9 +116,10 @@ def check_config(_app: FastAPI) -> None:
     Call this in the FastAPI startup event to catch misconfigurations early.
     """
     errors = []
+    environment = os.getenv("ENVIRONMENT", "development").lower()
     # Check DATABASE_URL
     db_url = os.getenv("DATABASE_URL", "sqlite:///./trustfl.db")
-    if ENVIRONMENT == "production" and db_url.startswith("sqlite"):
+    if environment == "production" and db_url.startswith("sqlite"):
         errors.append("Production requires a PostgreSQL DATABASE_URL")
     elif db_url.startswith("sqlite"):
         # Dev mode: any SQLite path is allowed; check that the file is writable
@@ -130,7 +131,7 @@ def check_config(_app: FastAPI) -> None:
     elif not db_url.startswith("postgresql"):
         errors.append("DATABASE_URL must use sqlite or postgresql")
 
-    if ENVIRONMENT == "production":
+    if environment == "production":
         for name in ("API_READ_KEY", "API_WRITE_KEY", "API_ADMIN_KEY"):
             value = os.getenv(name, "")
             if not value or value in ("CHANGE_ME_IN_PRODUCTION", "changeme_in_production"):
@@ -150,7 +151,7 @@ def check_config(_app: FastAPI) -> None:
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")
-    if ENVIRONMENT == "production" and (not coord_key or coord_key == "0xYOUR_PRIVATE_KEY_HERE"):
+    if environment == "production" and (not coord_key or coord_key == "0xYOUR_PRIVATE_KEY_HERE"):
         errors.append(
             "COORDINATOR_PRIVATE_KEY is using placeholder value. Set a real private key in .env."
         )

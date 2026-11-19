@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trustfl-config
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl
+data:
+  # Override all values in the production overlay
+  federation-id: "fed-default"
+  fl-min-clients: "3"
+  fl-num-clients: "3"
+  fl-num-rounds: "3"
+  blockchain-rpc-url: "https://CHANGE_ME.rpc.example.com"
+  ipfs-url: "http://ipfs:5001"
+  cors-allowed-origins: "https://CHANGE_ME.dashboard.example.com"

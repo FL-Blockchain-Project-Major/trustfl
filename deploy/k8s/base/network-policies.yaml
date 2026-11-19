@@ -1,0 +1,116 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trustfl-api-netpol
+  namespace: trustfl
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: trustfl-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from ingress controller only
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 8000
+    # Allow from coordinator (for health probing during init)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trustfl-coordinator
+      ports:
+        - port: 8000
+    # Allow from dashboard
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trustfl-dashboard
+      ports:
+        - port: 8000
+  egress:
+    # Allow DNS
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow PostgreSQL
+    - ports:
+        - port: 5432
+    # Allow Redis
+    - ports:
+        - port: 6379
+    # Allow IPFS API
+    - ports:
+        - port: 5001
+    # Allow blockchain RPC (port 443 for mainnet/external; 8545 for testnet)
+    - ports:
+        - port: 443
+        - port: 8545
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trustfl-coordinator-netpol
+  namespace: trustfl
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: trustfl-coordinator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # FL clients connect to the coordinator
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: fl-client
+      ports:
+        - port: 8100
+    # Health probes from API and monitoring
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trustfl-api
+      ports:
+        - port: 8100
+  egress:
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: 5432
+    - ports:
+        - port: 5001
+    - ports:
+        - port: 443
+        - port: 8545
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trustfl-deny-all-default
+  namespace: trustfl
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    # Allow DNS from all pods
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

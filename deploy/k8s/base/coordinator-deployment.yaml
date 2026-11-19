@@ -1,0 +1,208 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trustfl-coordinator
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl-coordinator
+    app.kubernetes.io/component: coordinator
+spec:
+  # Only 1 replica at a time. The coordinator holds a DB fencing lease.
+  # For zero-downtime upgrades, use Recreate strategy and ensure the old pod
+  # releases the lease before the new one starts (see docs/production/high-availability.md).
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trustfl-coordinator
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trustfl-coordinator
+        app.kubernetes.io/component: coordinator
+    spec:
+      serviceAccountName: trustfl-coordinator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: wait-for-api
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://trustfl-api:8000/health/ready; do
+                echo "Waiting for API readiness..."; sleep 3
+              done
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: coordinator
+          image: ghcr.io/fl-blockchain-project-major/trustfl/coordinator:latest  # pin by digest in production
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8100
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: COORDINATOR_REQUIRE_SIGNATURES
+              value: "true"
+            - name: COORDINATOR_REQUIRE_ZKP
+              value: "true"
+            - name: COORDINATOR_INSECURE_DEV_AUTH
+              value: "false"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-db
+                  key: url
+            - name: COORDINATOR_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-coordinator-keys
+                  key: private-key
+            - name: COORDINATOR_ENROLLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-coordinator-keys
+                  key: enrollment-token
+            - name: COORDINATOR_ENROLLMENT_ALLOWLIST
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-coordinator-keys
+                  key: allowlist-json
+            - name: FL_FEDERATION_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: federation-id
+            - name: FL_MIN_CLIENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: fl-min-clients
+            - name: FL_NUM_CLIENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: fl-num-clients
+            - name: FL_NUM_ROUNDS
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: fl-num-rounds
+            - name: ZKP_ARTIFACTS_DIR
+              value: /zkp-artifacts
+            - name: ZKP_VERIFY_COMMAND
+              value: node /app/packages/zkp/src/verify-cli.js
+            - name: BLOCKCHAIN_ENABLED
+              value: "true"
+            - name: BLOCKCHAIN_RPC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: blockchain-rpc-url
+            - name: BLOCKCHAIN_CONTRACTS_JSON
+              value: /contracts/contracts.json
+            - name: IPFS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: ipfs-url
+            - name: IPFS_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: ipfs-url
+            - name: STORAGE_BACKEND
+              value: ipfs
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: zkp-artifacts
+              mountPath: /zkp-artifacts
+              readOnly: true
+            - name: contracts
+              mountPath: /contracts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: zkp-artifacts
+          configMap:
+            name: trustfl-zkp-artifacts
+        - name: contracts
+          configMap:
+            name: trustfl-contracts
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trustfl-coordinator
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl-coordinator
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trustfl-coordinator
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl-coordinator
+spec:
+  selector:
+    app.kubernetes.io/name: trustfl-coordinator
+  ports:
+    - name: http
+      port: 8100
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

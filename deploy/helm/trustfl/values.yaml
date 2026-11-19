@@ -1,0 +1,134 @@
+# TrustFL Helm Chart default values
+# IMPORTANT: Override all CHANGE_ME values through a values.yaml or --set flags.
+# Never commit production secrets to values files in source control.
+# Use Helm Secrets, Vault integration, or cloud secret manager injection.
+
+# -- Global image settings
+global:
+  imageRegistry: "ghcr.io/fl-blockchain-project-major/trustfl"
+  # Pin to an immutable tag or digest in production. Never use 'latest' in production.
+  imageTag: "latest"
+  imagePullPolicy: IfNotPresent
+  # imagePullSecrets: []
+
+# -- API service
+api:
+  replicaCount: 2
+  image:
+    name: api
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "2000m"
+      memory: "1Gi"
+  env:
+    ENVIRONMENT: production
+    API_AUTH_REQUIRED: "true"
+    API_LEGACY_AUTH_COMPAT: "false"
+    CLIENT_ENROLLMENT_AUTO_APPROVE: "false"
+    CLIENT_KEY_STORE: secret_manager
+  # Secrets must be provided through external secret management.
+  # Set these via --set api.secrets.readKey=... or use a Vault/ESO integration.
+  secrets:
+    readKey: ""       # API_READ_KEY
+    writeKey: ""      # API_WRITE_KEY
+    adminKey: ""      # API_ADMIN_KEY
+    databaseUrl: ""   # DATABASE_URL (postgresql://...)
+    redisUrl: ""      # REDIS_URL
+  ingress:
+    enabled: true
+    className: nginx
+    host: api.trustfl.example.com  # CHANGE_ME
+    tlsSecretName: trustfl-api-tls
+  service:
+    type: ClusterIP
+    port: 8000
+
+# -- Coordinator service
+coordinator:
+  replicaCount: 1  # MUST be 1; coordinator uses a DB fencing lease
+  image:
+    name: coordinator
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  env:
+    ENVIRONMENT: production
+    COORDINATOR_REQUIRE_SIGNATURES: "true"
+    COORDINATOR_REQUIRE_ZKP: "true"
+    COORDINATOR_INSECURE_DEV_AUTH: "false"
+    STORAGE_BACKEND: ipfs
+    BLOCKCHAIN_ENABLED: "true"
+  secrets:
+    privateKey: ""         # COORDINATOR_PRIVATE_KEY
+    enrollmentToken: ""    # COORDINATOR_ENROLLMENT_TOKEN
+    allowlistJson: "{}"    # COORDINATOR_ENROLLMENT_ALLOWLIST
+    databaseUrl: ""        # DATABASE_URL
+  service:
+    type: ClusterIP
+    port: 8100
+
+# -- Dashboard
+dashboard:
+  replicaCount: 2
+  image:
+    name: dashboard
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  env:
+    HOSTNAME: "0.0.0.0"
+  secrets:
+    accessKey: ""   # DASHBOARD_ACCESS_KEY
+    apiReadKey: ""  # API_READ_KEY (forwarded to backend)
+  ingress:
+    enabled: true
+    className: nginx
+    host: dashboard.trustfl.example.com  # CHANGE_ME
+    tlsSecretName: trustfl-dashboard-tls
+  service:
+    type: ClusterIP
+    port: 3000
+
+# -- Shared configuration (non-secret)
+config:
+  federationId: "fed-default"
+  flMinClients: "3"
+  flNumClients: "3"
+  flNumRounds: "3"
+  blockchainRpcUrl: "https://CHANGE_ME.rpc.example.com"
+  ipfsUrl: "http://ipfs:5001"
+  corsAllowedOrigins: "https://CHANGE_ME.dashboard.example.com"
+
+# -- Network policies
+networkPolicy:
+  enabled: true
+
+# -- Pod disruption budgets
+podDisruptionBudget:
+  api:
+    enabled: true
+    minAvailable: 1
+  coordinator:
+    enabled: false  # coordinator is single-instance; PDB would block upgrades
+  dashboard:
+    enabled: true
+    minAvailable: 1
+
+# -- HPA (disabled by default; coordinator cannot scale horizontally)
+autoscaling:
+  api:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70

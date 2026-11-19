@@ -268,7 +268,6 @@ def benchmark_api_endpoints(concurrency: int = 10, requests_per_worker: int = 30
             "latencies_ms": {"p50": 0.0, "p95": 0.0},
         }
 
-    client = TestClient(app)
     api_read_key = os.getenv("API_READ_KEY", "ci-read")
     headers = {"Authorization": f"Bearer {api_read_key}"}
 
@@ -283,10 +282,11 @@ def benchmark_api_endpoints(concurrency: int = 10, requests_per_worker: int = 30
         latencies_ms = []
 
         def worker_call(_path: str = path, _req_headers: dict | None = req_headers) -> list[float]:
+            worker_client = TestClient(app)
             lats = []
             for _ in range(requests_per_worker):
                 t0 = time.perf_counter()
-                resp = client.get(_path, headers=_req_headers)
+                resp = worker_client.get(_path, headers=_req_headers)
                 lats.append((time.perf_counter() - t0) * 1000)
                 assert resp.status_code in {200, 404, 429}
             return lats

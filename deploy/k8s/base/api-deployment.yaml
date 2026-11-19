@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trustfl-api
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl-api
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trustfl-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trustfl-api
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: trustfl-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: ghcr.io/fl-blockchain-project-major/trustfl/api:latest  # pin by digest in production
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: API_AUTH_REQUIRED
+              value: "true"
+            - name: API_READ_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-api-keys
+                  key: read-key
+            - name: API_WRITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-api-keys
+                  key: write-key
+            - name: API_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-api-keys
+                  key: admin-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-db
+                  key: url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: trustfl-redis
+                  key: url
+            - name: IPFS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: ipfs-url
+            - name: WEB3_PROVIDER_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: blockchain-rpc-url
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: trustfl-config
+                  key: cors-allowed-origins
+            - name: CLIENT_KEY_STORE
+              value: secret_manager
+            - name: API_LEGACY_AUTH_COMPAT
+              value: "false"
+            - name: CLIENT_ENROLLMENT_AUTO_APPROVE
+              value: "false"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "2000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trustfl-api
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl-api
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trustfl-api
+  namespace: trustfl
+  labels:
+    app.kubernetes.io/name: trustfl-api
+spec:
+  selector:
+    app.kubernetes.io/name: trustfl-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP
