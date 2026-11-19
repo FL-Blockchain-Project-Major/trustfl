@@ -34,14 +34,14 @@ if command -v gh >/dev/null 2>&1; then
       --type slsaprovenance \
       --certificate-identity-regexp "^https://github.com/${REPO}/\.github/workflows/.*" \
       --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-      "$IMAGE" || true
+      "$IMAGE"
   }
 else
   cosign verify-attestation \
     --type slsaprovenance \
     --certificate-identity-regexp "^https://github.com/${REPO}/\.github/workflows/.*" \
     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-    "$IMAGE" || true
+    "$IMAGE"
 fi
 
 echo "==> Image verification SUCCEEDED for $IMAGE"

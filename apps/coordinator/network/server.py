@@ -27,7 +27,19 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from trustfl_observability import metrics as observability_metrics
+try:
+    from trustfl_observability import metrics as observability_metrics
+except ImportError:
+    class _FallbackMetrics:
+        @staticmethod
+        def inc(*_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def observe(*_args, **_kwargs) -> None:
+            pass
+
+    observability_metrics = _FallbackMetrics()  # type: ignore[assignment]
 
 from apps.coordinator.zkp_verifier import ZKPVerifier, field_from_text
 from packages.crypto.trustfl_crypto.canonical import (

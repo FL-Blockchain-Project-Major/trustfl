@@ -11,6 +11,46 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Known licenses for standard Python runtime dependencies
+PYTHON_DEP_LICENSES: dict[str, str] = {
+    "alembic": "MIT",
+    "annotated-types": "MIT",
+    "anyio": "MIT",
+    "certifi": "MPL-2.0",
+    "click": "BSD-3-Clause",
+    "cryptography": "Apache-2.0",
+    "ecdsa": "MIT",
+    "fastapi": "MIT",
+    "greenlet": "MIT",
+    "h11": "MIT",
+    "httptools": "MIT",
+    "idna": "BSD-3-Clause",
+    "mako": "MIT",
+    "markupsafe": "BSD-3-Clause",
+    "numpy": "BSD-3-Clause",
+    "opentelemetry-api": "Apache-2.0",
+    "opentelemetry-sdk": "Apache-2.0",
+    "opentelemetry-semantic-conventions": "Apache-2.0",
+    "pillow": "HPND",
+    "psycopg2-binary": "LGPL-3.0-or-later",
+    "pydantic": "MIT",
+    "pydantic-core": "MIT",
+    "pydantic-settings": "MIT",
+    "python-dotenv": "BSD-3-Clause",
+    "pyyaml": "MIT",
+    "sniffio": "Apache-2.0",
+    "sqlalchemy": "MIT",
+    "starlette": "BSD-3-Clause",
+    "torch": "BSD-3-Clause",
+    "torchvision": "BSD-3-Clause",
+    "typing-extensions": "Python-2.0",
+    "typing_extensions": "Python-2.0",
+    "uvicorn": "BSD-3-Clause",
+    "uvloop": "MIT",
+    "watchfiles": "MIT",
+    "websockets": "BSD-3-Clause",
+}
+
 
 def parse_requirements(req_path: Path) -> list[dict[str, str]]:
     components = []
@@ -26,15 +66,18 @@ def parse_requirements(req_path: Path) -> list[dict[str, str]]:
         if match:
             pkg_name, pkg_version = match.groups()
             clean_name = re.sub(r"\[.*\]", "", pkg_name).strip()
-            components.append(
-                {
-                    "type": "library",
-                    "name": clean_name,
-                    "version": pkg_version,
-                    "purl": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
-                    "bom-ref": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
-                }
-            )
+            lic = PYTHON_DEP_LICENSES.get(clean_name.lower(), "NOASSERTION")
+            comp = {
+                "type": "library",
+                "name": clean_name,
+                "version": pkg_version,
+                "purl": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
+                "bom-ref": f"pkg:pypi/{clean_name.lower()}@{pkg_version}",
+                "license": lic,
+            }
+            if lic != "NOASSERTION":
+                comp["licenses"] = [{"license": {"id": lic}}]
+            components.append(comp)
     return components
 
 
@@ -59,15 +102,18 @@ def parse_package_lock(lock_path: Path) -> list[dict[str, str]]:
             else:
                 name = pkg_path
         version = info.get("version", "0.0.0")
-        components.append(
-            {
-                "type": "library",
-                "name": name,
-                "version": version,
-                "purl": f"pkg:npm/{name}@{version}",
-                "bom-ref": f"pkg:npm/{name}@{version}",
-            }
-        )
+        lic = info.get("license", "NOASSERTION")
+        comp = {
+            "type": "library",
+            "name": name,
+            "version": version,
+            "purl": f"pkg:npm/{name}@{version}",
+            "bom-ref": f"pkg:npm/{name}@{version}",
+            "license": lic if isinstance(lic, str) else "NOASSERTION",
+        }
+        if isinstance(lic, str) and lic != "NOASSERTION":
+            comp["licenses"] = [{"license": {"id": lic}}]
+        components.append(comp)
     return components
 
 
@@ -78,6 +124,19 @@ def build_cyclonedx_bom(
 ) -> dict:
     bom_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"trustfl.{component_name}.{component_version}"))
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    comp_entries = []
+    for c in sorted(components, key=lambda x: (x["name"], x["version"])):
+        entry = {
+            "type": c.get("type", "library"),
+            "name": c["name"],
+            "version": c["version"],
+            "purl": c["purl"],
+            "bom-ref": c["bom-ref"],
+        }
+        if "licenses" in c:
+            entry["licenses"] = c["licenses"]
+        comp_entries.append(entry)
 
     return {
         "bomFormat": "CycloneDX",
@@ -101,7 +160,7 @@ def build_cyclonedx_bom(
                 "purl": f"pkg:generic/{component_name}@{component_version}",
             },
         },
-        "components": sorted(components, key=lambda c: (c["name"], c["version"])),
+        "components": comp_entries,
     }
 
 
@@ -126,6 +185,7 @@ def build_spdx_bom(
     ]
 
     for idx, c in enumerate(sorted(components, key=lambda x: (x["name"], x["version"])), start=1):
+        lic = c.get("license", "NOASSERTION")
         packages.append(
             {
                 "SPDXID": f"SPDXRef-Package-{idx}",
@@ -133,6 +193,8 @@ def build_spdx_bom(
                 "versionInfo": c["version"],
                 "downloadLocation": "NOASSERTION",
                 "filesAnalyzed": False,
+                "licenseConcluded": lic if lic != "NOASSERTION" else "NOASSERTION",
+                "licenseDeclared": lic if lic != "NOASSERTION" else "NOASSERTION",
                 "externalRefs": [
                     {
                         "referenceCategory": "PACKAGE-MANAGER",
@@ -212,6 +274,43 @@ def generate_all_sboms(output_dir: Path, version: str = "0.1.0") -> dict[str, Pa
     return generated
 
 
+def validate_sboms(sboms: dict[str, Path]) -> bool:
+    """Validate completeness and schema integrity of generated SBOMs."""
+    required_keys = {"python", "dashboard", "contracts", "zkp", "release_cdx", "release_spdx"}
+    missing = required_keys - set(sboms.keys())
+    if missing:
+        raise ValueError(f"Missing expected SBOM targets: {missing}")
+
+    for name, path in sboms.items():
+        if not path.is_file():
+            raise FileNotFoundError(f"SBOM file not generated: {path}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        if "cdx" in path.name or "python" in path.name or "dashboard" in path.name or "contracts" in path.name or "zkp" in path.name:
+            assert data.get("bomFormat") == "CycloneDX", f"{path.name}: bad bomFormat"
+            assert data.get("specVersion") == "1.5", f"{path.name}: specVersion != 1.5"
+            assert "components" in data, f"{path.name}: missing components key"
+            components = data["components"]
+            if name != "contracts":  # contracts has 0 prod dependencies currently
+                assert len(components) > 0, f"{path.name}: components empty"
+            for c in components:
+                assert c.get("name"), f"{path.name}: component without name"
+                assert c.get("version"), f"{path.name}: component without version"
+                assert c.get("purl", "").startswith("pkg:"), f"{path.name}: invalid purl"
+
+        if "spdx" in path.name:
+            assert data.get("spdxVersion") == "SPDX-2.3", f"{path.name}: bad spdxVersion"
+            assert data.get("dataLicense") == "CC0-1.0", f"{path.name}: bad dataLicense"
+            assert "packages" in data, f"{path.name}: missing packages key"
+            packages = data["packages"]
+            assert len(packages) > 1, f"{path.name}: packages empty (only root or none)"
+            for p in packages:
+                assert p.get("name"), f"{path.name}: package without name"
+                assert p.get("licenseConcluded"), f"{path.name}: package missing licenseConcluded"
+
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate TrustFL release SBOMs.")
     parser.add_argument(
@@ -225,9 +324,18 @@ def main() -> None:
         default="0.1.0",
         help="Release artifact version string",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate generated SBOMs for schema and dependency completeness",
+    )
     args = parser.parse_args()
 
     files = generate_all_sboms(args.output_dir, args.version)
+    if args.validate:
+        validate_sboms(files)
+        print("SBOM validation passed.")
+
     print(f"Successfully generated {len(files)} SBOM files in {args.output_dir}:")
     for name, path in files.items():
         print(f"  - [{name}]: {path.name}")

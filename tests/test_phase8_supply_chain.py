@@ -64,7 +64,7 @@ def test_workflows_use_immutable_actions_and_no_credential_persistence():
 
 
 def test_sbom_generator_generates_valid_sboms(tmp_path: Path):
-    from scripts.generate_sboms import generate_all_sboms
+    from scripts.generate_sboms import generate_all_sboms, validate_sboms
 
     sboms = generate_all_sboms(tmp_path, version="1.0.0")
     assert "python" in sboms
@@ -84,6 +84,8 @@ def test_sbom_generator_generates_valid_sboms(tmp_path: Path):
     spdx_data = json.loads(sboms["release_spdx"].read_text(encoding="utf-8"))
     assert spdx_data["spdxVersion"] == "SPDX-2.3"
     assert len(spdx_data["packages"]) > 0
+
+    assert validate_sboms(sboms) is True
 
 
 def test_dockerfiles_have_non_root_users():
@@ -107,9 +109,10 @@ def test_secret_scanner_configuration_present():
     assert len(lines) > 0, ".gitleaksignore must not be empty"
 
 
-def test_release_verification_script_exists():
+def test_release_verification_script_exists_and_fails_closed():
     script = ROOT / "scripts/verify_release.sh"
     assert script.is_file()
     content = script.read_text(encoding="utf-8")
     assert "cosign verify" in content
     assert "certificate-oidc-issuer" in content
+    assert "|| true" not in content, "Release verification must fail closed and never use || true"
