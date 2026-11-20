@@ -33,7 +33,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: api
-          image: ghcr.io/fl-blockchain-project-major/trustfl/api:latest  # pin by digest in production
+          image: ghcr.io/fl-blockchain-project-major/trustfl/api  # production overlay pins by immutable sha256 digest
           imagePullPolicy: Always
           ports:
             - name: http

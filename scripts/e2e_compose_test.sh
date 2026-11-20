@@ -41,10 +41,16 @@ log() { echo "[e2e] $*"; }
 fail() { echo "[e2e] FAIL: $*" >&2; exit 1; }
 
 http_get() {
+  local url="$1"
+  local token="${2:-${API_READ_KEY}}"
   curl --fail --silent --show-error --location \
-    -H "Authorization: Bearer ${API_READ_KEY}" \
+    -H "Authorization: Bearer ${token}" \
     --connect-timeout 2 --max-time 10 \
-    --retry 3 --retry-all-errors --retry-delay 1 "$1"
+    --retry 3 --retry-all-errors --retry-delay 1 "$url"
+}
+
+http_get_admin() {
+  http_get "$1" "${API_ADMIN_KEY}"
 }
 
 wait_for_url() {
@@ -84,7 +90,7 @@ check_lifecycle() {
 
   rounds="$(http_get "http://localhost:8000/rounds/federation/fed-default")" || return 1
   updates="$(http_get "http://localhost:8000/updates/federation/fed-default")" || return 1
-  transactions="$(http_get "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
+  transactions="$(http_get_admin "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
 
   python3 - "$rounds" "$updates" "$transactions" "$num_clients" <<'PY'
 import json, os, sys
@@ -217,6 +223,23 @@ PY
   code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
     http://localhost:8000/federations/)"
   [[ "$code" == "401" ]] || fail "Expected 401 for unauthenticated request, got $code"
+
+  log "Verifying least-privilege authorization gates..."
+  # Admin credentials accepted on blockchain transactions
+  http_get_admin "http://localhost:8000/blockchain/transactions?limit=10" >/dev/null
+
+  # Read credentials rejected with 403 on admin-only blockchain transactions
+  local read_tx_code
+  read_tx_code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer ${API_READ_KEY}" \
+    http://localhost:8000/blockchain/transactions?limit=100)"
+  [[ "$read_tx_code" == "403" ]] || fail "Expected 403 for read key on /blockchain/transactions, got $read_tx_code"
+
+  # Unauthenticated request rejected with 401
+  local unauth_tx_code
+  unauth_tx_code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
+    http://localhost:8000/blockchain/transactions?limit=100)"
+  [[ "$unauth_tx_code" == "401" ]] || fail "Expected 401 for unauthenticated on /blockchain/transactions, got $unauth_tx_code"
 
   log "✓ FL_NUM_CLIENTS=${num_clients} PASSED"
   cleanup

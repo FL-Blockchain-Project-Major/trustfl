@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustfl.fullname" . }}-coordinator
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coordinator
+spec:
+  # Single replica enforced: coordinator uses a DB fencing lease
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "trustfl.selectorLabels" (dict "root" . "component" "coordinator") | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "trustfl.selectorLabels" (dict "root" . "component" "coordinator") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "trustfl.fullname" . }}-coordinator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: wait-for-api
+          image: curlimages/curl:8.10.1
+          command:
+            - sh
+            - -c
+            - |
+              until curl -sf http://{{ include "trustfl.fullname" . }}-api:{{ .Values.api.service.port }}/health/ready; do
+                echo "Waiting for API readiness..."; sleep 3
+              done
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: coordinator
+          image: {{ include "trustfl.image" (dict "root" . "component" "coordinator" "componentValues" .Values.coordinator) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.coordinator.service.port }}
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: {{ .Values.coordinator.env.ENVIRONMENT | quote }}
+            - name: COORDINATOR_REQUIRE_SIGNATURES
+              value: {{ .Values.coordinator.env.COORDINATOR_REQUIRE_SIGNATURES | quote }}
+            - name: COORDINATOR_REQUIRE_ZKP
+              value: {{ .Values.coordinator.env.COORDINATOR_REQUIRE_ZKP | quote }}
+            - name: COORDINATOR_INSECURE_DEV_AUTH
+              value: {{ .Values.coordinator.env.COORDINATOR_INSECURE_DEV_AUTH | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "coordinator.databaseSecret is required for PostgreSQL connection" .Values.coordinator.databaseSecret }}
+                  key: url
+            - name: COORDINATOR_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "coordinator.existingSecret is required for signing keys" .Values.coordinator.existingSecret }}
+                  key: private-key
+            - name: COORDINATOR_ENROLLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "coordinator.existingSecret is required for enrollment token" .Values.coordinator.existingSecret }}
+                  key: enrollment-token
+            - name: COORDINATOR_ENROLLMENT_ALLOWLIST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "coordinator.existingSecret is required for client allowlist" .Values.coordinator.existingSecret }}
+                  key: allowlist-json
+            - name: FL_FEDERATION_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: federation-id
+            - name: FL_MIN_CLIENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: fl-min-clients
+            - name: FL_NUM_CLIENTS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: fl-num-clients
+            - name: FL_NUM_ROUNDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: fl-num-rounds
+            - name: ZKP_ARTIFACTS_DIR
+              value: /zkp-artifacts
+            - name: ZKP_VERIFY_COMMAND
+              value: node /app/packages/zkp/src/verify-cli.js
+            - name: BLOCKCHAIN_ENABLED
+              value: {{ .Values.coordinator.env.BLOCKCHAIN_ENABLED | quote }}
+            - name: BLOCKCHAIN_RPC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: blockchain-rpc-url
+            - name: BLOCKCHAIN_CONTRACTS_JSON
+              value: /contracts/contracts.json
+            - name: IPFS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: ipfs-url
+            - name: IPFS_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: ipfs-url
+            - name: STORAGE_BACKEND
+              value: {{ .Values.coordinator.env.STORAGE_BACKEND | quote }}
+          resources:
+            {{- toYaml .Values.coordinator.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: zkp-artifacts
+              mountPath: /zkp-artifacts
+              readOnly: true
+            - name: contracts
+              mountPath: /contracts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: zkp-artifacts
+          configMap:
+            name: {{ include "trustfl.fullname" . }}-zkp-artifacts
+        - name: contracts
+          configMap:
+            name: {{ include "trustfl.fullname" . }}-contracts
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "trustfl.fullname" . }}-coordinator
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coordinator
+automountServiceAccountToken: false

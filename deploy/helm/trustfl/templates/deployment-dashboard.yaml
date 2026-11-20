@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustfl.fullname" . }}-dashboard
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  replicas: {{ .Values.dashboard.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trustfl.selectorLabels" (dict "root" . "component" "dashboard") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "trustfl.selectorLabels" (dict "root" . "component" "dashboard") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "trustfl.fullname" . }}-dashboard
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dashboard
+          image: {{ include "trustfl.image" (dict "root" . "component" "dashboard" "componentValues" .Values.dashboard) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dashboard.service.port }}
+              protocol: TCP
+          env:
+            - name: HOSTNAME
+              value: {{ .Values.dashboard.env.HOSTNAME | quote }}
+            - name: INTERNAL_API_URL
+              value: http://{{ include "trustfl.fullname" . }}-api:{{ .Values.api.service.port }}
+            - name: DASHBOARD_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "dashboard.existingSecret is required" .Values.dashboard.existingSecret }}
+                  key: access-key
+            - name: API_READ_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "dashboard.existingSecret is required" .Values.dashboard.existingSecret }}
+                  key: read-key
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "trustfl.fullname" . }}-dashboard
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+automountServiceAccountToken: false

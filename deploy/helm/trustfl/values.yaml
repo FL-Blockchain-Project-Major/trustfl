@@ -1,21 +1,25 @@
-# TrustFL Helm Chart default values
-# IMPORTANT: Override all CHANGE_ME values through a values.yaml or --set flags.
-# Never commit production secrets to values files in source control.
-# Use Helm Secrets, Vault integration, or cloud secret manager injection.
+# TrustFL Helm Chart production values
+# IMPORTANT:
+# 1. Image digests MUST be pinned immutable sha256 digests in production.
+#    Mutable tags like 'latest' or bare branch names are rejected.
+# 2. Production credentials MUST be managed through External Secrets Operator
+#    or Kubernetes Secret references (existingSecret). Never pass credentials
+#    via Helm --set, unencrypted values files, or command-line arguments.
 
 # -- Global image settings
 global:
   imageRegistry: "ghcr.io/fl-blockchain-project-major/trustfl"
-  # Pin to an immutable tag or digest in production. Never use 'latest' in production.
-  imageTag: "latest"
+  # Production REQUIRES an immutable sha256 digest (e.g. sha256:1234567890abcdef...).
+  # Mutable tags like 'latest' are strictly rejected by templates and validation gates.
+  imageDigest: ""
   imagePullPolicy: IfNotPresent
-  # imagePullSecrets: []
 
 # -- API service
 api:
   replicaCount: 2
   image:
     name: api
+    digest: ""  # defaults to global.imageDigest if not set
   resources:
     requests:
       cpu: "250m"
@@ -29,18 +33,14 @@ api:
     API_LEGACY_AUTH_COMPAT: "false"
     CLIENT_ENROLLMENT_AUTO_APPROVE: "false"
     CLIENT_KEY_STORE: secret_manager
-  # Secrets must be provided through external secret management.
-  # Set these via --set api.secrets.readKey=... or use a Vault/ESO integration.
-  secrets:
-    readKey: ""       # API_READ_KEY
-    writeKey: ""      # API_WRITE_KEY
-    adminKey: ""      # API_ADMIN_KEY
-    databaseUrl: ""   # DATABASE_URL (postgresql://...)
-    redisUrl: ""      # REDIS_URL
+  # Secret references (Kubernetes Secrets provisioned by External Secrets Operator / Vault)
+  existingSecret: "trustfl-api-keys"
+  databaseSecret: "trustfl-db"
+  redisSecret: "trustfl-redis"
   ingress:
     enabled: true
     className: nginx
-    host: api.trustfl.example.com  # CHANGE_ME
+    host: api.trustfl.example.com
     tlsSecretName: trustfl-api-tls
   service:
     type: ClusterIP
@@ -51,6 +51,7 @@ coordinator:
   replicaCount: 1  # MUST be 1; coordinator uses a DB fencing lease
   image:
     name: coordinator
+    digest: ""  # defaults to global.imageDigest if not set
   resources:
     requests:
       cpu: "500m"
@@ -65,11 +66,8 @@ coordinator:
     COORDINATOR_INSECURE_DEV_AUTH: "false"
     STORAGE_BACKEND: ipfs
     BLOCKCHAIN_ENABLED: "true"
-  secrets:
-    privateKey: ""         # COORDINATOR_PRIVATE_KEY
-    enrollmentToken: ""    # COORDINATOR_ENROLLMENT_TOKEN
-    allowlistJson: "{}"    # COORDINATOR_ENROLLMENT_ALLOWLIST
-    databaseUrl: ""        # DATABASE_URL
+  existingSecret: "trustfl-coordinator-keys"
+  databaseSecret: "trustfl-db"
   service:
     type: ClusterIP
     port: 8100
@@ -79,6 +77,7 @@ dashboard:
   replicaCount: 2
   image:
     name: dashboard
+    digest: ""  # defaults to global.imageDigest if not set
   resources:
     requests:
       cpu: "100m"
@@ -88,13 +87,11 @@ dashboard:
       memory: "512Mi"
   env:
     HOSTNAME: "0.0.0.0"
-  secrets:
-    accessKey: ""   # DASHBOARD_ACCESS_KEY
-    apiReadKey: ""  # API_READ_KEY (forwarded to backend)
+  existingSecret: "trustfl-dashboard-keys"
   ingress:
     enabled: true
     className: nginx
-    host: dashboard.trustfl.example.com  # CHANGE_ME
+    host: dashboard.trustfl.example.com
     tlsSecretName: trustfl-dashboard-tls
   service:
     type: ClusterIP
@@ -106,9 +103,9 @@ config:
   flMinClients: "3"
   flNumClients: "3"
   flNumRounds: "3"
-  blockchainRpcUrl: "https://CHANGE_ME.rpc.example.com"
+  blockchainRpcUrl: "https://rpc.trustfl.example.com"
   ipfsUrl: "http://ipfs:5001"
-  corsAllowedOrigins: "https://CHANGE_ME.dashboard.example.com"
+  corsAllowedOrigins: "https://dashboard.trustfl.example.com"
 
 # -- Network policies
 networkPolicy:

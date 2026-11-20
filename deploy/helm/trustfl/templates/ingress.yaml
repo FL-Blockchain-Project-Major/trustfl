@@ -1,0 +1,55 @@
+{{- if or .Values.api.ingress.enabled .Values.dashboard.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "trustfl.fullname" . }}
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+spec:
+  ingressClassName: {{ .Values.api.ingress.className | default "nginx" }}
+  tls:
+    {{- if .Values.api.ingress.enabled }}
+    - hosts:
+        - {{ .Values.api.ingress.host }}
+      secretName: {{ .Values.api.ingress.tlsSecretName }}
+    {{- end }}
+    {{- if .Values.dashboard.ingress.enabled }}
+    - hosts:
+        - {{ .Values.dashboard.ingress.host }}
+      secretName: {{ .Values.dashboard.ingress.tlsSecretName }}
+    {{- end }}
+  rules:
+    {{- if .Values.api.ingress.enabled }}
+    - host: {{ .Values.api.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "trustfl.fullname" . }}-api
+                port:
+                  number: {{ .Values.api.service.port }}
+    {{- end }}
+    {{- if .Values.dashboard.ingress.enabled }}
+    - host: {{ .Values.dashboard.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "trustfl.fullname" . }}-dashboard
+                port:
+                  number: {{ .Values.dashboard.service.port }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustfl.fullname" . }}-api
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trustfl.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "trustfl.selectorLabels" (dict "root" . "component" "api") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "trustfl.fullname" . }}-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: {{ include "trustfl.image" (dict "root" . "component" "api" "componentValues" .Values.api) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: {{ .Values.api.env.ENVIRONMENT | quote }}
+            - name: API_AUTH_REQUIRED
+              value: {{ .Values.api.env.API_AUTH_REQUIRED | quote }}
+            - name: API_READ_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.existingSecret is required for secret injection" .Values.api.existingSecret }}
+                  key: read-key
+            - name: API_WRITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.existingSecret is required for secret injection" .Values.api.existingSecret }}
+                  key: write-key
+            - name: API_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.existingSecret is required for secret injection" .Values.api.existingSecret }}
+                  key: admin-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.databaseSecret is required for PostgreSQL connection" .Values.api.databaseSecret }}
+                  key: url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.redisSecret is required for distributed rate limiting" .Values.api.redisSecret }}
+                  key: url
+            - name: IPFS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: ipfs-url
+            - name: WEB3_PROVIDER_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: blockchain-rpc-url
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trustfl.fullname" . }}-config
+                  key: cors-allowed-origins
+            - name: CLIENT_KEY_STORE
+              value: {{ .Values.api.env.CLIENT_KEY_STORE | quote }}
+            - name: API_LEGACY_AUTH_COMPAT
+              value: {{ .Values.api.env.API_LEGACY_AUTH_COMPAT | quote }}
+            - name: CLIENT_ENROLLMENT_AUTO_APPROVE
+              value: {{ .Values.api.env.CLIENT_ENROLLMENT_AUTO_APPROVE | quote }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "trustfl.fullname" . }}-api
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+automountServiceAccountToken: false

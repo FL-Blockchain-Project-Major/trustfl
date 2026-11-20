@@ -38,10 +38,16 @@ export FL_MAX_UPDATE_NORM=1.0
 export COORDINATOR_INSECURE_DEV_AUTH=true
 
 http_get() {
+  local url="$1"
+  local token="${2:-${API_READ_KEY}}"
   curl --fail --silent --show-error --location \
-    -H "Authorization: Bearer ${API_READ_KEY}" \
+    -H "Authorization: Bearer ${token}" \
     --connect-timeout 2 --max-time 10 \
-    --retry 3 --retry-all-errors --retry-delay 1 "$1"
+    --retry 3 --retry-all-errors --retry-delay 1 "$url"
+}
+
+http_get_admin() {
+  http_get "$1" "${API_ADMIN_KEY}"
 }
 
 wait_for_url() {
@@ -87,7 +93,7 @@ check_lifecycle() {
   local rounds updates transactions
   rounds="$(http_get "http://localhost:8000/rounds/federation/fed-default")" || return 1
   updates="$(http_get "http://localhost:8000/updates/federation/fed-default")" || return 1
-  transactions="$(http_get "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
+  transactions="$(http_get_admin "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
 
   python3 - "$rounds" "$updates" "$transactions" <<'PY'
 import json
@@ -220,6 +226,21 @@ dashboard="$(curl --fail --silent --show-error --location -H "Authorization: Bea
 
 unauthenticated="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' http://localhost:8000/federations/)"
 [[ "$unauthenticated" == "401" ]] || { echo "Expected unauthenticated API request to return 401, got $unauthenticated"; exit 1; }
+
+echo "Verifying least-privilege authorization gates..."
+# Positive test: admin credentials accepted on admin-only blockchain transactions
+http_get_admin "http://localhost:8000/blockchain/transactions?limit=10" >/dev/null
+
+# Negative test: read credentials rejected with 403 on admin-only blockchain transactions
+read_tx_code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
+  -H "Authorization: Bearer ${API_READ_KEY}" \
+  http://localhost:8000/blockchain/transactions?limit=100)"
+[[ "$read_tx_code" == "403" ]] || { echo "Expected 403 for read key on /blockchain/transactions, got $read_tx_code"; exit 1; }
+
+# Negative test: unauthenticated request on /blockchain/transactions rejected with 401
+unauth_tx_code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
+  http://localhost:8000/blockchain/transactions?limit=100)"
+[[ "$unauth_tx_code" == "401" ]] || { echo "Expected 401 for unauthenticated on /blockchain/transactions, got $unauth_tx_code"; exit 1; }
 
 python3 - "$dashboard" <<'PY'
 import json

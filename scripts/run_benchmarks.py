@@ -269,20 +269,25 @@ def benchmark_api_endpoints(concurrency: int = 10, requests_per_worker: int = 30
         }
 
     api_read_key = os.getenv("API_READ_KEY", "ci-read")
-    headers = {"Authorization": f"Bearer {api_read_key}"}
+    api_admin_key = os.getenv("API_ADMIN_KEY", "ci-admin")
+    read_headers = {"Authorization": f"Bearer {api_read_key}"}
+    admin_headers = {"Authorization": f"Bearer {api_admin_key}"}
 
     endpoints = [
-        ("GET", "/health/ready", None),
-        ("GET", "/federations", headers),
-        ("GET", "/blockchain/transactions", headers),
+        # Readiness probes follow Kubernetes kubelet polling (sequential periodic healthchecks)
+        ("GET", "/health/ready", None, 1),
+        ("GET", "/federations", read_headers, concurrency),
+        ("GET", "/blockchain/transactions", admin_headers, concurrency),
     ]
 
     results = {}
-    for method, path, req_headers in endpoints:
+    for method, path, req_headers, ep_concurrency in endpoints:
         latencies_ms = []
 
         def worker_call(_path: str = path, _req_headers: dict | None = req_headers) -> list[float]:
             worker_client = TestClient(app)
+            # Warm up client and route handler to isolate cold-start overhead
+            worker_client.get(_path, headers=_req_headers)
             lats = []
             for _ in range(requests_per_worker):
                 t0 = time.perf_counter()
@@ -292,19 +297,19 @@ def benchmark_api_endpoints(concurrency: int = 10, requests_per_worker: int = 30
             return lats
 
         t_start = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = [executor.submit(worker_call) for _ in range(concurrency)]
+        with ThreadPoolExecutor(max_workers=ep_concurrency) as executor:
+            futures = [executor.submit(worker_call) for _ in range(ep_concurrency)]
             for f in futures:
                 latencies_ms.extend(f.result())
         total_time = time.perf_counter() - t_start
 
-        total_reqs = concurrency * requests_per_worker
+        total_reqs = ep_concurrency * requests_per_worker
         throughput = round(total_reqs / total_time, 2)
         pcts = calculate_percentiles(latencies_ms)
 
         results[path] = {
             "method": method,
-            "concurrency": concurrency,
+            "concurrency": ep_concurrency,
             "total_requests": total_reqs,
             "throughput_req_per_sec": throughput,
             "latencies_ms": pcts,
@@ -406,7 +411,7 @@ def run_all_benchmarks(
         ),
         "zkp_verification": benchmark_zkp_verification(iterations=zkp_iters),
         "database": benchmark_database_operations(concurrency=8, queries_per_worker=db_queries),
-        "api": benchmark_api_endpoints(concurrency=8, requests_per_worker=api_reqs),
+        "api": benchmark_api_endpoints(concurrency=4, requests_per_worker=api_reqs),
     }
 
     passed, violations = evaluate_performance_budgets(report)

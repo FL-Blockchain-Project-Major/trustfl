@@ -75,6 +75,8 @@ jobs:
           node-version: "22.13"
       - name: Validate repository supply-chain policy
         run: python scripts/validate_supply_chain.py
+      - name: Validate production deployment configuration
+        run: python scripts/validate_deployment.py
       - name: Audit Python dependencies
         run: |
           python -m pip install --requirement requirements-dev.txt
@@ -317,10 +319,16 @@ jobs:
           trap cleanup EXIT
 
           http_get() {
+            local url="$1"
+            local token="${2:-${API_READ_KEY}}"
             curl --fail --silent --show-error --location \
-              -H "Authorization: Bearer ${API_READ_KEY}" \
+              -H "Authorization: Bearer ${token}" \
               --connect-timeout 2 --max-time 10 \
-              --retry 3 --retry-all-errors --retry-delay 1 "$1"
+              --retry 3 --retry-all-errors --retry-delay 1 "$url"
+          }
+
+          http_get_admin() {
+            http_get "$1" "${API_ADMIN_KEY}"
           }
 
           wait_for_url() {
@@ -366,7 +374,7 @@ jobs:
             local rounds updates transactions
             rounds="$(http_get "http://localhost:8000/rounds/federation/fed-default")" || return 1
             updates="$(http_get "http://localhost:8000/updates/federation/fed-default")" || return 1
-            transactions="$(http_get "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
+            transactions="$(http_get_admin "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
 
             python - "$rounds" "$updates" "$transactions" <<'PY'
           import json
@@ -532,6 +540,18 @@ jobs:
 
           unauthenticated="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' http://localhost:8000/federations/)"
           [[ "$unauthenticated" == "401" ]] || { echo "Expected unauthenticated API request to return 401, got $unauthenticated"; exit 1; }
+
+          echo "Verifying least-privilege authorization gates..."
+          http_get_admin "http://localhost:8000/blockchain/transactions?limit=10" >/dev/null
+
+          read_tx_code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${API_READ_KEY}" \
+            http://localhost:8000/blockchain/transactions?limit=100)"
+          [[ "$read_tx_code" == "403" ]] || { echo "Expected 403 for read key on /blockchain/transactions, got $read_tx_code"; exit 1; }
+
+          unauth_tx_code="$(curl --silent --show-error --location -o /dev/null -w '%{http_code}' \
+            http://localhost:8000/blockchain/transactions?limit=100)"
+          [[ "$unauth_tx_code" == "401" ]] || { echo "Expected 401 for unauthenticated on /blockchain/transactions, got $unauth_tx_code"; exit 1; }
 
           python - "$dashboard" <<'PY'
           import json

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trustfl.fullname" . }}-config
+  labels:
+    {{- include "trustfl.labels" . | nindent 4 }}
+data:
+  federation-id: {{ .Values.config.federationId | quote }}
+  fl-min-clients: {{ .Values.config.flMinClients | quote }}
+  fl-num-clients: {{ .Values.config.flNumClients | quote }}
+  fl-num-rounds: {{ .Values.config.flNumRounds | quote }}
+  blockchain-rpc-url: {{ .Values.config.blockchainRpcUrl | quote }}
+  ipfs-url: {{ .Values.config.ipfsUrl | quote }}
+  cors-allowed-origins: {{ .Values.config.corsAllowedOrigins | quote }}

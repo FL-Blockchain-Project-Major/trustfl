@@ -54,7 +54,7 @@ spec:
               drop: ["ALL"]
       containers:
         - name: coordinator
-          image: ghcr.io/fl-blockchain-project-major/trustfl/coordinator:latest  # pin by digest in production
+          image: ghcr.io/fl-blockchain-project-major/trustfl/coordinator  # production overlay pins by immutable sha256 digest
           imagePullPolicy: Always
           ports:
             - name: http

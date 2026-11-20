@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -339,13 +340,34 @@ class TestHelmChart:
     def test_values_yaml_exists(self) -> None:
         assert (self.HELM_DIR / "values.yaml").exists()
 
-    def test_values_has_no_real_secrets(self) -> None:
-        """Default values.yaml must not contain real credentials."""
+    def test_values_has_no_plaintext_credentials(self) -> None:
+        """Production values.yaml must not contain plaintext credentials or secret keys."""
         text = (self.HELM_DIR / "values.yaml").read_text()
-        # Secrets must be empty strings — never real values
-        matches = re.findall(r'(?:readKey|writeKey|adminKey|privateKey|enrollmentToken):\s+"([^"]+)"', text)
-        for m in matches:
-            assert m == "", f"Helm values.yaml has non-empty secret: {m!r}"
+        forbidden_keys = ["readKey:", "writeKey:", "adminKey:", "privateKey:", "enrollmentToken:"]
+        for key in forbidden_keys:
+            assert key not in text, f"Helm values.yaml exposes sensitive secret key {key!r}"
+        assert "existingSecret: \"trustfl-api-keys\"" in text
+        assert "existingSecret: \"trustfl-coordinator-keys\"" in text
+        assert "existingSecret: \"trustfl-dashboard-keys\"" in text
+
+    def test_helm_templates_exist_and_enforce_immutable_digest(self) -> None:
+        """Helm templates must enforce sha256 digest validation and forbid mutable tags."""
+        helpers = (self.HELM_DIR / "templates" / "_helpers.tpl").read_text()
+        assert "sha256:" in helpers
+        assert "Mutable image tag" in helpers
+        required_templates = [
+            "deployment-api.yaml",
+            "service-api.yaml",
+            "deployment-coordinator.yaml",
+            "service-coordinator.yaml",
+            "deployment-dashboard.yaml",
+            "service-dashboard.yaml",
+            "configmap.yaml",
+            "ingress.yaml",
+            "networkpolicy.yaml",
+        ]
+        for t in required_templates:
+            assert (self.HELM_DIR / "templates" / t).exists(), f"Missing Helm template: {t}"
 
     def test_values_requires_zkp_in_coordinator(self) -> None:
         text = (self.HELM_DIR / "values.yaml").read_text()
@@ -365,7 +387,6 @@ class TestHelmChart:
     def test_coordinator_replica_count_is_one(self) -> None:
         """Coordinator must be deployed as a single replica (DB fencing lease)."""
         text = (self.HELM_DIR / "values.yaml").read_text()
-        # Find the coordinator section and check replicaCount
         coord_section = text[text.find("coordinator:"):]
         match = re.search(r"replicaCount:\s*(\d+)", coord_section)
         assert match, "coordinator.replicaCount not found in values.yaml"
@@ -488,3 +509,82 @@ class TestSBOMCompleteness:
         assert ratio <= 0.20, (
             f"Too many UNKNOWN licenses in Python SBOM: {unknown_count}/{total} ({ratio:.0%})"
         )
+
+
+# ---------------------------------------------------------------------------
+# 8. Least-privilege endpoint authorization regression tests
+# ---------------------------------------------------------------------------
+class TestEndpointLeastPrivilegeAuthorization:
+    """Validate that GET /blockchain/transactions rejects read/write credentials and requires admin."""
+
+    @pytest.fixture
+    def test_client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from apps.api.api.db.models import Base
+        from apps.api.api.db.session import engine
+        from apps.api.main import app
+
+        Base.metadata.create_all(bind=engine)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("API_AUTH_REQUIRED", "true")
+        monkeypatch.setenv("API_READ_KEY", "ci-read-secret")
+        monkeypatch.setenv("API_WRITE_KEY", "ci-write-secret")
+        monkeypatch.setenv("API_ADMIN_KEY", "ci-admin-secret")
+        return TestClient(app)
+
+    def test_blockchain_transactions_rejects_read_credentials(self, test_client) -> None:
+        """GET /blockchain/transactions must return HTTP 403 Forbidden with read credentials."""
+        resp = test_client.get(
+            "/blockchain/transactions",
+            headers={"Authorization": "Bearer ci-read-secret"},
+        )
+        assert resp.status_code == 403, f"Expected 403 Forbidden, got {resp.status_code}: {resp.text}"
+
+    def test_blockchain_transactions_rejects_unauthenticated(self, test_client) -> None:
+        """GET /blockchain/transactions must return HTTP 401 Unauthorized without credentials."""
+        resp = test_client.get("/blockchain/transactions")
+        assert resp.status_code == 401, f"Expected 401 Unauthorized, got {resp.status_code}: {resp.text}"
+
+    def test_blockchain_transactions_accepts_admin_credentials(self, test_client) -> None:
+        """GET /blockchain/transactions must succeed (HTTP 200) with admin credentials."""
+        resp = test_client.get(
+            "/blockchain/transactions",
+            headers={"Authorization": "Bearer ci-admin-secret"},
+        )
+        assert resp.status_code == 200, f"Expected 200 OK, got {resp.status_code}: {resp.text}"
+
+
+# ---------------------------------------------------------------------------
+# 9. Deployment configuration validator test
+# ---------------------------------------------------------------------------
+class TestDeploymentValidator:
+    """Validate deployment validator logic and immutability checks."""
+
+    def test_deployment_validator_script_passes(self) -> None:
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "validate_deployment.py")],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        assert result.returncode == 0, f"validate_deployment.py failed:\n{result.stdout}\n{result.stderr}"
+        assert "All production deployment security checks PASSED" in result.stdout
+
+    def test_validate_digest_accepts_valid_sha256(self) -> None:
+        from scripts.validate_deployment import validate_digest
+
+        assert validate_digest("sha256:" + "a" * 64) is True
+        assert validate_digest("sha256:" + "0123456789abcdef" * 4) is True
+
+    def test_validate_digest_rejects_mutable_tags(self) -> None:
+        from scripts.validate_deployment import validate_digest
+
+        assert validate_digest("latest") is False
+        assert validate_digest("dev") is False
+        assert validate_digest("v1.0.0") is False
+        assert validate_digest("sha256:short") is False
+

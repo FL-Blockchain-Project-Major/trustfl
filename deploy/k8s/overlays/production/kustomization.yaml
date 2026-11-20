@@ -42,15 +42,15 @@ patches:
         path: /spec/tls/0/hosts/0
         value: "${DASHBOARD_HOST}"
 
-# Pin images to immutable digests for production
-# Replace the sha256 digests with real values from your release pipeline.
+# Pin images to immutable sha256 digests for production.
+# Mutable tags like 'latest' or bare branch names are strictly rejected.
 # Example: ghcr.io/fl-blockchain-project-major/trustfl/api@sha256:<digest>
 images:
   - name: ghcr.io/fl-blockchain-project-major/trustfl/api
-    newTag: "${TRUSTFL_VERSION}"
+    digest: "${API_IMAGE_DIGEST}"
   - name: ghcr.io/fl-blockchain-project-major/trustfl/coordinator
-    newTag: "${TRUSTFL_VERSION}"
+    digest: "${COORDINATOR_IMAGE_DIGEST}"
   - name: ghcr.io/fl-blockchain-project-major/trustfl/client
-    newTag: "${TRUSTFL_VERSION}"
+    digest: "${CLIENT_IMAGE_DIGEST}"
   - name: ghcr.io/fl-blockchain-project-major/trustfl/dashboard
-    newTag: "${TRUSTFL_VERSION}"
+    digest: "${DASHBOARD_IMAGE_DIGEST}"

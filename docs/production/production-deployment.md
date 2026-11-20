@@ -161,19 +161,16 @@ kubectl kustomize deploy/k8s/overlays/production | kubectl apply -f -
 
 ### Deploy with Helm
 
+Secrets must be pre-provisioned via External Secrets Operator or your cloud secret manager integration (`trustfl-api-keys`, `trustfl-coordinator-keys`, `trustfl-dashboard-keys`, `trustfl-db`, `trustfl-redis`). Never pass credentials via `--set` or plaintext values files.
+
 ```bash
-# Install (first time)
+# Production deployment requires an explicit immutable sha256 digest:
+export IMAGE_DIGEST="sha256:$(crane digest ghcr.io/fl-blockchain-project-major/trustfl/api:0.1.0)"
+
+# Install or upgrade with immutable digest and pre-provisioned Secret references:
 helm install trustfl deploy/helm/trustfl \
   --namespace trustfl --create-namespace \
-  --set global.imageTag="${TRUSTFL_VERSION}" \
-  --set api.secrets.readKey="${API_READ_KEY}" \
-  --set api.secrets.writeKey="${API_WRITE_KEY}" \
-  --set api.secrets.adminKey="${API_ADMIN_KEY}" \
-  --set api.secrets.databaseUrl="${DATABASE_URL}" \
-  --set api.secrets.redisUrl="${REDIS_URL}" \
-  --set coordinator.secrets.privateKey="${COORDINATOR_PRIVATE_KEY}" \
-  --set coordinator.secrets.enrollmentToken="${COORDINATOR_ENROLLMENT_TOKEN}" \
-  --set coordinator.secrets.databaseUrl="${DATABASE_URL}" \
+  --set global.imageDigest="${IMAGE_DIGEST}" \
   --set config.blockchainRpcUrl="${BLOCKCHAIN_RPC_URL}" \
   --set config.corsAllowedOrigins="${CORS_ALLOWED_ORIGINS}"
 ```
