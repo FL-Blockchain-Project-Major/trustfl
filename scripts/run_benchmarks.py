@@ -217,6 +217,9 @@ def benchmark_database_operations(
     def worker_task(_worker_id: int) -> list[float]:
         worker_lats = []
         with SessionLocal() as db:
+            # Warm up connection and query plan before timed loop to avoid
+            # cold-start connection-pool overhead inflating p95 latency.
+            db.query(Round).filter(Round.federation_id == "bench-fed").first()
             for _ in range(queries_per_worker):
                 t0 = time.perf_counter()
                 rounds = db.query(Round).filter(Round.federation_id == "bench-fed").all()

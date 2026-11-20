@@ -36,7 +36,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 Selector labels for a component
 */}}
 {{- define "trustfl.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "trustfl.name" . }}-{{ .component }}
+app.kubernetes.io/name: {{ include "trustfl.name" .root }}-{{ .component }}
 app.kubernetes.io/instance: {{ .root.Release.Name }}
 app.kubernetes.io/component: {{ .component }}
 {{- end }}

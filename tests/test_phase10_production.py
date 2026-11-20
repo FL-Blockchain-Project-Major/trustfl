@@ -588,3 +588,123 @@ class TestDeploymentValidator:
         assert validate_digest("v1.0.0") is False
         assert validate_digest("sha256:short") is False
 
+
+# ---------------------------------------------------------------------------
+# 10. Round lifecycle state consistency tests
+# ---------------------------------------------------------------------------
+class TestRoundLifecycleConsistency:
+    """Verify consistent RoundStatus lifecycle semantics between coordinator and API."""
+
+    def test_coordinator_persistence_finalize_sets_finalized_status(self) -> None:
+        from apps.api.api.db.models import Base, Round, RoundStatus
+        from apps.api.api.db.session import SessionLocal, engine
+        from apps.coordinator.persistence import CoordinatorPersistence
+
+        Base.metadata.create_all(bind=engine)
+        persistence = CoordinatorPersistence()
+        round_num = 99
+        round_id = f"{persistence.federation_id}_round{round_num}"
+
+        with SessionLocal() as db:
+            rnd = Round(
+                id=round_id,
+                federation_id=persistence.federation_id,
+                round_number=round_num,
+                status=RoundStatus.COMMITTING,
+            )
+            db.merge(rnd)
+            db.commit()
+
+        persistence.finalize_round(round_num)
+
+        with SessionLocal() as db:
+            saved = db.get(Round, round_id)
+            assert saved is not None
+            assert saved.status == RoundStatus.FINALIZED
+            assert saved.finalized_at is not None
+
+    def test_coordinator_persistence_complete_sets_completed_status(self) -> None:
+        from apps.api.api.db.models import Base, Round, RoundStatus
+        from apps.api.api.db.session import SessionLocal, engine
+        from apps.coordinator.persistence import CoordinatorPersistence
+
+        Base.metadata.create_all(bind=engine)
+        persistence = CoordinatorPersistence()
+        round_num = 98
+        round_id = f"{persistence.federation_id}_round{round_num}"
+
+        with SessionLocal() as db:
+            rnd = Round(
+                id=round_id,
+                federation_id=persistence.federation_id,
+                round_number=round_num,
+                status=RoundStatus.AGGREGATING,
+            )
+            db.merge(rnd)
+            db.commit()
+
+        persistence.complete_round(round_num)
+
+        with SessionLocal() as db:
+            saved = db.get(Round, round_id)
+            assert saved is not None
+            assert saved.status == RoundStatus.COMPLETED
+
+    def test_transition_round_allows_committing_and_completed_to_finalized(self) -> None:
+        from apps.api.api.db.models import Base, Round, RoundStatus
+        from apps.api.api.db.session import SessionLocal, engine
+        from apps.coordinator.persistence import CoordinatorPersistence
+
+        Base.metadata.create_all(bind=engine)
+        persistence = CoordinatorPersistence()
+        round_num = 97
+        round_id = f"{persistence.federation_id}_round{round_num}"
+
+        with SessionLocal() as db:
+            rnd = Round(
+                id=round_id,
+                federation_id=persistence.federation_id,
+                round_number=round_num,
+                status=RoundStatus.COMMITTING,
+            )
+            db.merge(rnd)
+            db.commit()
+
+        # COMMITTING -> FINALIZED
+        assert persistence.transition_round(round_num, {"COMMITTING"}, "FINALIZED") is True
+
+        with SessionLocal() as db:
+            saved = db.get(Round, round_id)
+            assert saved.status == RoundStatus.FINALIZED
+
+    def test_restore_state_treats_completed_and_finalized_as_finished(self) -> None:
+        from apps.api.api.db.models import Base, Round, RoundStatus
+        from apps.api.api.db.session import SessionLocal, engine
+        from apps.coordinator.persistence import CoordinatorPersistence
+
+        Base.metadata.create_all(bind=engine)
+        persistence = CoordinatorPersistence()
+        persistence.federation_id = "test-fed-restore"
+
+        with SessionLocal() as db:
+            r1 = Round(
+                id=f"{persistence.federation_id}_round1",
+                federation_id=persistence.federation_id,
+                round_number=1,
+                status=RoundStatus.FINALIZED,
+            )
+            r2 = Round(
+                id=f"{persistence.federation_id}_round2",
+                federation_id=persistence.federation_id,
+                round_number=2,
+                status=RoundStatus.COMPLETED,
+            )
+            db.merge(r1)
+            db.merge(r2)
+            db.commit()
+
+        state = persistence.restore_state()
+        # Since rounds 1 and 2 are finished, current_round advances to 3
+        assert state["current_round"] == 3
+
+

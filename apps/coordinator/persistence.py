@@ -177,10 +177,10 @@ class CoordinatorPersistence:
             "COLLECTING": {"VALIDATING", "FAILED", "RECOVERY_REQUIRED"},
             "VALIDATING": {"AGGREGATING", "FAILED", "RECOVERY_REQUIRED"},
             "AGGREGATING": {"COMMITTING", "FAILED", "RECOVERY_REQUIRED"},
-            "COMMITTING": {"COMPLETED", "FAILED", "RECOVERY_REQUIRED"},
+            "COMMITTING": {"COMPLETED", "FINALIZED", "FAILED", "RECOVERY_REQUIRED"},
             "ACTIVE": {"AGGREGATING", "FAILED", "RECOVERY_REQUIRED"},
+            "COMPLETED": {"FINALIZED", "FAILED", "RECOVERY_REQUIRED"},
             "FINALIZED": set(),
-            "COMPLETED": set(),
             "FAILED": {"RECOVERY_REQUIRED"},
             "RECOVERY_REQUIRED": {"COLLECTING", "VALIDATING", "FAILED"},
         }
@@ -441,11 +441,20 @@ class CoordinatorPersistence:
                 row.model_version = model_version
             db.commit()
 
+    def complete_round(self, round_number: int) -> None:
+        """Mark round aggregation complete, prior to or pending on-chain finalization."""
+        with self._session() as db:
+            row = db.get(self.Round, f"{self.federation_id}_round{round_number}")
+            if row is not None and row.status != self.RoundStatus.FINALIZED:
+                row.status = self.RoundStatus.COMPLETED
+                db.commit()
+
     def finalize_round(self, round_number: int) -> None:
+        """Mark round on-chain finalization confirmed with finalized_at timestamp."""
         with self._session() as db:
             row = db.get(self.Round, f"{self.federation_id}_round{round_number}")
             if row is not None:
-                row.status = self.RoundStatus.COMPLETED
+                row.status = self.RoundStatus.FINALIZED
                 row.finalized_at = datetime.now(UTC)
                 db.commit()
 

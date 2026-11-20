@@ -1046,6 +1046,8 @@ class CoordinatorState:
                         self.blockchain_client.record_aggregation(uid)
                     if self.persistence and hasattr(self.persistence, "record_aggregation"):
                         self.persistence.record_aggregation(uid)
+            if self.persistence and hasattr(self.persistence, "complete_round"):
+                self.persistence.complete_round(round_id)
             model_version = hash_parameters(parameters)
             if self.persistence and self.blockchain_client:
                 self.persistence.enqueue_blockchain_event(
@@ -1331,6 +1333,8 @@ class CoordinatorState:
         if finalize and chain_finalized and self.persistence:
             self.persistence.finalize_round(self.current_round)
         elif finalize and not chain_finalized:
+            if self.persistence and hasattr(self.persistence, "complete_round"):
+                self.persistence.complete_round(self.current_round)
             # Keep the already aggregated update set and freeze the timer.  A
             # later monitor tick retries finalization; it never aggregates it again.
             self.round_start_time = None

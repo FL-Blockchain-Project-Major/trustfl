@@ -90,54 +90,54 @@ wait_for_coordinator() {
 }
 
 check_lifecycle() {
+  local mode="${1:-poll}"
   local rounds updates transactions
   rounds="$(http_get "http://localhost:8000/rounds/federation/fed-default")" || return 1
   updates="$(http_get "http://localhost:8000/updates/federation/fed-default")" || return 1
   transactions="$(http_get_admin "http://localhost:8000/blockchain/transactions?limit=100")" || return 1
 
-  python3 - "$rounds" "$updates" "$transactions" <<'PY'
+  python3 - "$rounds" "$updates" "$transactions" "$mode" <<'PY'
 import json
 import os
 import sys
 
-rounds, updates, transactions = map(json.loads, sys.argv[1:])
+rounds, updates, transactions = map(json.loads, sys.argv[1:4])
+mode = sys.argv[4] if len(sys.argv) > 4 else "poll"
 
+rounds_list = rounds.get("data", [])
+updates_list = updates.get("data", [])
+txns_list = transactions.get("data", [])
+
+round_map = {int(r["round_number"]): r for r in rounds_list if "round_number" in r}
 finalized = {
     int(r["round_number"])
-    for r in rounds.get("data", [])
+    for r in rounds_list
     if r.get("status") == "FINALIZED"
 }
-if not {1, 2, 3}.issubset(finalized):
-    sys.exit(
-        f"Expected finalized rounds 1, 2, 3; "
-        f"observed {sorted(finalized)}"
-    )
-
-num_clients = int(os.environ.get("FL_NUM_CLIENTS", "3"))
-expected_clients = {
-    f"client_{i:03d}" for i in range(1, num_clients + 1)
+completed = {
+    int(r["round_number"])
+    for r in rounds_list
+    if r.get("status") == "COMPLETED"
 }
 
-for round_number in (1, 2, 3):
-    round_id = f"fed-default_round{round_number}"
-    round_clients = {
+num_clients = int(os.environ.get("FL_NUM_CLIENTS", "3"))
+expected_clients = {f"client_{i:03d}" for i in range(1, num_clients + 1)}
+
+client_updates_per_round = {}
+for r_num in (1, 2, 3):
+    r_id = f"fed-default_round{r_num}"
+    verified_clients = {
         u["client_id"]
-        for u in updates.get("data", [])
+        for u in updates_list
         if u.get("status") in {"VERIFIED", "AGGREGATED"}
-        and u.get("round_id") == round_id
+        and u.get("round_id") == r_id
         and "client_id" in u
     }
-
-    missing = expected_clients - round_clients
-    if missing:
-        sys.exit(
-            f"Round {round_number}: missing clients "
-            f"{sorted(missing)}; observed {sorted(round_clients)}"
-        )
+    client_updates_per_round[r_num] = verified_clients
 
 confirmed_finalizations = {
     int(t["entity_id"])
-    for t in transactions.get("data", [])
+    for t in txns_list
     if t.get("status") == "CONFIRMED"
     and t.get("contract_name") == "TrainingRoundRegistry"
     and t.get("function_name") == "finalizeRound"
@@ -145,14 +145,72 @@ confirmed_finalizations = {
     and str(t.get("entity_id", "")).isdigit()
 }
 
-if not {1, 2, 3}.issubset(confirmed_finalizations):
-    sys.exit(
-        "Missing confirmed finalizeRound transactions for rounds "
-        f"1, 2, 3; observed {sorted(confirmed_finalizations)}"
+errors = []
+
+# 1. Round finalization checks
+missing_rounds = {1, 2, 3} - set(round_map.keys())
+if missing_rounds:
+    errors.append(f"Missing round records for rounds: {sorted(missing_rounds)}")
+
+non_finalized = {1, 2, 3} - finalized
+if non_finalized:
+    status_details = [
+        f"Round {rn}: status={round_map[rn].get('status', 'MISSING')}"
+        for rn in sorted(non_finalized)
+        if rn in round_map
+    ]
+    errors.append(
+        f"Expected finalized rounds {{1, 2, 3}}; unfinalized: {sorted(non_finalized)} "
+        f"({', '.join(status_details)})"
     )
 
-print(f"Finalized rounds: {sorted(finalized)}")
-print(f"Expected clients: {sorted(expected_clients)}")
+# 2. Client update verification per round
+for r_num in (1, 2, 3):
+    observed_clients = client_updates_per_round.get(r_num, set())
+    missing = expected_clients - observed_clients
+    if missing:
+        errors.append(
+            f"Round {r_num}: missing verified updates from {sorted(missing)}; "
+            f"observed {sorted(observed_clients)}"
+        )
+
+# 3. On-chain finalization transaction confirmation
+missing_txns = {1, 2, 3} - confirmed_finalizations
+if missing_txns:
+    errors.append(
+        f"Missing confirmed finalizeRound blockchain transactions for rounds {sorted(missing_txns)}; "
+        f"observed {sorted(confirmed_finalizations)}"
+    )
+
+# 4. Global model artifact presence
+for r_num in (1, 2, 3):
+    r_obj = round_map.get(r_num, {})
+    if not r_obj.get("global_model_artifact_id"):
+        errors.append(f"Round {r_num}: missing global_model_artifact_id on round record")
+
+if errors:
+    if mode in ("assert", "verbose"):
+        print("\n" + "=" * 60, file=sys.stderr)
+        print("[-] E2E LIFECYCLE ACCEPTANCE FAILED:", file=sys.stderr)
+        for err in errors:
+            print(f"  * {err}", file=sys.stderr)
+        print("\n--- Diagnostic Dump ---", file=sys.stderr)
+        print("Observed Rounds:", file=sys.stderr)
+        for r in rounds_list:
+            print(f"  Round {r.get('round_number')}: status={r.get('status')} model_version={r.get('model_version')} artifact_id={r.get('global_model_artifact_id')}", file=sys.stderr)
+        print("Observed Updates (sample):", file=sys.stderr)
+        for u in updates_list[:15]:
+            print(f"  Update {u.get('id')}: round={u.get('round_id')} client={u.get('client_id')} status={u.get('status')}", file=sys.stderr)
+        if len(updates_list) > 15:
+            print(f"  ... ({len(updates_list) - 15} more updates)", file=sys.stderr)
+        print("Observed Blockchain Transactions:", file=sys.stderr)
+        for t in txns_list:
+            print(f"  Tx {t.get('tx_hash', '')[:10]}...: fn={t.get('function_name')} entity={t.get('entity_type')} id={t.get('entity_id')} status={t.get('status')}", file=sys.stderr)
+        print("=" * 60 + "\n", file=sys.stderr)
+    sys.exit(1)
+
+print(f"Finalized rounds:        {sorted(finalized)}")
+print(f"Expected clients:        {sorted(expected_clients)}")
 print(f"Confirmed finalizations: {sorted(confirmed_finalizations)}")
 PY
 }
@@ -207,15 +265,18 @@ docker compose exec -T hardhat node -e "
 
 echo "Waiting for signed FL lifecycle..."
 deadline=$((SECONDS + 600))
-until check_lifecycle; do
+until check_lifecycle "poll"; do
   exited_failed="$(docker compose ps -a --format '{{.Service}} {{.State}} {{.ExitCode}}' | grep -v 'client-init' | grep -v 'contract-deployer' | grep -E 'exited ([1-9]|1[0-9]|2[0-9])' || true)"
   if [[ -n "$exited_failed" ]]; then
     echo "Error: Container(s) exited unexpectedly: $exited_failed"
+    check_lifecycle "verbose" || true
     docker compose logs --no-color
     exit 1
   fi
   if (( SECONDS >= deadline )); then
-    echo "FL lifecycle timed out"
+    echo "FL lifecycle timed out after 600s. Running diagnostic dump:"
+    check_lifecycle "verbose" || true
+    docker compose logs --no-color
     exit 1
   fi
   sleep 5
@@ -259,7 +320,7 @@ if not any(isinstance(i, dict) and i.get("id") == "fed-default" for i in data):
 print("Dashboard federation visibility verified.")
 PY
 
-check_lifecycle
+check_lifecycle "assert"
 
 echo "TrustFL Compose E2E PASSED"
 

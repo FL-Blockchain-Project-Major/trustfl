@@ -382,3 +382,38 @@ The following limitations are documented and not yet resolved:
 | **Blockchain confirmation latency** | 15s–60s per round depending on network | Built-in retry/outbox pattern handles this; not suitable for sub-minute round cycles |
 | **Dashboard has no rate limiting** | DoS risk on the proxy endpoint | Add `nginx.ingress.kubernetes.io/limit-rps` annotation in production |
 | **No automated secret expiry alerts** | Stale credentials go undetected | Configure secrets manager to alert 14 days before expiry |
+
+---
+
+## 11. Round Lifecycle State Consistency & Invariants
+
+TrustFL enforces a strictly ordered, deterministic state machine across the coordinator, control-plane database, and smart contracts:
+
+```
+[CREATED] ──> [COLLECTING] ──> [VALIDATING] ──> [AGGREGATING] ──> [COMMITTING]
+                                                                        │
+                                                                        ▼
+[FINALIZED] <────────────────────────────────────────────────────── [COMPLETED]
+     ▲
+     └── (On-chain finalizeRound confirmed + finalized_at recorded)
+```
+
+### Round Status Definitions
+
+| Status | Type | Meaning | Transition Triggers |
+| :--- | :--- | :--- | :--- |
+| `CREATED` | Intermediate | Round registered in database | `start_round()` initialized |
+| `COLLECTING` | Intermediate | Client window open; accepting signed updates | Min active clients registered |
+| `VALIDATING` | Intermediate | Signatures, update bounds, and ZKPs verified | Collection deadline or client quorum met |
+| `AGGREGATING`| Intermediate | Running FedAvg algorithm across validated updates | Update verification complete |
+| `COMMITTING` | Intermediate | Storing global model parameters in artifact store | FedAvg algorithm completed |
+| `COMPLETED` | Intermediate | Off-chain aggregation and artifact storage complete | Global model artifact persisted to IPFS/S3 |
+| `FINALIZED` | **Terminal** | **On-chain `finalizeRound` confirmed on contract** | `TrainingRoundRegistry` receipt confirmed |
+| `FAILED` | Terminal | Quorum lost, invalid update, or terminal timeout | Irrecoverable fault |
+| `RECOVERY_REQUIRED` | Transient | Coordinator interrupted during active phase | Lease loss or RPC timeout |
+
+### Operational & Acceptance Invariants
+1. **Strict Finality Gate**: A round MUST NOT be reported as `FINALIZED` until its on-chain transaction receipt is confirmed (`status == "CONFIRMED"`).
+2. **Persistence Guarantee**: If on-chain finalization is delayed or failing, the round remains in `COMPLETED` (or `RECOVERY_REQUIRED`), preventing false-positive completion reporting.
+3. **E2E Acceptance**: All three rounds must achieve `FINALIZED` with corresponding confirmed on-chain transactions and verified client updates.
+
