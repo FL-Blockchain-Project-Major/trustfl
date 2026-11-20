@@ -63,10 +63,24 @@ typechain-types/
 zk/build/
 zk/keys/
 *.r1cs
+*.sym
 *.zkey
 *.ptau
 *.witness
 *witness.wtns
+
+# ZKP runtime artifacts are pre-compiled and must be tracked so CI
+# and fresh clones can run proof generation and verification without
+# requiring a full circom + snarkjs circuit build.
+# Exception: allow the specific files that snarkjs needs at runtime.
+!packages/zkp/artifacts/
+!packages/zkp/artifacts/update_commitment.wasm
+!packages/zkp/artifacts/update_commitment.zkey
+!packages/zkp/artifacts/verification_key.json
+!packages/zkp/artifacts/update_commitment_js/
+!packages/zkp/artifacts/update_commitment_js/update_commitment.wasm
+!packages/zkp/artifacts/update_commitment_js/generate_witness.js
+!packages/zkp/artifacts/update_commitment_js/witness_calculator.js
 
 # Datasets, Model Weights & Artifacts (STRICT SECURITY RULE: Never commit data/weights/artifacts)
 *.h5

@@ -69,9 +69,19 @@ def validate_secrets_management(errors: list[str]) -> None:
     for cm_file in (K8S_BASE / "configmap.yaml", HELM_DIR / "templates" / "configmap.yaml"):
         if cm_file.exists():
             cm_text = cm_file.read_text(encoding="utf-8")
-            for pattern in ["password", "private-key", "token", "secret", "read-key", "write-key", "admin-key"]:
+            for pattern in [
+                "password",
+                "private-key",
+                "token",
+                "secret",
+                "read-key",
+                "write-key",
+                "admin-key",
+            ]:
                 if re.search(rf"\b{pattern}\b", cm_text, re.IGNORECASE):
-                    errors.append(f"ConfigMap {cm_file.name} contains potential credential keyword '{pattern}'")
+                    errors.append(
+                        f"ConfigMap {cm_file.name} contains potential credential keyword '{pattern}'"
+                    )
 
     # 3. Helm templates must use existingSecret references
     for tmpl in HELM_DIR.glob("templates/deployment-*.yaml"):
@@ -90,7 +100,7 @@ def validate_security_hardening(errors: list[str]) -> None:
         text = path.read_text(encoding="utf-8")
         if "runAsNonRoot: true" not in text:
             errors.append(f"{dep_file}: missing 'runAsNonRoot: true'")
-        if "drop: [\"ALL\"]" not in text and "drop:\n                - ALL" not in text:
+        if 'drop: ["ALL"]' not in text and "drop:\n                - ALL" not in text:
             errors.append(f"{dep_file}: missing dropped capabilities ['ALL']")
         if "readOnlyRootFilesystem: true" not in text:
             errors.append(f"{dep_file}: missing 'readOnlyRootFilesystem: true'")
@@ -102,7 +112,9 @@ def validate_security_hardening(errors: list[str]) -> None:
     # 2. Coordinator must use Recreate strategy and replicaCount=1
     coord_text = (K8S_BASE / "coordinator-deployment.yaml").read_text(encoding="utf-8")
     if "type: Recreate" not in coord_text:
-        errors.append("coordinator-deployment.yaml: must use 'type: Recreate' strategy to prevent dual execution")
+        errors.append(
+            "coordinator-deployment.yaml: must use 'type: Recreate' strategy to prevent dual execution"
+        )
     if "replicas: 1" not in coord_text:
         errors.append("coordinator-deployment.yaml: must enforce 'replicas: 1'")
 
@@ -123,7 +135,9 @@ def validate_production_invariants(errors: list[str]) -> None:
     """Verify that development authentication, local dev chains, or disabled ZKP are never active."""
     for yaml_path in DEPLOY_DIR.rglob("*.yaml"):
         text = yaml_path.read_text(encoding="utf-8")
-        if re.search(r"COORDINATOR_INSECURE_DEV_AUTH.*?value:\s*['\"]?true['\"]?", text, re.IGNORECASE):
+        if re.search(
+            r"COORDINATOR_INSECURE_DEV_AUTH.*?value:\s*['\"]?true['\"]?", text, re.IGNORECASE
+        ):
             errors.append(f"{yaml_path.name}: COORDINATOR_INSECURE_DEV_AUTH is set to true")
         if re.search(r"API_LEGACY_AUTH_COMPAT.*?value:\s*['\"]?true['\"]?", text, re.IGNORECASE):
             errors.append(f"{yaml_path.name}: API_LEGACY_AUTH_COMPAT is set to true")
@@ -138,12 +152,16 @@ def validate_digest(digest: str) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="TrustFL Production Deployment Validator")
-    parser.add_argument("--assert-digest", type=str, help="Validate an image digest string against sha256 format")
+    parser.add_argument(
+        "--assert-digest", type=str, help="Validate an image digest string against sha256 format"
+    )
     args = parser.parse_args()
 
     if args.assert_digest:
         if not validate_digest(args.assert_digest):
-            sys.exit(f"[FAIL] Image digest {args.assert_digest!r} is invalid. Expected format: sha256:<64 hex chars>")
+            sys.exit(
+                f"[FAIL] Image digest {args.assert_digest!r} is invalid. Expected format: sha256:<64 hex chars>"
+            )
         print(f"[OK] Image digest {args.assert_digest!r} is a valid immutable sha256 digest.")
         return
 

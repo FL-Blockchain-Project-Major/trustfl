@@ -6,9 +6,9 @@ import time
 from unittest.mock import patch
 
 import pytest
+from trustfl_crypto.keys import ClientIdentity
 
 from apps.client.network.agent import DistributedClientAgent
-from packages.crypto.trustfl_crypto.keys import ClientIdentity
 
 
 def _synthetic_train_fn(_round_id, _params, _config):
