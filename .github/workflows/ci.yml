@@ -12,6 +12,7 @@ permissions:
 jobs:
   python-tests:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -37,14 +38,24 @@ jobs:
         run: npm ci
 
       - name: Smoke-test Node ZKP runtime and circuit artifacts
+        timeout-minutes: 5
         run: |
           node --input-type=module -e \
             "import('./packages/zkp/src/zkp.js').then(async ({computeCommitment, generateProof}) => { \
-              const value = await computeCommitment({clientId: 1n, federationId: 2n, roundId: 1n, modelVersion: 3n, privateUpdateCommitment: 4n}); \
-              if (!value) process.exit(1); \
-              const proof = await generateProof({clientId: 1n, federationId: 2n, roundId: 1n, modelVersion: 3n, privateUpdateCommitment: 4n}); \
-              if (!proof || !proof.isValid) process.exit(1); \
-              console.log('ZKP runtime and proof generation OK'); \
+              try { \
+                const value = await computeCommitment({clientId: 1n, federationId: 2n, roundId: 1n, modelVersion: 3n, privateUpdateCommitment: 4n}); \
+                if (!value) process.exit(1); \
+                const proof = await generateProof({clientId: 1n, federationId: 2n, roundId: 1n, modelVersion: 3n, privateUpdateCommitment: 4n}); \
+                if (!proof || !proof.isValid) process.exit(1); \
+                console.log('ZKP runtime and proof generation OK'); \
+                process.exit(0); \
+              } catch (err) { \
+                console.error('ZKP smoke test failed:', err); \
+                process.exit(1); \
+              } \
+            }).catch((err) => { \
+              console.error('Failed to load ZKP module:', err); \
+              process.exit(1); \
             })"
 
       - name: Generate release SBOMs
@@ -68,6 +79,7 @@ jobs:
 
   supply-chain:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
@@ -119,6 +131,7 @@ jobs:
 
   frontend-tests:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/dashboard
@@ -140,6 +153,7 @@ jobs:
 
   contract-tests:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: packages/contracts
@@ -169,6 +183,7 @@ jobs:
 
   zk-tests:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: packages/zkp
@@ -190,6 +205,7 @@ jobs:
   docker-build:
     needs: [python-tests, frontend-tests, contract-tests, zk-tests]
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
