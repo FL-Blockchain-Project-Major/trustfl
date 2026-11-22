@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from apps.api.api.db.models import Client, Round, Update, UpdateStatus
+from apps.api.api.db.models import Client, ClientLifecycleStatus, Round, Update, UpdateStatus
 from apps.api.api.repositories.updates import UpdateRepository
 from apps.api.api.schemas.updates import UpdateStatusChange, UpdateSubmit
 from apps.api.api.security.auth import AuthContext, require_federation_access
@@ -36,6 +36,13 @@ class UpdateService:
         ):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found")
         require_federation_access(context, round_record.federation_id)
+
+        # Reject updates from revoked, suspended, or inactive clients
+        if client.lifecycle_status != ClientLifecycleStatus.ACTIVE or not client.is_active:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Client '{payload.client_id}' key is not active (status: {client.lifecycle_status.value})",
+            )
         # 1. Reject duplicate update ID
         if self.repo.get(payload.id):
             raise HTTPException(
