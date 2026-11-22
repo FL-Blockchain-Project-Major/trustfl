@@ -1,0 +1,5 @@
+# trivy.yaml — Trivy configuration for TrustFL
+misconfiguration:
+  helm:
+    set:
+      - "global.imageDigest=sha256:0000000000000000000000000000000000000000000000000000000000000000"
