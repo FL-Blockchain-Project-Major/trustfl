@@ -42,7 +42,9 @@ export async function GET(
   if (traceparent) {
     headers.traceparent = traceparent;
   }
-  const key = process.env.API_READ_KEY || process.env.API_SECRET_KEY || process.env.API_ADMIN_KEY;
+  const key = (first === "blockchain" || first === "proofs") && process.env.API_ADMIN_KEY
+    ? process.env.API_ADMIN_KEY
+    : (process.env.API_READ_KEY || process.env.API_SECRET_KEY || process.env.API_ADMIN_KEY);
   if (key) {
     headers.Authorization = `Bearer ${key}`;
   }

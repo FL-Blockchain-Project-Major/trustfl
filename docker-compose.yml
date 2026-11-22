@@ -39,7 +39,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustfl}
       POSTGRES_DB: ${POSTGRES_DB:-trustfl}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -179,6 +179,9 @@ services:
       - FL_NUM_CLIENTS=${FL_NUM_CLIENTS:-2}
       - FL_NUM_ROUNDS=${FL_NUM_ROUNDS:-3}
       - FL_MAX_UPDATE_NORM=${FL_MAX_UPDATE_NORM:-1.0}
+      - FL_MAX_CLIENT_WEIGHT_SHARE=${FL_MAX_CLIENT_WEIGHT_SHARE:-0.5}
+      - FL_ROUND_TIMEOUT_SECONDS=${FL_ROUND_TIMEOUT_SECONDS:-60}
+      - FL_HEARTBEAT_TIMEOUT_SECONDS=${FL_HEARTBEAT_TIMEOUT_SECONDS:-30}
       - COORDINATOR_PORT=8100
       - DATABASE_URL=postgresql://${POSTGRES_USER:-trustfl}:${POSTGRES_PASSWORD:-trustfl}@db:5432/${POSTGRES_DB:-trustfl}
       - IPFS_URL=http://ipfs:5001
@@ -256,6 +259,7 @@ services:
       - INTERNAL_API_URL=http://api:8000
       - API_SECRET_KEY=${API_SECRET_KEY:-}
       - API_READ_KEY=${API_READ_KEY:-trustfl-read-dev}
+      - API_ADMIN_KEY=${API_ADMIN_KEY:-trustfl-admin-dev}
       - DASHBOARD_ACCESS_KEY=${DASHBOARD_ACCESS_KEY-}
     ports:
       - "127.0.0.1:3000:3000"

@@ -476,7 +476,9 @@ class TestSBOMCompleteness:
         import json
 
         sbom_file = self.SBOM_DIR / "trustfl-python.cdx.json"
-        assert sbom_file.exists(), "trustfl-python.cdx.json not found; run scripts/generate_sboms.py first"
+        assert sbom_file.exists(), (
+            "trustfl-python.cdx.json not found; run scripts/generate_sboms.py first"
+        )
         sbom = json.loads(sbom_file.read_text())
         assert sbom.get("bomFormat") == "CycloneDX"
         assert sbom.get("specVersion") in {"1.4", "1.5", "1.6"}
@@ -491,7 +493,9 @@ class TestSBOMCompleteness:
         import json
 
         sbom_file = self.SBOM_DIR / "trustfl-python.cdx.json"
-        assert sbom_file.exists(), "trustfl-python.cdx.json not found; run scripts/generate_sboms.py first"
+        assert sbom_file.exists(), (
+            "trustfl-python.cdx.json not found; run scripts/generate_sboms.py first"
+        )
         sbom = json.loads(sbom_file.read_text())
         unknown_count = 0
         for comp in sbom.get("components", []):
