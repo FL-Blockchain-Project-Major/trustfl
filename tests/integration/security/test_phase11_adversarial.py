@@ -11,7 +11,6 @@ Tests:
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -283,7 +282,11 @@ def test_revoked_key_rejection():
     # Register client to revoke
     client.post(
         "/clients/",
-        json={"id": "adv_client_revoked", "federation_id": "adv_fed_a", "public_key_b64": "key_rev"},
+        json={
+            "id": "adv_client_revoked",
+            "federation_id": "adv_fed_a",
+            "public_key_b64": "key_rev",
+        },
     )
     # Revoke client
     db = SessionLocal()
@@ -311,7 +314,11 @@ def test_suspended_key_rejection():
     # Register client to suspend
     client.post(
         "/clients/",
-        json={"id": "adv_client_suspended", "federation_id": "adv_fed_a", "public_key_b64": "key_susp"},
+        json={
+            "id": "adv_client_suspended",
+            "federation_id": "adv_fed_a",
+            "public_key_b64": "key_susp",
+        },
     )
     # Suspend client
     db = SessionLocal()
