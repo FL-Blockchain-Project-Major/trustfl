@@ -252,6 +252,24 @@ Available images:
 | `COORDINATOR_REQUIRE_SIGNATURES` | `true` | Enforce Ed25519 update signatures. |
 | `COORDINATOR_INSECURE_DEV_AUTH` | `false` | **Never set in production.** Enables legacy shared-token enrollment. |
 | `COORDINATOR_ENROLLMENT_ALLOWLIST_FILE` | — | Path to `allowlist.json` (written by `client-init`). |
+| `COORDINATOR_MAX_BODY_BYTES` | `134217728` | Max coordinator HTTP request size (128 MB for real YOLO payloads). |
+
+### YOLO Training & Hardware Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FL_YOLO_MODEL` | `yolov8n` | Ultralytics YOLO model architecture/name. |
+| `FL_YOLO_WEIGHTS_PATH` | `""` | Path to verified `.pt` weights (uses `yolov8n.yaml` if unset). |
+| `FL_YOLO_WEIGHTS_SHA256` | `""` | Optional expected SHA-256 hex digest for `FL_YOLO_WEIGHTS_PATH`. |
+| `FL_YOLO_PRETRAINED` | `false` | Download/use Ultralytics pretrained `.pt` weights when `FL_YOLO_WEIGHTS_PATH` is unset. |
+| `FL_YOLO_DEVICE` | `cpu` | Compute device (`cpu`, `cuda`, `cuda:0`, `mps`, or `auto`). |
+| `FL_YOLO_IMAGE_SIZE` | `320` | Input image resolution (`imgsz`) for training and validation. |
+| `FL_YOLO_BATCH_SIZE` | `4` | Local training and validation batch size. |
+| `FL_YOLO_LEARNING_RATE` | `0.01` | Initial learning rate (`lr0`). |
+
+- **Local training vs. Federated aggregation vs. Global evaluation**: Each client trains `YOLODetector` locally on its own dataset partition, submits signed & ZKP-committed `state_dict` parameters to the coordinator, the coordinator computes weighted `FedAvg` to produce the next global model, and clients evaluate the global/updated parameters on held-out validation splits (`mAP50`, `mAP50-95`, `precision`, `recall`).
+- **Hardware requirements**: CPU works for small image sizes (`64`–`320`) and small batch sizes; NVIDIA CUDA GPU (`FL_YOLO_DEVICE=cuda`) is recommended for full-resolution (`640`) VisDrone training.
+- **Opt-in real VisDrone test**: Run `TRUSTFL_RUN_REAL_VISDRONE_TEST=1 pytest tests/unit/ml/test_ml_core.py -k real_visdrone` when `datasets/raw/visdrone` is present.
 
 ### Database / Infrastructure
 

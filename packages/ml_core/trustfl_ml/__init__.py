@@ -9,7 +9,7 @@ from trustfl_ml.dataset import (
     VisDroneParser,
     resolve_and_validate_dataset,
 )
-from trustfl_ml.yolo_wrapper import SimulatedDetector, YOLOModelWrapper
+from trustfl_ml.yolo_wrapper import YOLODetector, YOLOModelWrapper
 
 __all__ = [
     "VisDroneParser",
@@ -19,6 +19,6 @@ __all__ = [
     "DatasetConfig",
     "TrainingConfig",
     "ClientNodeConfig",
-    "SimulatedDetector",
+    "YOLODetector",
     "YOLOModelWrapper",
 ]

@@ -58,6 +58,9 @@ class TrainingConfig:
     """Hyperparameters and execution configuration for YOLO training."""
 
     model_name: str = "yolov8n"
+    weights_path: str | None = None
+    weights_sha256: str | None = None
+    pretrained: bool = False
     epochs: int = 1
     batch_size: int = 4
     learning_rate: float = 0.01
@@ -67,6 +70,11 @@ class TrainingConfig:
     patience: int = 5
     optimizer: str = "AdamW"
     weight_decay: float = 0.0005
+    workers: int = 0
+    amp: bool = False
+    cache: bool = False
+    conf_threshold: float = 0.25
+    iou_threshold: float = 0.5
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

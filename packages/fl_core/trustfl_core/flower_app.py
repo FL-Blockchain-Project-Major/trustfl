@@ -12,10 +12,18 @@ Defines:
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+try:
+    import numpy as np
+
+    _HAVE_NUMPY = True
+except ImportError:
+    _HAVE_NUMPY = False
 
 from trustfl_core.model import Parameters, TinyLinearModel
 
@@ -50,7 +58,7 @@ class EvaluateIns:
 class EvaluateRes:
     """Evaluation loss and metrics returned from client to server."""
 
-    loss: float
+    loss: float | None
     num_examples: int
     metrics: dict[str, Any] = field(default_factory=dict)
     status: str = "OK"
@@ -161,23 +169,60 @@ class FedAvg(Strategy):
             return None, {"error": "No client results received for aggregation"}
 
         total_examples = sum(res.num_examples for _, res in results)
-        if total_examples == 0:
-            return None, {"error": "Total client examples is 0"}
+        if total_examples <= 0:
+            return None, {"error": "Total client examples must be > 0"}
 
-        # First client parameters shape
+        # Validate matching architecture/shapes and finite values across all clients
         ref_params = results[0][1].parameters
+        if not ref_params:
+            raise ValueError("Client parameters cannot be empty")
         num_layers = len(ref_params)
-        aggregated: Parameters = []
+        ref_shapes = [len(layer) for layer in ref_params]
 
+        for cid, res in results:
+            if res.num_examples <= 0:
+                raise ValueError(
+                    f"Client {cid} reported non-positive num_examples: {res.num_examples}"
+                )
+            if len(res.parameters) != num_layers:
+                raise ValueError(
+                    f"Client {cid} layer count mismatch: expected {num_layers}, got {len(res.parameters)}"
+                )
+            for layer_idx, (expected_len, layer) in enumerate(
+                zip(ref_shapes, res.parameters, strict=True)
+            ):
+                if len(layer) != expected_len:
+                    raise ValueError(
+                        f"Client {cid} shape mismatch at layer {layer_idx}: "
+                        f"expected {expected_len}, got {len(layer)}"
+                    )
+                if not _HAVE_NUMPY and any(not math.isfinite(v) for v in layer):
+                    raise ValueError(
+                        f"Client {cid} submitted non-finite parameter in layer {layer_idx}"
+                    )
+
+        aggregated: Parameters = []
         for layer_idx in range(num_layers):
-            layer_len = len(ref_params[layer_idx])
-            acc = [0.0] * layer_len
-            for _, res in results:
-                weight = res.num_examples / total_examples
-                client_layer = res.parameters[layer_idx]
-                for i in range(layer_len):
-                    acc[i] += weight * client_layer[i]
-            aggregated.append(acc)
+            if _HAVE_NUMPY:
+                acc_arr = np.zeros(ref_shapes[layer_idx], dtype=np.float64)
+                for cid, res in results:
+                    arr = np.asarray(res.parameters[layer_idx], dtype=np.float64)
+                    if not np.isfinite(arr).all():
+                        raise ValueError(
+                            f"Client {cid} submitted non-finite parameter in layer {layer_idx}"
+                        )
+                    weight = res.num_examples / total_examples
+                    acc_arr += weight * arr
+                aggregated.append(acc_arr.tolist())
+            else:
+                layer_len = ref_shapes[layer_idx]
+                acc = [0.0] * layer_len
+                for _, res in results:
+                    weight = res.num_examples / total_examples
+                    client_layer = res.parameters[layer_idx]
+                    for i in range(layer_len):
+                        acc[i] += weight * client_layer[i]
+                aggregated.append(acc)
 
         metrics = {
             "num_successful_clients": len(results),
@@ -210,28 +255,51 @@ class FedAvg(Strategy):
         results: list[tuple[str, EvaluateRes]],
         failures: list[tuple[str, BaseException]],
     ) -> tuple[float | None, dict[str, Any]]:
-        """Computes weighted average of evaluation loss and accuracy."""
+        """Computes weighted average of evaluation loss and detection/classification metrics."""
         if not results:
             return None, {}
 
         total_examples = sum(res.num_examples for _, res in results)
-        if total_examples == 0:
+        if total_examples <= 0:
             return None, {}
 
-        weighted_loss = sum(res.loss * res.num_examples for _, res in results) / total_examples
-
-        accuracies = [
-            res.metrics["accuracy"] * res.num_examples
+        loss_pairs = [
+            (res.loss, res.num_examples)
             for _, res in results
-            if "accuracy" in res.metrics
+            if res.loss is not None and math.isfinite(res.loss)
         ]
-        avg_accuracy = sum(accuracies) / total_examples if accuracies else 0.0
+        if loss_pairs:
+            loss_examples = sum(n for _, n in loss_pairs)
+            weighted_loss: float | None = (
+                sum(loss_val * n for loss_val, n in loss_pairs) / loss_examples
+            )
+        else:
+            weighted_loss = None
 
-        metrics = {
-            "accuracy": avg_accuracy,
+        def _weighted_metric(key: str) -> float | None:
+            pairs = [
+                (res.metrics[key], res.num_examples)
+                for _, res in results
+                if key in res.metrics
+                and res.metrics[key] is not None
+                and isinstance(res.metrics[key], (int, float))
+                and not isinstance(res.metrics[key], bool)
+                and math.isfinite(res.metrics[key])
+            ]
+            if not pairs:
+                return None
+            denom = sum(n for _, n in pairs)
+            return sum(v * n for v, n in pairs) / denom if denom > 0 else None
+
+        metrics: dict[str, Any] = {
             "num_eval_clients": len(results),
             "num_eval_failures": len(failures),
         }
+        for key in ("accuracy", "map50", "map50_95", "precision", "recall"):
+            val = _weighted_metric(key)
+            if val is not None:
+                metrics[key] = val
+
         return weighted_loss, metrics
 
 
@@ -343,7 +411,8 @@ class ServerApp:
             "round": server_round,
             "fit_metrics": fit_metrics,
             "loss": eval_loss,
-            "accuracy": eval_metrics.get("accuracy", 0.0),
+            "accuracy": eval_metrics.get("accuracy"),
+            "eval_metrics": eval_metrics,
             "num_successful_clients": len(results),
             "num_failed_clients": len(failures),
         }

@@ -205,15 +205,27 @@ def _fedavg(
     total_examples = sum(effective)
 
     num_layers = len(updates[0]["parameters"])
+    try:
+        import numpy as np
+    except ImportError:
+        np = None  # type: ignore[assignment]
+
     aggregated: list[list[float]] = []
     for layer_idx in range(num_layers):
         layer_len = len(updates[0]["parameters"][layer_idx])
-        layer_avg = [0.0] * layer_len
-        for u, examples in zip(updates, effective, strict=True):
-            weight = examples / total_examples
-            for i, v in enumerate(u["parameters"][layer_idx]):
-                layer_avg[i] += weight * v
-        aggregated.append(layer_avg)
+        if np is not None:
+            layer_acc = np.zeros(layer_len, dtype=np.float64)
+            for u, examples in zip(updates, effective, strict=True):
+                weight = examples / total_examples
+                layer_acc += weight * np.asarray(u["parameters"][layer_idx], dtype=np.float64)
+            aggregated.append(layer_acc.tolist())
+        else:
+            layer_avg = [0.0] * layer_len
+            for u, examples in zip(updates, effective, strict=True):
+                weight = examples / total_examples
+                for i, v in enumerate(u["parameters"][layer_idx]):
+                    layer_avg[i] += weight * v
+            aggregated.append(layer_avg)
     return aggregated
 
 
@@ -1416,8 +1428,22 @@ class CoordinatorState:
 def _avg_metrics(metrics_list: list[dict[str, float]]) -> dict[str, float]:
     if not metrics_list:
         return {}
-    keys = metrics_list[0].keys()
-    return {k: sum(m.get(k, 0.0) for m in metrics_list) / len(metrics_list) for k in keys}
+    keys: set[str] = set()
+    for m in metrics_list:
+        keys.update(m.keys())
+    averaged: dict[str, float] = {}
+    for k in sorted(keys):
+        vals = [
+            float(m[k])
+            for m in metrics_list
+            if k in m
+            and m[k] is not None
+            and isinstance(m[k], (int, float))
+            and math.isfinite(m[k])
+        ]
+        if vals:
+            averaged[k] = sum(vals) / len(vals)
+    return averaged
 
 
 # ---------------------------------------------------------------------------
@@ -1426,7 +1452,7 @@ def _avg_metrics(metrics_list: list[dict[str, float]]) -> dict[str, float]:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    MAX_BODY_BYTES = 1_048_576
+    MAX_BODY_BYTES = int(os.getenv("COORDINATOR_MAX_BODY_BYTES", str(128 * 1024 * 1024)))
     """Minimal HTTP handler wired to CoordinatorState."""
 
     state: CoordinatorState  # injected by server factory

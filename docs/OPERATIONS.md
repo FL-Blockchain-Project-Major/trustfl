@@ -164,12 +164,23 @@ coordinator records the round as `FAILED` and aborts the federation.
 
 ## Artifact size limit
 
-The coordinator enforces `MAX_BODY_BYTES = 1_048_576` (1 MB).  Real YOLO
-weights exceed this limit.  See [DEPLOYMENT.md](../DEPLOYMENT.md#5-artifact-size-limit).
+The coordinator HTTP server enforces `COORDINATOR_MAX_BODY_BYTES` (default
+`134217728` bytes / 128 MB) to accommodate full Ultralytics YOLOv8n state_dict
+updates while bounding untrusted payloads. The FastAPI control-plane API
+continues to enforce `MAX_BODY_BYTES = 1_048_576` (1 MB) for metadata routes.
 
-## SimulatedDetector / accuracy_proxy
+## Real Ultralytics YOLO Evaluation & Metrics
 
-`SimulatedDetector` (alias `YOLOModelWrapper`) is NOT a real YOLO model.  Its
-`accuracy_proxy`, `precision`, and `recall` values are formula-derived and must
-not be reported as mAP50 or mAP50-95.  See
-[DEPLOYMENT.md](../DEPLOYMENT.md#6-model-disclaimer--simulateddetector).
+TrustFL uses genuine Ultralytics YOLO (`YOLODetector`, alias `YOLOModelWrapper`)
+for local object-detection training and validation:
+
+- **Local training**: Each client trains its local YOLO model on its private
+  dataset partition and reports `train_loss`, `box_loss`, `cls_loss`, `dfl_loss`,
+  and `samples_trained`.
+- **Federated aggregation**: The coordinator aggregates compatible client
+  `state_dict` float tensors via weighted `FedAvg` and rejects incompatible
+  architectures, shape mismatches, and non-finite (`NaN`/`Inf`) tensors.
+- **Evaluation**: Clients evaluate against held-out validation splits using
+  Ultralytics' validator, reporting genuine `map50`, `map50_95`, `precision`,
+  `recall`, and `val_loss` (if available; unavailable metrics remain `None`
+  rather than being coerced to `0.0`).

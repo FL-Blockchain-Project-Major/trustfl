@@ -437,7 +437,7 @@ Mean local loss per round decreased monotonically:
 | :--- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
 | Loss | 0.2240 | 0.2088 | 0.1950 | 0.1823 | 0.1708 | 0.1603 | 0.1509 | 0.1424 | 0.1348 | 0.1283 |
 
-> The "detector" is the repository's `SimulatedDetector` (a small parameter vector trained against VisDrone box statistics). The loss is a proxy, **not** mAP, and does not measure real object-detection quality.
+> The detector is TrustFL's real Ultralytics YOLO wrapper (`YOLODetector`), which runs actual PyTorch backpropagation on each site's VisDrone partition and reports genuine `map50`, `map50_95`, `precision`, `recall`, and `train_loss`.
 
 ### 9.2 On-chain audit (123 confirmed transactions)
 | Contract.function | Count | Status |

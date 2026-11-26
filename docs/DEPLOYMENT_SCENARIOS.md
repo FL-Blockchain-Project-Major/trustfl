@@ -576,7 +576,7 @@ Expected output:
 | :--- | :--- | :--- |
 | `ValueError: Plain HTTP to 'http://...' is refused in production` | Client is in `ENVIRONMENT=production` targeting non-loopback `http://`. | Switch URL to `https://` or supply TLS termination proxy. |
 | `Registration failed: {"accepted": false}` | Client ID missing from `COORDINATOR_ENROLLMENT_ALLOWLIST` or public key mismatch. | Re-generate public key and verify JSON string in coordinator allowlist. |
-| `413 Request Entity Too Large` | Client update payload exceeds `MAX_BODY_BYTES = 1,048,576` (1 MB). | Ensure weights are simulated (`SimulatedDetector`) or parameter representations are compressed. |
+| `413 Request Entity Too Large` | Client update payload exceeds `COORDINATOR_MAX_BODY_BYTES` (coordinator) or `MAX_BODY_BYTES` (API). | Increase `COORDINATOR_MAX_BODY_BYTES` (default 128 MB) if using larger YOLO models. |
 | `TIMESTAMP_DRIFT` | Edge device clock differs from coordinator by $>60$ seconds. | Synchronize system clock via NTP: `sudo timedatectl set-ntp true` or `ntpdate pool.ntp.org`. |
 | `Quorum lost in round N: X active clients < Y required` | One or more clients stopped heartbeating, causing active clients to fall below `FL_MIN_CLIENTS`. | Check network connectivity on edge devices; increase `FL_HEARTBEAT_TIMEOUT_SECONDS` if edge compute is overloaded. |
 | `Dashboard API is unavailable (503)` | Next.js server cannot reach FastAPI or read key is invalid. | Verify `INTERNAL_API_URL` and `API_READ_KEY` match the FastAPI configuration. |

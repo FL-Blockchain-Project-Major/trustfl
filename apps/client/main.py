@@ -71,10 +71,18 @@ def _build_train_fn(
     val_annotations_dir: str = "",
     client_index: int = 0,
     num_clients: int = 1,
+    model_name: str = "yolov8n",
+    weights_path: str | None = None,
+    weights_sha256: str | None = None,
+    device: str = "cpu",
+    image_size: int = 320,
+    batch_size: int = 4,
+    learning_rate: float = 0.01,
+    pretrained: bool = False,
 ) -> Any:
     """
     Build a training callable compatible with DistributedClientAgent.
-    Falls back to a synthetic train fn if ML core is unavailable or data is not configured.
+    Falls back to a synthetic train fn only when no dataset is configured.
     """
     if not (
         images_dir
@@ -97,75 +105,99 @@ def _build_train_fn(
 
         return synthetic_train_fn
 
-    try:
-        from trustfl_ml.config import TrainingConfig
-        from trustfl_ml.yolo_wrapper import SimulatedDetector
+    from trustfl_ml.config import TrainingConfig
+    from trustfl_ml.yolo_wrapper import YOLODetector
 
-        # Auto-detect held-out val directory if not explicitly provided
-        eval_img_dir = val_images_dir
-        eval_ann_dir = val_annotations_dir
-        if not (eval_img_dir and Path(eval_img_dir).is_dir()):
-            p_img = Path(images_dir)
-            p_ann = Path(annotations_dir)
-            if p_img.name == "images" and p_img.parent.name == "train":
-                cand_img = p_img.parent.parent / "val" / "images"
-                cand_ann = p_ann.parent.parent / "val" / "annotations"
-                if cand_img.is_dir() and cand_ann.is_dir():
-                    eval_img_dir = str(cand_img)
-                    eval_ann_dir = str(cand_ann)
+    # Auto-detect held-out val directory if not explicitly provided
+    eval_img_dir = val_images_dir
+    eval_ann_dir = val_annotations_dir
+    if not (eval_img_dir and Path(eval_img_dir).is_dir()):
+        p_img = Path(images_dir)
+        p_ann = Path(annotations_dir)
+        if p_img.name == "images" and p_img.parent.name == "train":
+            cand_img = p_img.parent.parent / "val" / "images"
+            cand_ann = p_ann.parent.parent / "val" / "annotations"
+            if cand_img.is_dir() and cand_ann.is_dir():
+                eval_img_dir = str(cand_img)
+                eval_ann_dir = str(cand_ann)
 
-        def real_train_fn(
-            _round_id: int,
-            global_params: list[list[float]],
-            _config: dict[str, Any],
-        ):
-            model = SimulatedDetector()
-            if global_params:
-                model.set_parameters(global_params)
-            train_cfg = TrainingConfig(epochs=epochs)
-            train_metrics = model.train_on_dataset(
-                images_dir=images_dir,
-                annotations_dir=annotations_dir,
-                config=train_cfg,
-                max_samples=max_samples,
-                client_index=client_index,
-                num_clients=num_clients,
-            )
-            # Must be the actual number of samples used, never max_samples
-            num_examples = train_metrics["samples_trained"]
+    def real_train_fn(
+        _round_id: int,
+        global_params: list[list[float]],
+        config: dict[str, Any],
+    ):
+        model = YOLODetector(
+            model_name=model_name,
+            num_classes=10,
+            device=device,
+            weights_path=weights_path,
+            weights_sha256=weights_sha256,
+            pretrained=pretrained,
+        )
+        if global_params:
+            model.set_parameters(global_params)
 
-            # Must evaluate on the held-out val split, never the training data
-            has_val_img = eval_img_dir and Path(eval_img_dir).is_dir()
-            has_val_ann = eval_ann_dir and Path(eval_ann_dir).is_dir()
-            val_target_images = eval_img_dir if has_val_img else images_dir
-            val_target_ann = eval_ann_dir if has_val_ann else annotations_dir
-            eval_metrics = model.evaluate_on_dataset(
-                images_dir=val_target_images,
-                annotations_dir=val_target_ann,
-                max_samples=min(max_samples, 10),
-                client_index=client_index,
-                num_clients=num_clients,
-            )
-            return model.get_parameters(), num_examples, eval_metrics
+        has_val_img = bool(eval_img_dir and Path(eval_img_dir).is_dir())
+        has_val_ann = bool(eval_ann_dir and Path(eval_ann_dir).is_dir())
+        val_target_images = eval_img_dir if has_val_img else images_dir
+        val_target_ann = eval_ann_dir if has_val_ann else annotations_dir
 
-        logger.info("Using simulated detector training function on dataset: %s", images_dir)
-        return real_train_fn
+        train_cfg = TrainingConfig(
+            model_name=model_name,
+            weights_path=weights_path,
+            weights_sha256=weights_sha256,
+            pretrained=pretrained,
+            epochs=int(config.get("local_epochs", epochs)),
+            batch_size=int(config.get("batch_size", batch_size)),
+            learning_rate=float(config.get("learning_rate", learning_rate)),
+            image_size=int(config.get("image_size", image_size)),
+            device=device,
+        )
+        train_metrics = model.train_on_dataset(
+            images_dir=images_dir,
+            annotations_dir=annotations_dir,
+            config=train_cfg,
+            max_samples=max_samples,
+            client_index=client_index,
+            num_clients=num_clients,
+            val_images_dir=val_target_images,
+            val_annotations_dir=val_target_ann,
+        )
+        # Must be the actual number of samples used, never max_samples
+        num_examples = train_metrics["samples_trained"]
 
-    except (ImportError, ValueError):
-        logger.warning("ML core not available — using synthetic train fn.")
+        eval_metrics = model.evaluate_on_dataset(
+            images_dir=val_target_images,
+            annotations_dir=val_target_ann,
+            max_samples=min(max_samples, 10),
+            client_index=client_index,
+            num_clients=num_clients,
+            image_size=train_cfg.image_size,
+            batch_size=train_cfg.batch_size,
+        )
+        raw_metrics = {
+            "train_loss": train_metrics.get("train_loss"),
+            "box_loss": train_metrics.get("box_loss"),
+            "cls_loss": train_metrics.get("cls_loss"),
+            "dfl_loss": train_metrics.get("dfl_loss"),
+            "val_loss": eval_metrics.get("val_loss"),
+            "map50": eval_metrics.get("map50"),
+            "map50_95": eval_metrics.get("map50_95"),
+            "precision": eval_metrics.get("precision"),
+            "recall": eval_metrics.get("recall"),
+            "boxes_evaluated": eval_metrics.get("boxes_evaluated"),
+            "images_evaluated": eval_metrics.get("images_evaluated"),
+        }
+        # Only transmit finite numeric metrics over the wire; unavailable metrics stay omitted (None)
+        wire_metrics = {
+            k: float(v)
+            for k, v in raw_metrics.items()
+            if v is not None and isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
+        return model.get_parameters(), num_examples, wire_metrics
 
-        def synthetic_train_fn(
-            _round_id: int,
-            global_params: list[list[float]],
-            _config: dict[str, Any],
-        ):
-            import random
-
-            params = global_params if global_params else [[random.gauss(0, 0.1) for _ in range(10)]]
-            updated = [[v + random.gauss(0, 0.01) for v in layer] for layer in params]
-            return updated, 50, {"loss": random.uniform(0.3, 0.7)}
-
-        return synthetic_train_fn
+    logger.info("Using real Ultralytics YOLO (%s) training on dataset: %s", model_name, images_dir)
+    return real_train_fn
 
 
 def main() -> None:
@@ -186,6 +218,20 @@ def main() -> None:
     parser.add_argument("--ca-bundle", default=_env("FL_CA_BUNDLE", ""))
     parser.add_argument("--epochs", type=int, default=_int_env("FL_LOCAL_EPOCHS", 1))
     parser.add_argument("--max-samples", type=int, default=_int_env("FL_MAX_SAMPLES", 50))
+    parser.add_argument("--model-name", default=_env("FL_YOLO_MODEL", "yolov8n"))
+    parser.add_argument("--weights-path", default=_env("FL_YOLO_WEIGHTS_PATH", ""))
+    parser.add_argument("--weights-sha256", default=_env("FL_YOLO_WEIGHTS_SHA256", ""))
+    parser.add_argument("--device", default=_env("FL_YOLO_DEVICE", "cpu"))
+    parser.add_argument("--image-size", type=int, default=_int_env("FL_YOLO_IMAGE_SIZE", 320))
+    parser.add_argument("--batch-size", type=int, default=_int_env("FL_YOLO_BATCH_SIZE", 4))
+    parser.add_argument(
+        "--learning-rate", type=float, default=_float_env("FL_YOLO_LEARNING_RATE", 0.01)
+    )
+    parser.add_argument(
+        "--pretrained",
+        action="store_true",
+        default=_env("FL_YOLO_PRETRAINED", "false").lower() == "true",
+    )
     parser.add_argument(
         "--poll-interval",
         type=float,
@@ -287,6 +333,14 @@ def main() -> None:
         val_annotations_dir=val_annotations_dir,
         client_index=client_idx,
         num_clients=args.num_clients,
+        model_name=args.model_name,
+        weights_path=args.weights_path or None,
+        weights_sha256=args.weights_sha256 or None,
+        device=args.device,
+        image_size=args.image_size,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        pretrained=args.pretrained,
     )
 
     from network.agent import DistributedClientAgent

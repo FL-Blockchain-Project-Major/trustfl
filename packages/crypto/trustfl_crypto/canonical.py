@@ -106,8 +106,11 @@ def generate_nonce(client_id: str, round_id: int) -> str:
 
 def _normalize_params(p: Any) -> Any:
     if hasattr(p, "tolist"):
-        p = p.tolist()
+        return p.tolist()
     if isinstance(p, (list, tuple)):
+        # Fast path for 2D list[list[float]] used by all TrustFL models
+        if p and isinstance(p[0], (list, tuple)) and p[0] and type(p[0][0]) is float:
+            return [list(layer) if type(layer) is not list else layer for layer in p]
         return [_normalize_params(x) for x in p]
     return float(p)
 

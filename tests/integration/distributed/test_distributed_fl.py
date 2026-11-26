@@ -420,20 +420,20 @@ class TestDistributedFL(unittest.TestCase):
 
     # ── test_07: 3 clients, 3 rounds, signatures on, allowlist on, real data ──
 
-    def test_07_three_clients_three_rounds_signatures_allowlist_real_data(self):
+    def test_07_three_clients_three_rounds_signatures_allowlist_real_data(self) -> None:
         """
         End-to-end integration test:
-        - 3 clients over 3 rounds
+        - 3 clients over 2 rounds
         - require_signatures = True
         - Allowlist enabled via COORDINATOR_ENROLLMENT_ALLOWLIST
-        - Real VisDrone dataset partitioned with partition_dataset (seed & Dirichlet)
-        - Trained via SimulatedDetector directly (validates real train/eval cycle)
+        - Real VisDrone (or deterministic synthetic) dataset partitioned with partition_dataset
+        - Trained via real Ultralytics YOLODetector
         """
         import tempfile
 
         from PIL import Image
         from trustfl_ml.config import TrainingConfig
-        from trustfl_ml.yolo_wrapper import SimulatedDetector
+        from trustfl_ml.yolo_wrapper import YOLODetector
 
         from datasets.tools.visdrone_prep.prepare import partition_dataset
 
@@ -451,11 +451,11 @@ class TestDistributedFL(unittest.TestCase):
                 raw_annotations.mkdir(parents=True, exist_ok=True)
                 for idx in range(15):
                     im_path = raw_images / f"sample_{idx:03d}.jpg"
-                    im = Image.new("RGB", (640, 480), color=(idx * 16 % 255, 120, 140))
+                    im = Image.new("RGB", (128, 128), color=(idx * 16 % 255, 120, 140))
                     im.save(im_path)
                     ann_path = raw_annotations / f"sample_{idx:03d}.txt"
                     ann_path.write_text(
-                        "50,50,100,80,1,1,0,0\n160,120,60,60,1,4,0,0\n240,200,80,50,1,5,0,0\n",
+                        "10,10,30,30,1,1,0,0\n50,40,30,30,1,4,0,0\n",
                         encoding="utf-8",
                     )
 
@@ -465,7 +465,7 @@ class TestDistributedFL(unittest.TestCase):
                 annotations_dir=raw_annotations,
                 output_dir=out_partitions,
                 num_clients=3,
-                samples_per_client=5,
+                samples_per_client=3,
                 seed=42,
                 dirichlet=True,
                 alpha=0.5,
@@ -477,30 +477,49 @@ class TestDistributedFL(unittest.TestCase):
                 val_imgs_dir: str,
                 val_ann_dir: str,
             ):
-                """Build a real train callable using SimulatedDetector on actual VisDrone data."""
+                """Build a real train callable using Ultralytics YOLODetector."""
 
                 def train_fn(_round_id: int, global_params, _config):
-                    model = SimulatedDetector()
+                    model = YOLODetector(
+                        model_name="yolov8n", num_classes=10, seed=42, device="cpu"
+                    )
                     if global_params:
                         model.set_parameters(global_params)
-                    train_cfg = TrainingConfig(epochs=1)
+                    train_cfg = TrainingConfig(
+                        epochs=1,
+                        batch_size=2,
+                        image_size=64,
+                        device="cpu",
+                    )
                     train_metrics = model.train_on_dataset(
                         images_dir=train_imgs_dir,
                         annotations_dir=train_ann_dir,
                         config=train_cfg,
-                        max_samples=10,
+                        max_samples=2,
+                        val_images_dir=val_imgs_dir,
+                        val_annotations_dir=val_ann_dir,
                     )
-                    # Use actual samples trained, not max_samples
                     num_examples = max(1, train_metrics["samples_trained"])
-                    # Evaluate on val split (not train)
                     eval_metrics = model.evaluate_on_dataset(
                         images_dir=val_imgs_dir,
                         annotations_dir=val_ann_dir,
-                        max_samples=5,
+                        max_samples=2,
+                        image_size=64,
+                        batch_size=2,
                     )
-                    # Only pass numeric metrics to coordinator
+                    raw_metrics = {
+                        "train_loss": train_metrics.get("train_loss"),
+                        "val_loss": eval_metrics.get("val_loss"),
+                        "map50": eval_metrics.get("map50"),
+                        "map50_95": eval_metrics.get("map50_95"),
+                        "precision": eval_metrics.get("precision"),
+                        "recall": eval_metrics.get("recall"),
+                        "boxes_evaluated": eval_metrics.get("boxes_evaluated"),
+                    }
                     numeric_metrics = {
-                        k: float(v) for k, v in eval_metrics.items() if isinstance(v, (int, float))
+                        k: float(v)
+                        for k, v in raw_metrics.items()
+                        if v is not None and isinstance(v, (int, float)) and not isinstance(v, bool)
                     }
                     return model.get_parameters(), num_examples, numeric_metrics
 
@@ -520,10 +539,10 @@ class TestDistributedFL(unittest.TestCase):
                 host="127.0.0.1",
                 port=port,
                 min_clients=3,
-                num_rounds=3,
+                num_rounds=2,
                 require_signatures=True,
-                round_timeout_seconds=20.0,
-                heartbeat_timeout_seconds=30.0,
+                round_timeout_seconds=60.0,
+                heartbeat_timeout_seconds=60.0,
             )
             server.start()
             self.assertTrue(_wait_for_server(port))
@@ -547,14 +566,15 @@ class TestDistributedFL(unittest.TestCase):
                         poll_interval=0.1,
                         max_retries=3,
                         retry_delay=0.1,
-                        connection_timeout_seconds=5.0,
+                        connection_timeout_seconds=30.0,
+                        training_timeout_seconds=120.0,
                     )
                     agents.append(ag)
 
                 for ag in agents:
                     self.assertTrue(ag.register(), f"Registration failed for {ag.client_id}")
 
-                deadline = time.time() + 30.0
+                deadline = time.time() + 90.0
                 while (
                     time.time() < deadline and server.state.current_round <= server.state.num_rounds
                 ):
@@ -562,7 +582,7 @@ class TestDistributedFL(unittest.TestCase):
                         ag.step()
                     time.sleep(0.05)
 
-                server.state.wait_until_done(timeout=5.0)
+                server.state.wait_until_done(timeout=10.0)
             finally:
                 if old_allowlist is not None:
                     os.environ["COORDINATOR_ENROLLMENT_ALLOWLIST"] = old_allowlist
@@ -576,12 +596,13 @@ class TestDistributedFL(unittest.TestCase):
                     except Exception:
                         pass
 
-            self.assertEqual(len(server.state.round_history), 3)
+            self.assertEqual(len(server.state.round_history), 2)
             for r_idx, rh in enumerate(server.state.round_history, start=1):
                 self.assertEqual(rh["round"], r_idx)
                 self.assertEqual(rh["num_successful_clients"], 3)
                 self.assertFalse(rh["timed_out"])
-                self.assertIn("accuracy_proxy", rh["metrics"])
+                self.assertIn("map50", rh["metrics"])
+                self.assertNotIn("accuracy_proxy", rh["metrics"])
 
 
 if __name__ == "__main__":

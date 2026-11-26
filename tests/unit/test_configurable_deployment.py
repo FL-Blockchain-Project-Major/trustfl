@@ -26,7 +26,7 @@ from packages.ml_core.trustfl_ml.dataset import (
     DatasetValidationError,
     resolve_and_validate_dataset,
 )
-from packages.ml_core.trustfl_ml.yolo_wrapper import SimulatedDetector
+from packages.ml_core.trustfl_ml.yolo_wrapper import YOLODetector
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +263,12 @@ class TestSharedDatasetMounts:
 
         for _cid in clients:
             ds_info = resolve_and_validate_dataset(ds_root, min_samples=1)
-            model = SimulatedDetector()
+            model = YOLODetector(model_name="yolov8n", num_classes=10, seed=42, device="cpu")
             train_metrics = model.train_on_dataset(
                 images_dir=ds_info["train_images_dir"],
                 annotations_dir=ds_info["train_annotations_dir"],
-                config=TrainingConfig(epochs=1),
-                max_samples=10,
+                config=TrainingConfig(epochs=1, batch_size=2, image_size=64, device="cpu"),
+                max_samples=4,
             )
             assert train_metrics["samples_trained"] == 4
             assert train_metrics["total_boxes"] == 8
