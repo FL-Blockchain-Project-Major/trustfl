@@ -56,8 +56,12 @@ def _redis_ready() -> bool:
 def _zkp_ready() -> bool:
     if os.getenv("ENVIRONMENT", "development").lower() != "production":
         return True
-    artifacts = Path(os.getenv("ZKP_ARTIFACTS_DIR", ""))
-    return bool(os.getenv("ZKP_VERIFY_COMMAND") and (artifacts / "verification_key.json").is_file())
+    artifacts_dir = os.getenv("ZKP_ARTIFACTS_DIR", "").strip()
+    verify_cmd = os.getenv("ZKP_VERIFY_COMMAND", "").strip()
+    if not artifacts_dir or not verify_cmd:
+        return False
+    artifacts = Path(artifacts_dir)
+    return (artifacts / "verification_key.json").is_file()
 
 
 def _storage_ready() -> bool:

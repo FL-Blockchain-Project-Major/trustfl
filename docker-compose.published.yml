@@ -113,6 +113,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - COORDINATOR_REQUIRE_ZKP=true
       - ZKP_VERIFY_COMMAND=node /app/packages/zkp/src/verify-cli.js
+      - ZKP_ARTIFACTS_DIR=/zkp-artifacts
+    volumes:
+      - ${ZKP_ARTIFACTS_DIR:?ZKP_ARTIFACTS_DIR must contain the pinned ZKP artifacts}:/zkp-artifacts:ro
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -123,7 +126,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      test: ["CMD", "python", "-c", "import json, urllib.request; d=json.loads(urllib.request.urlopen('http://localhost:8000/health/ready').read()); assert d.get('status')=='ready', d"]
       interval: 10s
       timeout: 5s
       retries: 5

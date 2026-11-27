@@ -75,6 +75,9 @@ export default function OperationsConsole() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
+  const [accessKeyInput, setAccessKeyInput] = useState("");
+  const [authError, setAuthError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selected, setSelected] = useState<RecordValue | null>(null);
 
@@ -87,11 +90,16 @@ export default function OperationsConsole() {
           Accept: "application/json",
         };
         const response = await fetch(`/api/dashboard${endpoint}`, { cache: "no-store", headers });
+        if (response.status === 401) {
+          setAuthRequired(true);
+          throw new Error("Dashboard authentication required");
+        }
         if (!response.ok) throw new Error(`Dashboard API returned ${response.status}`);
         const payload = await response.json();
         return payload.data || [];
       };
       const nextFederations = await get("/federations?limit=100");
+      setAuthRequired(false);
       const federationId = selectedFederation || String(nextFederations[0]?.id || "");
       const [clients, rounds, updates, artifacts, transactions] = federationId
         ? await Promise.all([
@@ -133,6 +141,51 @@ export default function OperationsConsole() {
   const activeClients = data.clients.filter((row) => row.is_active).length;
   const confirmed = data.transactions.filter((row) => row.status === "CONFIRMED").length;
   const activeRound = data.rounds.find((row) => row.status === "ACTIVE");
+
+  const handleUnlock = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthError("");
+    try {
+      const res = await fetch("/api/dashboard/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: accessKeyInput }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        setAuthError(String(payload.detail || "Invalid dashboard access key"));
+        return;
+      }
+      setAccessKeyInput("");
+      setAuthRequired(false);
+      await load();
+    } catch {
+      setAuthError("Unable to authenticate with dashboard server");
+    }
+  };
+
+  if (authRequired) {
+    return (
+      <div className="console-shell">
+        <header className="console-header">
+          <div><p className="eyebrow">TRUSTFL / OPERATIONS</p><h1>Dashboard authentication required</h1><p className="muted">Enter the server-configured dashboard access key to establish an HttpOnly session.</p></div>
+        </header>
+        <form onSubmit={handleUnlock} className="panel" style={{ maxWidth: 420 }}>
+          <label htmlFor="dashboard-access-key">Dashboard access key</label>
+          <input
+            id="dashboard-access-key"
+            type="password"
+            value={accessKeyInput}
+            onChange={(event) => setAccessKeyInput(event.target.value)}
+            placeholder="Enter DASHBOARD_ACCESS_KEY"
+            required
+          />
+          {authError && <div className="error-banner"><CircleAlert size={16} /><span>{authError}</span></div>}
+          <button type="submit" className="button">Unlock dashboard</button>
+        </form>
+      </div>
+    );
+  }
 
   return <div className="console-shell">
     <header className="console-header">

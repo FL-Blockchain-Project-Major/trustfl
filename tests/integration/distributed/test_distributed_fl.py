@@ -541,8 +541,13 @@ class TestDistributedFL(unittest.TestCase):
                 min_clients=3,
                 num_rounds=2,
                 require_signatures=True,
-                round_timeout_seconds=60.0,
-                heartbeat_timeout_seconds=60.0,
+                # Real YOLO training is CPU-bound; each client may take 30-60 s.
+                # With 3 clients trained sequentially via step(), the coordinator
+                # must not mark a client OFFLINE while another client is training.
+                # Use generous timeouts so the heartbeat window covers the full
+                # sequential training pass for all three clients (3 × ~60 s = 180 s).
+                round_timeout_seconds=300.0,
+                heartbeat_timeout_seconds=300.0,
             )
             server.start()
             self.assertTrue(_wait_for_server(port))
@@ -567,14 +572,15 @@ class TestDistributedFL(unittest.TestCase):
                         max_retries=3,
                         retry_delay=0.1,
                         connection_timeout_seconds=30.0,
-                        training_timeout_seconds=120.0,
+                        training_timeout_seconds=180.0,
                     )
                     agents.append(ag)
 
                 for ag in agents:
                     self.assertTrue(ag.register(), f"Registration failed for {ag.client_id}")
 
-                deadline = time.time() + 90.0
+                # Allow up to 300 s: 3 clients × ~60 s training + overhead per round.
+                deadline = time.time() + 300.0
                 while (
                     time.time() < deadline and server.state.current_round <= server.state.num_rounds
                 ):
@@ -582,7 +588,7 @@ class TestDistributedFL(unittest.TestCase):
                         ag.step()
                     time.sleep(0.05)
 
-                server.state.wait_until_done(timeout=10.0)
+                server.state.wait_until_done(timeout=30.0)
             finally:
                 if old_allowlist is not None:
                     os.environ["COORDINATOR_ENROLLMENT_ALLOWLIST"] = old_allowlist

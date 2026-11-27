@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeDashboardRequest } from "../../../../libs/auth";
 
 const API_BASE = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const READ_ONLY_PREFIXES = ["federations", "rounds", "updates", "clients", "artifacts", "blockchain", "health", "proofs"];
@@ -13,21 +14,9 @@ export async function GET(
     return NextResponse.json({ detail: "Path is not available through dashboard proxy" }, { status: 404 });
   }
 
-  const dashboardKey = process.env.DASHBOARD_ACCESS_KEY;
-  const readKey = process.env.API_READ_KEY;
-  const adminKey = process.env.API_ADMIN_KEY;
-  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
-  const token = authHeader ? authHeader.replace(/^Bearer\s+/i, "").trim() : null;
-
-  const isSameOrigin =
-    request.headers.get("sec-fetch-site") === "same-origin" ||
-    request.headers.get("referer")?.includes(request.nextUrl.host);
-
-  if (dashboardKey && !isSameOrigin) {
-    const isAuthorized = Boolean(token && (token === dashboardKey || token === readKey || token === adminKey));
-    if (!isAuthorized) {
-      return NextResponse.json({ detail: "Dashboard authentication required" }, { status: 401 });
-    }
+  const auth = authorizeDashboardRequest(request);
+  if (auth.authorized === false) {
+    return NextResponse.json({ detail: auth.detail }, { status: auth.status });
   }
 
   const path = routePath.map((part) => encodeURIComponent(part)).join("/");

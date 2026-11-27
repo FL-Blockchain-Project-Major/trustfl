@@ -79,18 +79,25 @@ def _build_train_fn(
     batch_size: int = 4,
     learning_rate: float = 0.01,
     pretrained: bool = False,
+    allow_synthetic: bool = False,
+    environment: str = "development",
 ) -> Any:
     """
     Build a training callable compatible with DistributedClientAgent.
-    Falls back to a synthetic train fn only when no dataset is configured.
+
+    Synthetic training is disabled by default and strictly forbidden in production.
+    It may only be enabled in non-production environments via explicit configuration.
     """
-    if not (
-        images_dir
-        and annotations_dir
-        and Path(images_dir).is_dir()
-        and Path(annotations_dir).is_dir()
-    ):
-        logger.info("Training data is not configured — using synthetic train fn.")
+    env_normalized = (environment or "development").strip().lower()
+    if allow_synthetic:
+        if env_normalized == "production":
+            raise RuntimeError(
+                "Synthetic training is forbidden when ENVIRONMENT=production."
+            )
+        logger.warning(
+            "DEVELOPMENT/DEMO MODE: Using explicit synthetic training function "
+            "(FL_ALLOW_SYNTHETIC_TRAINING / --allow-synthetic)."
+        )
 
         def synthetic_train_fn(
             _round_id: int,
@@ -101,12 +108,42 @@ def _build_train_fn(
 
             params = global_params if global_params else [[random.gauss(0, 0.1) for _ in range(10)]]
             updated = [[v + random.gauss(0, 0.01) for v in layer] for layer in params]
-            return updated, 50, {"loss": random.uniform(0.3, 0.7)}
+            return updated, 50, {"loss": random.uniform(0.3, 0.7), "is_simulated": True}
 
         return synthetic_train_fn
 
+    if not (
+        images_dir
+        and annotations_dir
+        and Path(images_dir).is_dir()
+        and Path(annotations_dir).is_dir()
+    ):
+        raise RuntimeError(
+            "Real YOLO training requires valid images_dir and annotations_dir "
+            f"(got images_dir={images_dir!r}, annotations_dir={annotations_dir!r}). "
+            "Synthetic fallback is disabled."
+        )
+
+    VisDroneParser.validate_dataset(
+        images_dir=images_dir,
+        annotations_dir=annotations_dir,
+        check_images_readable=True,
+    )
+
     from trustfl_ml.config import TrainingConfig
     from trustfl_ml.yolo_wrapper import YOLODetector
+
+    # Eagerly verify Ultralytics runtime and model/weights configuration at startup
+    # so production clients fail closed before joining a round.
+    _startup_detector = YOLODetector(
+        model_name=model_name,
+        num_classes=10,
+        device=device,
+        weights_path=weights_path,
+        weights_sha256=weights_sha256,
+        pretrained=pretrained,
+    )
+    del _startup_detector
 
     # Auto-detect held-out val directory if not explicitly provided
     eval_img_dir = val_images_dir
@@ -233,11 +270,21 @@ def main() -> None:
         default=_env("FL_YOLO_PRETRAINED", "false").lower() == "true",
     )
     parser.add_argument(
+        "--allow-synthetic",
+        action="store_true",
+        default=_env("FL_ALLOW_SYNTHETIC_TRAINING", "false").lower() == "true",
+    )
+    parser.add_argument(
         "--poll-interval",
         type=float,
         default=_float_env("FL_POLL_INTERVAL_SECONDS", 5.0),
     )
     args = parser.parse_args()
+
+    environment = _env("ENVIRONMENT", "development").strip().lower()
+    if args.allow_synthetic and environment == "production":
+        logger.error("FL_ALLOW_SYNTHETIC_TRAINING / --allow-synthetic is forbidden in production.")
+        sys.exit(1)
 
     # 1. Identity acquisition (explicit vs dynamic slot claiming)
     lock_handle = None
@@ -324,24 +371,37 @@ def main() -> None:
     if match:
         client_idx = max(0, int(match.group(1)) - 1)
 
-    train_fn = _build_train_fn(
-        images_dir,
-        annotations_dir,
-        args.epochs,
-        args.max_samples,
-        val_images_dir=val_images_dir,
-        val_annotations_dir=val_annotations_dir,
-        client_index=client_idx,
-        num_clients=args.num_clients,
-        model_name=args.model_name,
-        weights_path=args.weights_path or None,
-        weights_sha256=args.weights_sha256 or None,
-        device=args.device,
-        image_size=args.image_size,
-        batch_size=args.batch_size,
-        learning_rate=args.learning_rate,
-        pretrained=args.pretrained,
-    )
+    if not args.allow_synthetic and not (args.dataset_dir or (images_dir and annotations_dir)):
+        logger.error(
+            "Dataset is required: provide --dataset-dir (FL_DATASET_DIR) or both "
+            "--images-dir and --annotations-dir. Synthetic training is disabled."
+        )
+        sys.exit(1)
+
+    try:
+        train_fn = _build_train_fn(
+            images_dir,
+            annotations_dir,
+            args.epochs,
+            args.max_samples,
+            val_images_dir=val_images_dir,
+            val_annotations_dir=val_annotations_dir,
+            client_index=client_idx,
+            num_clients=args.num_clients,
+            model_name=args.model_name,
+            weights_path=args.weights_path or None,
+            weights_sha256=args.weights_sha256 or None,
+            device=args.device,
+            image_size=args.image_size,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            pretrained=args.pretrained,
+            allow_synthetic=args.allow_synthetic,
+            environment=environment,
+        )
+    except Exception as exc:
+        logger.error("Failed to initialize client training pipeline: %s", exc)
+        sys.exit(1)
 
     from network.agent import DistributedClientAgent
 

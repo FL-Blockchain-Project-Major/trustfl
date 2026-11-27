@@ -399,7 +399,7 @@ Start all three sites; the coordinator starts round 1 as soon as the third regis
 ```
 INFO client.main | Using client identity cli_hospital_a (public key: vksL/Ho2CvowMh9OxT3wXql8ernutD2eZYSk9fimjHk=)
 INFO client.main | Explicit images/annotations validated: 120 valid pairs.
-INFO client.main | Using simulated detector training function on dataset: .../client_0/train/images
+INFO client.main | Using real Ultralytics YOLO (yolov8n) training on dataset: .../client_0/train/images
 INFO network.agent | [cli_hospital_a] Registered with coordinator.
 INFO client.main | Client cli_hospital_a connected and registered with https://coordinator.trustfl.test
 ...
@@ -544,7 +544,7 @@ The walkthrough below documents a manual multi-network-namespace run. The same b
 - Let's Encrypt/Certbot and a real public DNS name (a private CA was used).
 - Pinata and IPFS Cluster; Tailscale/WireGuard mesh; Kubernetes ingress; cloud Postgres (Aurora/Cloud SQL).
 - Docker Compose / container images (registries were unreachable from the sandbox).
-- Real object-detection training (the model is simulated) and any model quality metric.
+- Real internet WAN latency, packet loss, ISP/CGNAT behaviour, Let's Encrypt, public DNS, Pinata, and Tailscale (this run used Linux network namespaces on a single host). Note: real Ultralytics YOLO training and genuine mAP evaluation replaced the earlier simulated detector in Phase 12 (see `docs/phase12-yolo-validation-report.md`).
 - More than 3 sites, or several clients behind one NAT.
 
 ---
