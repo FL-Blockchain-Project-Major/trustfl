@@ -1,5 +1,7 @@
 """Tests for update status AGGREGATED persistence transition."""
 
+import uuid
+
 import pytest
 
 from apps.api.api.db.models import Base, Update, UpdateStatus
@@ -9,13 +11,16 @@ from apps.coordinator.persistence import CoordinatorPersistence
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+    Base.metadata.drop_all(bind=engine)
 
 
 def test_coordinator_persistence_record_aggregation():
     persistence = CoordinatorPersistence()
-    update_id = "test_update_agg_1"
+    # Use a unique update_id per test run to avoid cross-test collisions.
+    update_id = f"test_update_agg_{uuid.uuid4().hex[:8]}"
     round_id = f"{persistence.federation_id}_round1"
 
     with SessionLocal() as db:

@@ -6,7 +6,9 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Raised to 128 MiB to accommodate real YOLOv8n weight payloads on /submit.
+    # Matches COORDINATOR_MAX_BODY_BYTES=134217728 in the coordinator service.
+    nginx.ingress.kubernetes.io/proxy-body-size: "128m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/configuration-snippet: |

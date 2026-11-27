@@ -11,13 +11,17 @@ from apps.coordinator.persistence import CoordinatorPersistence
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+    Base.metadata.drop_all(bind=engine)
 
 
 def test_round_transitions_are_atomic_and_validated():
     persistence = CoordinatorPersistence()
     federation_id = persistence.federation_id
+    # Use a unique round number to avoid collisions with any previous DB state.
+    round_num = int(uuid.uuid4().hex[:4], 16) % 90000 + 10000
     with SessionLocal() as db:
         db.merge(
             Federation(
@@ -29,10 +33,10 @@ def test_round_transitions_are_atomic_and_validated():
         )
         db.commit()
 
-    persistence.start_round(901, "initial")
-    assert persistence.transition_round(901, {"COLLECTING"}, "VALIDATING")
-    assert persistence.transition_round(901, {"VALIDATING"}, "AGGREGATING")
-    assert not persistence.transition_round(901, {"COLLECTING"}, "COMMITTING")
+    persistence.start_round(round_num, "initial")
+    assert persistence.transition_round(round_num, {"COLLECTING"}, "VALIDATING")
+    assert persistence.transition_round(round_num, {"VALIDATING"}, "AGGREGATING")
+    assert not persistence.transition_round(round_num, {"COLLECTING"}, "COMMITTING")
 
 
 def test_blockchain_outbox_is_idempotent_and_retries_are_bounded():
