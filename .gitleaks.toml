@@ -7,19 +7,16 @@ title = "TrustFL gitleaks config"
 # Use gitleaks default ruleset as the base
 useDefault = true
 
-[[allowlists]]
+[allowlist]
 description = "Hardhat development private key (Account #0) — publicly documented test fixture key, never used outside local/CI Hardhat nodes"
-# This is the well-known Hardhat test private key listed in
-# https://hardhat.org/hardhat-network/docs/reference — it has no real value
-# and is intentionally committed in test files so the test suite can connect
-# to ephemeral local Hardhat nodes without requiring any real credentials.
+regexTarget = "secret"
 regexes = [
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    '''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
 ]
 paths = [
-    "tests/test_phase10_production.py",
-    "tests/api/test_published_compose.py",
-    "tests/integration/distributed/test_phase13_production_acceptance.py",
-    "tests/integration/blockchain_fl/test_fl_blockchain.py",
-    "tests/integration/ha_dr/test_phase14_ha_dr.py",
+    '''tests/test_phase10_production\.py''',
+    '''tests/api/test_published_compose\.py''',
+    '''tests/integration/distributed/test_phase13_production_acceptance\.py''',
+    '''tests/integration/blockchain_fl/test_fl_blockchain\.py''',
+    '''tests/integration/ha_dr/test_phase14_ha_dr\.py''',
 ]
