@@ -206,7 +206,21 @@ server {
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
 
+    # Keep default routes capped at 1M; allow 128M only on /submit for real YOLOv8n updates.
     client_max_body_size 1M;
+
+    location = /submit {
+        client_max_body_size 128M;
+        limit_req zone=trustfl_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8100;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 10s;
+    }
 
     location / {
         limit_req zone=trustfl_limit burst=20 nodelay;
@@ -675,7 +689,21 @@ server {
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
 
+    # Keep default routes capped at 1M; allow 128M only on /submit for real YOLOv8n updates.
     client_max_body_size 1M;
+
+    location = /submit {
+        client_max_body_size 128M;
+        limit_req zone=trustfl_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8100;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 10s;
+    }
 
     location / {
         limit_req zone=trustfl_limit burst=20 nodelay;

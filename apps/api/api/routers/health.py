@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -29,7 +30,25 @@ def readiness():
     }
     ready = all(checks.values())
     metrics.set("trustfl_readiness", 1 if ready else 0)
+    _record_operational_gauges()
     return {"status": "ready" if ready else "degraded"}
+
+
+def _record_operational_gauges() -> None:
+    """Emit secret-expiry and backup-freshness gauges for Prometheus alerting."""
+    now = time.time()
+    raw_expiry = os.getenv("TLS_CERT_EXPIRY_EPOCH") or os.getenv("SECRET_EXPIRY_EPOCH")
+    if raw_expiry:
+        try:
+            metrics.set("trustfl_secret_expiry_seconds", max(0.0, float(raw_expiry) - now))
+        except ValueError:
+            pass
+    backup_dir = os.getenv("BACKUP_DIR")
+    if backup_dir and Path(backup_dir).is_dir():
+        archives = list(Path(backup_dir).glob("trustfl-*.dump.enc"))
+        if archives:
+            newest = max(p.stat().st_mtime for p in archives)
+            metrics.set("trustfl_backup_age_seconds", max(0.0, now - newest))
 
 
 def _database_ready() -> bool:

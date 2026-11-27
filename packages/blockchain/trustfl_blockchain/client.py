@@ -27,27 +27,45 @@ class BlockchainClient:
         _network_name: str = "default",
         max_retries: int = 3,
         transaction_recorder: Callable[[dict[str, Any]], None] | None = None,
+        fallback_rpc_urls: list[str] | None = None,
     ):
-        self.w3 = Web3(Web3.HTTPProvider(rpc_url))
-        if not self.w3.is_connected():
-            raise ConnectionError(f"Cannot connect to EVM at {rpc_url}")
+        if fallback_rpc_urls is None:
+            raw_fallbacks = os.getenv("BLOCKCHAIN_FALLBACK_RPC_URLS", "")
+            fallbacks = [u.strip() for u in raw_fallbacks.split(",") if u.strip()]
+        else:
+            fallbacks = [u.strip() for u in fallback_rpc_urls if u.strip()]
 
-        self.account = self.w3.eth.account.from_key(private_key)
-        self.w3.eth.default_account = self.account.address
-        self.max_retries = max_retries
-        self.finality_blocks = max(1, int(os.getenv("BLOCKCHAIN_FINALITY_BLOCKS", "1")))
-        self.transaction_recorder = transaction_recorder
-        # Serialise allocation, build/sign/send.  A receipt wait happens after
-        # send, so independent transactions can still confirm concurrently.
-        self._nonce_lock = threading.Lock()
-        self._next_nonce: int | None = None
-        self._pending_transactions: dict[str, dict[str, Any]] = {}
+        self._rpc_urls: list[str] = []
+        for candidate in [rpc_url.strip(), *fallbacks]:
+            if candidate and candidate not in self._rpc_urls:
+                self._rpc_urls.append(candidate)
+        self._rpc_index = 0
 
         with open(contracts_json_path) as f:
             data = json.load(f)
+        self._contracts_data = data.get("contracts", {})
 
-        contracts = data.get("contracts", {})
+        self.max_retries = max_retries
+        self.finality_blocks = max(1, int(os.getenv("BLOCKCHAIN_FINALITY_BLOCKS", "1")))
+        self.transaction_recorder = transaction_recorder
+        self._nonce_lock = threading.Lock()
+        self._next_nonce: int | None = None
+        self._pending_transactions: dict[str, dict[str, Any]] = {}
+        self._private_key = private_key
 
+        if not self._connect_first_healthy_rpc():
+            raise ConnectionError(f"Cannot connect to EVM at any configured RPC: {self._rpc_urls}")
+
+    def _bind_rpc(self, rpc_url: str) -> bool:
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        if not w3.is_connected():
+            return False
+        account = w3.eth.account.from_key(self._private_key)
+        w3.eth.default_account = account.address
+        self.w3 = w3
+        self.account = account
+        self.rpc_url = rpc_url
+        contracts = self._contracts_data
         self.client_registry = self.w3.eth.contract(
             address=contracts["ClientRegistry"]["address"], abi=contracts["ClientRegistry"]["abi"]
         )
@@ -58,6 +76,33 @@ class BlockchainClient:
         self.update_registry = self.w3.eth.contract(
             address=contracts["UpdateRegistry"]["address"], abi=contracts["UpdateRegistry"]["abi"]
         )
+        return True
+
+    def _connect_first_healthy_rpc(self) -> bool:
+        for idx, url in enumerate(self._rpc_urls):
+            if self._bind_rpc(url):
+                self._rpc_index = idx
+                return True
+        return False
+
+    def _failover_rpc(self) -> bool:
+        if len(self._rpc_urls) <= 1:
+            return False
+        for offset in range(1, len(self._rpc_urls)):
+            idx = (self._rpc_index + offset) % len(self._rpc_urls)
+            candidate = self._rpc_urls[idx]
+            try:
+                if self._bind_rpc(candidate):
+                    logger.warning(
+                        "Blockchain RPC failed over from %s to %s",
+                        self._rpc_urls[self._rpc_index],
+                        candidate,
+                    )
+                    self._rpc_index = idx
+                    return True
+            except Exception:
+                continue
+        return False
 
     def _send_tx_with_retry(
         self,
@@ -158,6 +203,7 @@ class BlockchainClient:
                     return False
                 with self._nonce_lock:
                     self._next_nonce = None
+                self._failover_rpc()
                 time.sleep(1)
 
         logger.error(f"{error_context} failed after {self.max_retries} attempts")

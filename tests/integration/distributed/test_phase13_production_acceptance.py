@@ -637,11 +637,153 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
             self.skipTest(
                 "Opt-in external IPFS/Hardhat test; set TRUSTFL_RUN_EXTERNAL_INFRA_TEST=1 to run"
             )
-        ipfs_resp = requests.post("http://127.0.0.1:5001/api/v0/id", timeout=3)
-        self.assertEqual(ipfs_resp.status_code, 200)
-        rpc_resp = requests.post(
-            "http://127.0.0.1:8545",
-            json={"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1},
-            timeout=3,
-        )
-        self.assertEqual(rpc_resp.status_code, 200)
+        if not shutil.which("ipfs") or not shutil.which("npx"):
+            self.skipTest("Requires ipfs and npx in PATH")
+
+        from trustfl_blockchain.client import BlockchainClient
+        from trustfl_storage.client import IPFSStorageClient
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            ipfs_repo = root / "ipfs_repo"
+            ipfs_env = os.environ.copy()
+            ipfs_env["IPFS_PATH"] = str(ipfs_repo)
+            subprocess.run(["ipfs", "init", "--profile=test"], env=ipfs_env, check=True, capture_output=True)
+            ipfs_api_port = _get_free_port()
+            ipfs_gw_port = _get_free_port()
+            ipfs_swarm_port = _get_free_port()
+            subprocess.run(
+                ["ipfs", "config", "Addresses.API", f"/ip4/127.0.0.1/tcp/{ipfs_api_port}"],
+                env=ipfs_env,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["ipfs", "config", "Addresses.Gateway", f"/ip4/127.0.0.1/tcp/{ipfs_gw_port}"],
+                env=ipfs_env,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["ipfs", "config", "--json", "Addresses.Swarm", json.dumps([f"/ip4/127.0.0.1/tcp/{ipfs_swarm_port}"])],
+                env=ipfs_env,
+                check=True,
+                capture_output=True,
+            )
+            ipfs_proc = subprocess.Popen(
+                ["ipfs", "daemon"],
+                env=ipfs_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            hh_port = _get_free_port()
+            hh_home = root / "hh_home"
+            hh_home.mkdir(parents=True, exist_ok=True)
+            hh_env = os.environ.copy()
+            hh_env["HOME"] = str(hh_home)
+            hh_env["XDG_CONFIG_HOME"] = str(hh_home / ".config")
+            hh_env["XDG_CACHE_HOME"] = str(hh_home / ".cache")
+            hh_proc = subprocess.Popen(
+                ["npx", "hardhat", "node", "--port", str(hh_port)],
+                cwd=str(REPO_ROOT / "packages" / "contracts"),
+                env=hh_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                ipfs_url = f"http://127.0.0.1:{ipfs_api_port}"
+                rpc_url = f"http://127.0.0.1:{hh_port}"
+                deadline = time.time() + 30.0
+                while time.time() < deadline:
+                    try:
+                        if requests.post(f"{ipfs_url}/api/v0/id", timeout=1).status_code == 200:
+                            break
+                    except Exception:
+                        time.sleep(0.3)
+                else:
+                    self.fail("IPFS daemon did not become ready in time")
+
+                while time.time() < deadline:
+                    try:
+                        r = requests.post(
+                            rpc_url,
+                            json={"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1},
+                            timeout=1,
+                        )
+                        if r.status_code == 200:
+                            break
+                    except Exception:
+                        time.sleep(0.3)
+                else:
+                    self.fail("Hardhat node did not become ready in time")
+
+                # Deploy contracts to local Hardhat node via a short inline script or deploy.js
+                contracts_json = root / "contracts.json"
+                deploy_js = f"""
+import fs from "fs";
+import {{ ethers }} from "ethers";
+const provider = new ethers.JsonRpcProvider("{rpc_url}");
+const signer = await provider.getSigner(0);
+const readArt = (name) => JSON.parse(fs.readFileSync("{REPO_ROOT}/packages/contracts/artifacts/contracts/" + name + ".sol/" + name + ".json", "utf8"));
+const crArt = readArt("ClientRegistry");
+const rrArt = readArt("TrainingRoundRegistry");
+const urArt = readArt("UpdateRegistry");
+const cr = await (new ethers.ContractFactory(crArt.abi, crArt.bytecode, signer)).deploy();
+await cr.waitForDeployment();
+const rr = await (new ethers.ContractFactory(rrArt.abi, rrArt.bytecode, signer)).deploy();
+await rr.waitForDeployment();
+const ur = await (new ethers.ContractFactory(urArt.abi, urArt.bytecode, signer)).deploy(await cr.getAddress(), await rr.getAddress());
+await ur.waitForDeployment();
+const role = ethers.id("COORDINATOR_ROLE");
+await (await cr.grantRole(role, await signer.getAddress())).wait();
+await (await rr.grantRole(role, await signer.getAddress())).wait();
+await (await ur.grantRole(role, await signer.getAddress())).wait();
+fs.writeFileSync("{contracts_json}", JSON.stringify({{
+  contracts: {{
+    ClientRegistry: {{ address: await cr.getAddress(), abi: crArt.abi }},
+    TrainingRoundRegistry: {{ address: await rr.getAddress(), abi: rrArt.abi }},
+    UpdateRegistry: {{ address: await ur.getAddress(), abi: urArt.abi }}
+  }}
+}}));
+"""
+                subprocess.run(
+                    ["node", "--input-type=module", "-e", deploy_js],
+                    cwd=str(REPO_ROOT / "packages" / "contracts"),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+                # Verify real IPFS storage + SHA-256 integrity
+                ipfs_client = IPFSStorageClient(api_url=ipfs_url)
+                payload = b"trustfl-phase13-real-ipfs-artifact-bytes"
+                meta = ipfs_client.save_artifact(payload, "v1", 1, client_id="c1", update_id="u1")
+                self.assertTrue(meta.uri.startswith("ipfs://"))
+                loaded = ipfs_client.load_artifact(meta.uri, meta.sha256_hash)
+                self.assertEqual(loaded, payload)
+
+                # Verify real Hardhat EVM transactions (Account #0 standard Hardhat dev key)
+                recorded_txs: list[dict[str, Any]] = []
+                hh_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+                bc = BlockchainClient(
+                    rpc_url=rpc_url,
+                    contracts_json_path=str(contracts_json),
+                    private_key=hh_key,
+                    transaction_recorder=recorded_txs.append,
+                )
+                self.assertTrue(bc.register_client("c1", "pubkey_hash_1"))
+                self.assertTrue(bc.create_round(1, "v1"))
+                self.assertTrue(bc.activate_round(1))
+                self.assertTrue(bc.submit_update("u1", 1, "c1", meta.sha256_hash, "nonce-1"))
+                self.assertTrue(bc.mark_verification_state("u1", True))
+                self.assertTrue(bc.record_aggregation("u1"))
+                self.assertTrue(bc.finalize_round(1, meta.sha256_hash))
+                self.assertEqual(len(recorded_txs), 7)
+                self.assertTrue(all(tx["status"] == "CONFIRMED" for tx in recorded_txs))
+            finally:
+                ipfs_proc.terminate()
+                hh_proc.terminate()
+                ipfs_proc.wait(timeout=10)
+                hh_proc.wait(timeout=10)

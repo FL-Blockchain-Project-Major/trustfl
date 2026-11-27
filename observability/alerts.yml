@@ -33,3 +33,35 @@ groups:
         annotations:
           summary: Rate-limit violations are elevated
           runbook: docs/runbooks/security-events.md
+      - alert: TrustFLRedisFallbackActive
+        expr: increase(trustfl_redis_fallback_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: API rate limiter fell back to local memory due to Redis unavailability
+          runbook: docs/runbooks/dependencies.md
+      - alert: TrustFLDatabaseLatencyHigh
+        expr: max(trustfl_db_query_seconds{quantile="0.99"}) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Database p99 query latency exceeds one second
+          runbook: docs/runbooks/dependencies.md
+      - alert: TrustFLSecretExpiringSoon
+        expr: trustfl_secret_expiry_seconds > 0 and trustfl_secret_expiry_seconds < 604800
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: TLS/API/client secret expires within 7 days
+          runbook: docs/runbooks/security-events.md
+      - alert: TrustFLBackupStale
+        expr: trustfl_backup_age_seconds > 86400
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Latest verified PostgreSQL backup is older than 24 hours
+          runbook: docs/production/backup-and-restore.md

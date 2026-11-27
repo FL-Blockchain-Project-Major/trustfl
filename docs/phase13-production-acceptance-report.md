@@ -73,11 +73,12 @@ Verified via `tests/integration/distributed/test_phase13_production_acceptance.p
   - Blockchain lifecycle recorded: `2 × register_client`, `2 × create_round`, `2 × activate_round`, `4 × submit_update`, `4 × mark_verification_state`, `4 × record_aggregation`, `2 × finalize_round`.
 - **Security Controls**: Un-allowlisted client rejected (`401`/`403`), missing ZKP rejected (`400`/`401`/`403`), duplicate submission rejected.
 - **Recovery & Timeout**: Restart recovery restored round/pending/nonce state; tampered artifact rejected (`global_parameters` reset to empty); dropped client triggered clean round timeout.
+- **External IPFS + Hardhat Stack (`TRUSTFL_RUN_EXTERNAL_INFRA_TEST=1`)**: Provisioned isolated `ipfs daemon` and `hardhat node`, deployed `ClientRegistry`, `TrainingRoundRegistry`, and `UpdateRegistry`, verified `IPFSStorageClient` `ipfs://` save/load + SHA-256 integrity, and verified 7 `CONFIRMED` on-chain transactions via `BlockchainClient`.
 
 ---
 
 ## 6. Known Limitations & Remaining Production Blockers
 
-1. **External Infrastructure Not Run in CI**: Live `ipfs daemon` and `hardhat node` / testnet RPC are gated behind `TRUSTFL_RUN_EXTERNAL_INFRA_TEST=1` and not started during standard CI.
-2. **Multi-Machine WAN Testing**: Physical multi-host deployment across distinct cloud/edge VMs remains an operational deployment step outside the single-host test runner.
-3. **YOLOv8n Payload Size Through Reverse Proxies**: Real YOLOv8n JSON parameter payloads exceed 1 MB; NGINX `client_max_body_size` and `COORDINATOR_MAX_BODY_BYTES` must both be raised (e.g., `128m` / `134217728`).
+1. **External Infrastructure Isolated from Ordinary CI**: Live `ipfs daemon` and `hardhat node` are verified opt-in via `TRUSTFL_RUN_EXTERNAL_INFRA_TEST=1` and remain excluded from default unit CI runs.
+2. **Multi-Machine WAN Testing**: Physical multi-host deployment across distinct cloud/edge VMs was **not executed** on this single-host environment and remains an operational verification step on target infrastructure.
+3. **YOLOv8n Payload Size Through Reverse Proxies**: Resolved in NGINX configs (`docs/DEPLOYMENT_SCENARIOS.md`, `docs/SCENARIO_3_WALKTHROUGH.md`) by keeping `client_max_body_size 1M;` as the server default and allowing `client_max_body_size 128M;` specifically on `location = /submit` to match `COORDINATOR_MAX_BODY_BYTES=134217728`.

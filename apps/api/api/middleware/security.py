@@ -202,12 +202,29 @@ class GlobalRateLimitMiddleware:
             keys = {f"{key}:{path}", f"identity:{identity}:{path}"}
             counts = []
             if self._redis is not None:
-                for rate_key in keys:
-                    bucket = f"trustfl:ratelimit:{rate_key}:{path}:{int(time.time() // period)}"
-                    current = int(self._redis.incr(bucket))
-                    if current == 1:
-                        self._redis.expire(bucket, int(period) + 1)
-                    counts.append(current)
+                try:
+                    for rate_key in keys:
+                        bucket = f"trustfl:ratelimit:{rate_key}:{path}:{int(time.time() // period)}"
+                        current = int(self._redis.incr(bucket))
+                        if current == 1:
+                            self._redis.expire(bucket, int(period) + 1)
+                        counts.append(current)
+                except Exception as exc:
+                    logger.warning(
+                        "Redis rate limiter transient failure (%s); falling back to local limiter",
+                        exc,
+                    )
+                    if _metrics is not None:
+                        _metrics.inc("trustfl_redis_fallback_total")
+                    counts.clear()
+                    with self._lock:
+                        for rate_key in keys:
+                            started, count = self._windows.get(rate_key, (now, 0))
+                            if now - started >= period:
+                                started, count = now, 0
+                            count += 1
+                            self._windows[rate_key] = (started, count)
+                            counts.append(count)
             else:
                 with self._lock:
                     for rate_key in keys:

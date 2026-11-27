@@ -1,9 +1,12 @@
 import hashlib
+import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -88,14 +91,32 @@ class LocalStorageClient(StorageClient):
 
 
 class IPFSStorageClient(StorageClient):
-    """IPFS-compatible storage for model artifacts."""
+    """IPFS-compatible storage for model artifacts with pinning & replica failover."""
 
-    def __init__(self, api_url: str = "http://127.0.0.1:5001"):
+    def __init__(
+        self,
+        api_url: str = "http://127.0.0.1:5001",
+        replica_urls: list[str] | None = None,
+        pin: bool = True,
+    ):
         self.api_url = api_url.rstrip("/")
+        if replica_urls is None:
+            raw_replicas = os.getenv("IPFS_REPLICA_URLS", "")
+            self.replica_urls = [u.strip().rstrip("/") for u in raw_replicas.split(",") if u.strip()]
+        else:
+            self.replica_urls = [u.strip().rstrip("/") for u in replica_urls if u.strip()]
+        self.pin = pin
         self.timeout = (
             float(os.getenv("IPFS_CONNECT_TIMEOUT_SECONDS", "5")),
             float(os.getenv("IPFS_READ_TIMEOUT_SECONDS", "30")),
         )
+
+    def _endpoints(self) -> list[str]:
+        seen: list[str] = []
+        for url in [self.api_url, *self.replica_urls]:
+            if url and url not in seen:
+                seen.append(url)
+        return seen
 
     def save_artifact(
         self,
@@ -107,14 +128,47 @@ class IPFSStorageClient(StorageClient):
     ) -> ArtifactMetadata:
         sha256_hash = compute_sha256(data)
         size = len(data)
+        pin_param = "true" if self.pin else "false"
 
-        # IPFS HTTP API: POST /api/v0/add
-        files = {"file": ("artifact.bin", data, "application/octet-stream")}
-        resp = requests.post(f"{self.api_url}/api/v0/add", files=files, timeout=self.timeout)
-        resp.raise_for_status()
+        cid: str | None = None
+        last_exc: Exception | None = None
+        primary_used: str | None = None
+        for endpoint in self._endpoints():
+            try:
+                files = {"file": ("artifact.bin", data, "application/octet-stream")}
+                resp = requests.post(
+                    f"{endpoint}/api/v0/add",
+                    params={"pin": pin_param},
+                    files=files,
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                cid = resp.json()["Hash"]
+                primary_used = endpoint
+                break
+            except Exception as exc:
+                logger.warning("IPFS upload failed on %s: %s", endpoint, exc)
+                last_exc = exc
 
-        result = resp.json()
-        cid = result["Hash"]
+        if cid is None:
+            assert last_exc is not None
+            raise last_exc
+
+        # Replicate and pin onto remaining healthy replicas for node-failure resilience.
+        for replica in self._endpoints():
+            if replica == primary_used:
+                continue
+            try:
+                files = {"file": ("artifact.bin", data, "application/octet-stream")}
+                rep_resp = requests.post(
+                    f"{replica}/api/v0/add",
+                    params={"pin": "true"},
+                    files=files,
+                    timeout=self.timeout,
+                )
+                rep_resp.raise_for_status()
+            except Exception as exc:
+                logger.warning("IPFS replica pin failed on %s for %s: %s", replica, cid, exc)
 
         return ArtifactMetadata(
             uri=f"ipfs://{cid}",
@@ -131,15 +185,27 @@ class IPFSStorageClient(StorageClient):
             raise ValueError("Invalid URI for IPFSStorageClient")
 
         cid = uri[len("ipfs://") :]
+        last_exc: Exception | None = None
+        for endpoint in self._endpoints():
+            try:
+                resp = requests.post(
+                    f"{endpoint}/api/v0/cat",
+                    params={"arg": cid},
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.content
+                actual_hash = compute_sha256(data)
+                if actual_hash != expected_hash:
+                    raise ValueError(
+                        f"Hash mismatch! Expected {expected_hash}, got {actual_hash}"
+                    )
+                return data
+            except ValueError:
+                raise
+            except Exception as exc:
+                logger.warning("IPFS fetch failed on %s for %s: %s", endpoint, cid, exc)
+                last_exc = exc
 
-        # IPFS HTTP API: POST /api/v0/cat?arg=<cid>
-        resp = requests.post(f"{self.api_url}/api/v0/cat?arg={cid}", timeout=self.timeout)
-        resp.raise_for_status()
-
-        data = resp.content
-        actual_hash = compute_sha256(data)
-
-        if actual_hash != expected_hash:
-            raise ValueError(f"Hash mismatch! Expected {expected_hash}, got {actual_hash}")
-
-        return data
+        assert last_exc is not None
+        raise last_exc
