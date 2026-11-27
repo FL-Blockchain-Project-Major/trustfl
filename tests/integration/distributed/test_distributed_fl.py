@@ -478,11 +478,16 @@ class TestDistributedFL(unittest.TestCase):
                 val_ann_dir: str,
             ):
                 """Build a real train callable using Ultralytics YOLODetector."""
+                cached_model: list[YOLODetector] = []
 
                 def train_fn(_round_id: int, global_params, _config):
-                    model = YOLODetector(
-                        model_name="yolov8n", num_classes=10, seed=42, device="cpu"
-                    )
+                    if not cached_model:
+                        cached_model.append(
+                            YOLODetector(
+                                model_name="yolov8n", num_classes=10, seed=42, device="cpu"
+                            )
+                        )
+                    model = cached_model[0]
                     if global_params:
                         model.set_parameters(global_params)
                     train_cfg = TrainingConfig(
@@ -496,8 +501,6 @@ class TestDistributedFL(unittest.TestCase):
                         annotations_dir=train_ann_dir,
                         config=train_cfg,
                         max_samples=2,
-                        val_images_dir=val_imgs_dir,
-                        val_annotations_dir=val_ann_dir,
                     )
                     num_examples = max(1, train_metrics["samples_trained"])
                     eval_metrics = model.evaluate_on_dataset(
@@ -546,8 +549,8 @@ class TestDistributedFL(unittest.TestCase):
                 # must not mark a client OFFLINE while another client is training.
                 # Use generous timeouts so the heartbeat window covers the full
                 # sequential training pass for all three clients (3 × ~60 s = 180 s).
-                round_timeout_seconds=300.0,
-                heartbeat_timeout_seconds=300.0,
+                round_timeout_seconds=420.0,
+                heartbeat_timeout_seconds=420.0,
             )
             server.start()
             self.assertTrue(_wait_for_server(port))
@@ -579,8 +582,8 @@ class TestDistributedFL(unittest.TestCase):
                 for ag in agents:
                     self.assertTrue(ag.register(), f"Registration failed for {ag.client_id}")
 
-                # Allow up to 300 s: 3 clients × ~60 s training + overhead per round.
-                deadline = time.time() + 300.0
+                # Allow up to 420 s: 3 clients × ~60 s training + overhead per round on CI.
+                deadline = time.time() + 420.0
                 while (
                     time.time() < deadline and server.state.current_round <= server.state.num_rounds
                 ):

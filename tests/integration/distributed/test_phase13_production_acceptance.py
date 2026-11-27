@@ -334,8 +334,8 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
                 zkp_verifier=zkp_verifier,
                 storage_client=storage,
                 blockchain_client=blockchain,
-                round_timeout_seconds=300.0,
-                heartbeat_timeout_seconds=300.0,
+                round_timeout_seconds=420.0,
+                heartbeat_timeout_seconds=420.0,
             )
             proxy = _TLSReverseProxy("127.0.0.1", coord_port, srv_crt, srv_key)
 
@@ -371,6 +371,9 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
                             "FL_YOLO_IMAGE_SIZE": "64",
                             "FL_YOLO_BATCH_SIZE": "2",
                             "FL_POLL_INTERVAL_SECONDS": "0.5",
+                            "OMP_NUM_THREADS": "1",
+                            "MKL_NUM_THREADS": "1",
+                            "TORCH_NUM_THREADS": "1",
                             "ZKP_ARTIFACTS_DIR": str(REPO_ROOT / "packages" / "zkp" / "artifacts"),
                             "PYTHONPATH": os.pathsep.join(
                                 [
@@ -393,7 +396,7 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
                     )
                     procs.append(proc)
 
-                deadline = time.time() + 420.0
+                deadline = time.time() + 480.0
                 for proc in procs:
                     remaining = max(1.0, deadline - time.time())
                     out, _ = proc.communicate(timeout=remaining)

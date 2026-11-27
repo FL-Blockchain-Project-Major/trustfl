@@ -37,6 +37,10 @@ logger = logging.getLogger(__name__)
 # or FL_YOLO_WEIGHTS_SHA256.
 KNOWN_WEIGHT_SHA256: dict[str, str] = {}
 
+# Process-local cache of base Ultralytics model YAML dicts to avoid
+# constructing a throwaway DetectionModel on every YOLODetector init.
+_BASE_YAML_CACHE: dict[str, dict[str, Any]] = {}
+
 
 def compute_file_sha256(file_path: Path | str) -> str:
     """Compute hex SHA-256 digest of a file."""
@@ -160,8 +164,10 @@ class YOLODetector:
         base_yaml = (
             self.model_name if self.model_name.endswith(".yaml") else f"{self.model_name}.yaml"
         )
-        probe = YOLO(base_yaml)
-        cfg_dict = dict(probe.model.yaml)
+        if base_yaml not in _BASE_YAML_CACHE:
+            probe = YOLO(base_yaml)
+            _BASE_YAML_CACHE[base_yaml] = dict(probe.model.yaml)
+        cfg_dict = dict(_BASE_YAML_CACHE[base_yaml])
         cfg_dict["nc"] = self.num_classes
 
         self._temp_cfg_dir = tempfile.TemporaryDirectory(prefix="trustfl_yolo_cfg_")
