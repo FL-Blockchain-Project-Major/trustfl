@@ -91,9 +91,7 @@ def _build_train_fn(
     env_normalized = (environment or "development").strip().lower()
     if allow_synthetic:
         if env_normalized == "production":
-            raise RuntimeError(
-                "Synthetic training is forbidden when ENVIRONMENT=production."
-            )
+            raise RuntimeError("Synthetic training is forbidden when ENVIRONMENT=production.")
         logger.warning(
             "DEVELOPMENT/DEMO MODE: Using explicit synthetic training function "
             "(FL_ALLOW_SYNTHETIC_TRAINING / --allow-synthetic)."

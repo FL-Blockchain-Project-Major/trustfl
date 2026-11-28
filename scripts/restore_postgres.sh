@@ -8,7 +8,9 @@ archive="${1:?usage: restore_postgres.sh BACKUP_FILE}"
 manifest="$archive.sha256"
 [[ -f "$archive" && -f "$manifest" ]] || { echo "Backup or checksum missing" >&2; exit 1; }
 sha256sum --check "$manifest"
-openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-  -pass "file:$BACKUP_ENCRYPTION_KEY_FILE" \
-  -in "$archive" | pg_restore --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL"
+tmp="$(mktemp "${TMPDIR:-/tmp}/trustfl-restore.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+python3 "$(dirname "$0")/backup_crypto.py" decrypt "$archive" "$tmp" \
+  --key-file "$BACKUP_ENCRYPTION_KEY_FILE"
+pg_restore --exit-on-error --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" "$tmp"
 echo "Restore completed; run reconciliation before enabling coordinators."

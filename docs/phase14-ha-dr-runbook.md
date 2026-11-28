@@ -1,49 +1,49 @@
-# TrustFL — Phase 14 HA, Disaster Recovery & Operational Resilience Runbook
+# Phase 14 HA/DR runbook and evidence status
 
-**Date**: 2026-11-27  
+**Status: NOT ACCEPTED (2026-11-28).** The repository has unit and simulated
+integration coverage, but it has no recorded evidence from the real services
+required by the Phase 14 acceptance gate. It must not be described as
+production-ready and no PostgreSQL RPO/RTO is claimed.
 
----
-
-## 1. High-Availability & Failover Architecture
-
-| Component | Resilience Mechanism | Configuration / Source |
+| Area | Control | Evidence status |
 |---|---|---|
-| **Control-Plane DB** | SQLAlchemy connection pooling (`pool_pre_ping=True`, `pool_recycle=1800`) + AES-256-CBC encrypted backups with SHA-256 verification | `apps/api/api/db/session.py`, `scripts/backup_postgres.sh`, `scripts/restore_postgres.sh`, `scripts/verify_backup.sh` |
-| **Coordinator** | DB lease fencing (`CoordinatorLease.fencing_token`) preventing split-brain + durable `CoordinatorPersistence` round/nonce recovery | `apps/coordinator/persistence.py`, `apps/coordinator/network/server.py` |
-| **IPFS Storage** | Pinning (`pin=true`) + multi-endpoint replication & automatic read failover with SHA-256 verification | `packages/storage/trustfl_storage/client.py` (`IPFS_REPLICA_URLS`) |
-| **Blockchain RPC** | Multi-RPC failover (`_failover_rpc`), nonce lock, pending-tx reconciliation, and durable outbox replay | `packages/blockchain/trustfl_blockchain/client.py` (`BLOCKCHAIN_FALLBACK_RPC_URLS`) |
-| **Redis Rate Limiter** | Runtime exception catch with automatic fallback to in-process fixed-window limiter and automatic resume on recovery | `apps/api/api/middleware/security.py` (`trustfl_redis_fallback_total`) |
-| **Observability & Alerts** | Readiness probe, secret-expiry gauge, backup-age gauge, and Prometheus alert rules | `apps/api/api/routers/health.py`, `observability/alerts.yml` |
+| PostgreSQL backup | AES-256-GCM envelope, checksum, and `pg_restore --list` verification | Script/unit validation only |
+| Backup freshness | Metric accepts only a `.verified` marker written after authenticated verification | Unit validation only |
+| Coordinator | Lease renewal aborts monitor work on loss | SQLite/sequential coverage only; concurrent PostgreSQL fencing required |
+| IPFS | SHA-256 retrieval, CID equality, and minimum-replica policy | Mock HTTP coverage only; independent Kubo nodes required |
+| Blockchain | Durable outbox and RPC fallback | Simulated JSON-RPC only; signed Hardhat transactions required |
+| Redis | Production requires Redis; local fallback is process-local and not globally coordinated | Mock coverage only; multi-process outage/recovery required |
 
----
+## Backup operation and key rotation
 
-## 2. Measured Recovery Evidence (RPO / RTO)
+The key file contains one 32-byte AES key as 64 hexadecimal characters or
+URL-safe base64. `BACKUP_ENCRYPTION_KEY_ID` is authenticated metadata. Rotate
+by creating a new secret-manager key and ID for new backups, retaining old keys
+until their archives expire, and restoring an archive with the key selected by
+its header.
 
-Verified in `tests/integration/ha_dr/test_phase14_ha_dr.py`:
-- **Corrupted Control-Plane DB Restore**:
-  - **Measured RPO**: `0` committed rows lost for backed-up state.
-  - **Measured RTO**: `< 5.0 s` for SHA-256 checksum verification, AES-256-CBC decryption, and full SQLite control-plane state restoration.
-- **Coordinator Split-Brain Prevention**: Standby coordinator `acquire_lease()` rejected while primary lease active; takeover after release/expiry incremented `fencing_token` from `1` to `2`.
-- **IPFS Node Failure**: Primary IPFS node shut down after pinned replication; `IPFSStorageClient.load_artifact()` failed over to replica and verified SHA-256. Tampered replica bytes raised `ValueError`.
-- **Blockchain RPC Failover & Outbox Drain**: `BlockchainClient` failed over from unreachable primary RPC to healthy fallback RPC; `CoordinatorState._process_blockchain_outbox()` drained pending `ROUND_COMMIT` events cleanly.
-- **Redis Transient Outage**: `GlobalRateLimitMiddleware` fell back to local window limiting on `ConnectionError`, emitted `trustfl_redis_fallback_total`, and enforced `429` without returning `500`.
+```bash
+export BACKUP_DIR=/secure/offsite/trustfl
+export BACKUP_ENCRYPTION_KEY_FILE=/run/secrets/trustfl-backup-key-v2
+export BACKUP_ENCRYPTION_KEY_ID=2026-q4
+export DATABASE_URL='postgresql://...'
+./scripts/backup_postgres.sh
+./scripts/verify_backup.sh "$BACKUP_DIR/trustfl-<timestamp>-<nonce>.dump.enc"
+```
 
----
+Wrong keys and modified ciphertext fail AES-GCM authentication. Restore into
+an isolated database, run migrations, reconcile round/outbox/on-chain state,
+then start only one coordinator.
 
-## 3. Recovery Procedures
+## Required acceptance evidence
 
-1. **Verify Encrypted Backup**:
-   ```bash
-   BACKUP_ENCRYPTION_KEY_FILE=/path/to/key ./scripts/verify_backup.sh /backups/trustfl-YYYYMMDDTHHMMSSZ.dump.enc
-   ```
-2. **Restore PostgreSQL**:
-   ```bash
-   DATABASE_URL=postgresql://... BACKUP_ENCRYPTION_KEY_FILE=/path/to/key ./scripts/restore_postgres.sh /backups/trustfl-YYYYMMDDTHHMMSSZ.dump.enc
-   ```
-3. **Drain Outbox & Reconcile**: Start coordinator with `CoordinatorPersistence` enabled; `CoordinatorState` reloads persisted round/artifact/nonce state and drains pending `BlockchainOutbox` entries.
+Record commands, service versions, timestamps, and retained logs for: real
+PostgreSQL backup/restore (including schema, migration revision, federation,
+rounds, updates, outbox, and artifact references); two simultaneous
+coordinators with PostgreSQL crash/partition/takeover and stale-write tests;
+independent Kubo loss/recovery and partial replication; deployed Hardhat
+contracts with signed transaction interruption/reconciliation; multi-process
+Redis outage/recovery; and Prometheus alert-expression/delivery tests.
 
----
-
-## 4. Untested / Target-Environment Scope
-
-- Live multi-node PostgreSQL streaming replication (Patroni/RDS) and multi-AZ Redis Sentinel/Cluster failover were **not executed** in the single-host test environment and must be validated during infrastructure provisioning.
+`tests/integration/ha_dr/test_phase14_ha_dr.py` is **not** acceptance evidence:
+it uses SQLite, mock IPFS, a simulated JSON-RPC server, and mock Redis.

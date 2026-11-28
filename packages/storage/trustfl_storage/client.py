@@ -102,10 +102,16 @@ class IPFSStorageClient(StorageClient):
         self.api_url = api_url.rstrip("/")
         if replica_urls is None:
             raw_replicas = os.getenv("IPFS_REPLICA_URLS", "")
-            self.replica_urls = [u.strip().rstrip("/") for u in raw_replicas.split(",") if u.strip()]
+            self.replica_urls = [
+                u.strip().rstrip("/") for u in raw_replicas.split(",") if u.strip()
+            ]
         else:
             self.replica_urls = [u.strip().rstrip("/") for u in replica_urls if u.strip()]
         self.pin = pin
+        configured_minimum = os.getenv("IPFS_MIN_REPLICAS")
+        self.min_replicas = int(configured_minimum) if configured_minimum else 1
+        if self.min_replicas < 1:
+            raise ValueError("IPFS_MIN_REPLICAS must be at least 1")
         self.timeout = (
             float(os.getenv("IPFS_CONNECT_TIMEOUT_SECONDS", "5")),
             float(os.getenv("IPFS_READ_TIMEOUT_SECONDS", "30")),
@@ -154,7 +160,11 @@ class IPFSStorageClient(StorageClient):
             assert last_exc is not None
             raise last_exc
 
-        # Replicate and pin onto remaining healthy replicas for node-failure resilience.
+        # Replicate and pin onto remaining healthy replicas.  A successful HTTP
+        # response is insufficient: every node must return the same CID and the
+        # configured durability policy must be met before the artifact is exposed.
+        replicated = 1
+        failures: list[str] = []
         for replica in self._endpoints():
             if replica == primary_used:
                 continue
@@ -167,8 +177,21 @@ class IPFSStorageClient(StorageClient):
                     timeout=self.timeout,
                 )
                 rep_resp.raise_for_status()
+                replica_cid = rep_resp.json().get("Hash")
+                if replica_cid != cid:
+                    raise ValueError(
+                        f"replica {replica} returned CID {replica_cid!r}, expected {cid!r}"
+                    )
+                replicated += 1
             except Exception as exc:
                 logger.warning("IPFS replica pin failed on %s for %s: %s", replica, cid, exc)
+                failures.append(f"{replica}: {exc}")
+
+        if replicated < self.min_replicas:
+            raise OSError(
+                f"IPFS replication policy not met for {cid}: {replicated}/{self.min_replicas} "
+                f"successful replicas; failures: {'; '.join(failures) or 'none'}"
+            )
 
         return ArtifactMetadata(
             uri=f"ipfs://{cid}",
@@ -197,9 +220,7 @@ class IPFSStorageClient(StorageClient):
                 data = resp.content
                 actual_hash = compute_sha256(data)
                 if actual_hash != expected_hash:
-                    raise ValueError(
-                        f"Hash mismatch! Expected {expected_hash}, got {actual_hash}"
-                    )
+                    raise ValueError(f"Hash mismatch! Expected {expected_hash}, got {actual_hash}")
                 return data
             except ValueError:
                 raise

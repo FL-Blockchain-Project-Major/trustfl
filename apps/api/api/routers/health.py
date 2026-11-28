@@ -45,10 +45,22 @@ def _record_operational_gauges() -> None:
             pass
     backup_dir = os.getenv("BACKUP_DIR")
     if backup_dir and Path(backup_dir).is_dir():
-        archives = list(Path(backup_dir).glob("trustfl-*.dump.enc"))
-        if archives:
-            newest = max(p.stat().st_mtime for p in archives)
-            metrics.set("trustfl_backup_age_seconds", max(0.0, now - newest))
+        verified: list[float] = []
+        for marker in Path(backup_dir).glob("trustfl-*.dump.enc.verified"):
+            archive = Path(str(marker).removesuffix(".verified"))
+            manifest = Path(f"{archive}.sha256")
+            try:
+                recorded = marker.read_text(encoding="utf-8").strip().split()
+                if len(recorded) != 2 or not archive.is_file() or not manifest.is_file():
+                    continue
+                expected = manifest.read_text(encoding="utf-8").strip().split()[0]
+                if recorded[1] != expected:
+                    continue
+                verified.append(marker.stat().st_mtime)
+            except (OSError, IndexError):
+                continue
+        if verified:
+            metrics.set("trustfl_backup_age_seconds", max(0.0, now - max(verified)))
 
 
 def _database_ready() -> bool:

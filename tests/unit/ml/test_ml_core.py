@@ -5,7 +5,6 @@ and checkpoint management.
 
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -207,15 +206,28 @@ class TestMLCore(unittest.TestCase):
                     self.assertGreaterEqual(eval_res[key], 0.0)
                     self.assertLessEqual(eval_res[key], 1.0)
 
-    @unittest.skipUnless(
-        os.getenv("TRUSTFL_RUN_REAL_VISDRONE_TEST") == "1",
-        "Opt-in real VisDrone test; set TRUSTFL_RUN_REAL_VISDRONE_TEST=1 to run",
-    )
-    def test_opt_in_real_visdrone_yolo_train_eval(self) -> None:
-        raw_img = Path("datasets/raw/visdrone/images")
-        raw_ann = Path("datasets/raw/visdrone/annotations")
-        if not raw_img.is_dir() or not raw_ann.is_dir():
-            self.skipTest("datasets/raw/visdrone not present")
+    def test_real_visdrone_yolo_train_eval(self) -> None:
+        candidates = (
+            (Path("datasets/raw/visdrone/images"), Path("datasets/raw/visdrone/annotations")),
+            (
+                Path("datasets/raw/VisDrone2019-DET-val/images"),
+                Path("datasets/raw/VisDrone2019-DET-val/annotations"),
+            ),
+            (
+                Path("datasets/processed/partitions/client_0/train/images"),
+                Path("datasets/processed/partitions/client_0/train/annotations"),
+            ),
+        )
+        raw_img, raw_ann = next(
+            (
+                (images, annotations)
+                for images, annotations in candidates
+                if images.is_dir() and annotations.is_dir()
+            ),
+            (None, None),
+        )
+        self.assertIsNotNone(raw_img, "A real VisDrone dataset or processed partition is required")
+        self.assertIsNotNone(raw_ann, "A real VisDrone dataset or processed partition is required")
 
         model = YOLODetector(model_name="yolov8n", num_classes=10, seed=42, device="cpu")
         train_res = model.train_on_dataset(

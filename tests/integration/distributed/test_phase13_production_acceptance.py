@@ -7,7 +7,7 @@ Topology note:
   partitions, unique Ed25519 keys, and real Groth16 ZKP verification.
 - Real multi-machine WAN deployment and external IPFS/Hardhat daemons are
   separately documented in docs/phase13-production-acceptance-report.md and
-  covered by the opt-in test gated on TRUSTFL_RUN_EXTERNAL_INFRA_TEST=1.
+  covered by a local Kubo/Hardhat integration test.
 """
 
 from __future__ import annotations
@@ -226,7 +226,9 @@ class _RecordingBlockchainClient:
         self.events: list[tuple[str, dict[str, Any]]] = []
 
     def register_client(self, client_id: str, pubkey_hash: str) -> str:
-        self.events.append(("register_client", {"client_id": client_id, "pubkey_hash": pubkey_hash}))
+        self.events.append(
+            ("register_client", {"client_id": client_id, "pubkey_hash": pubkey_hash})
+        )
         return f"0xreg_{client_id}"
 
     def create_round(self, round_id: int, model_version: str) -> str:
@@ -567,7 +569,11 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
                 "recovery_state": {
                     "global_parameters": [],
                     "pending_updates": {
-                        "c1": {"update_id": "u1", "num_examples": 5, "parameters": [[0.3, -0.4, 0.8]]}
+                        "c1": {
+                            "update_id": "u1",
+                            "num_examples": 5,
+                            "parameters": [[0.3, -0.4, 0.8]],
+                        }
                     },
                     "verifier": {
                         "current_round": 2,
@@ -632,13 +638,9 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
         self.assertTrue(state.round_history[0]["timed_out"])
         self.assertEqual(state.round_history[0]["num_successful_clients"], 1)
 
-    def test_opt_in_external_ipfs_and_hardhat_stack(self) -> None:
-        if os.environ.get("TRUSTFL_RUN_EXTERNAL_INFRA_TEST") != "1":
-            self.skipTest(
-                "Opt-in external IPFS/Hardhat test; set TRUSTFL_RUN_EXTERNAL_INFRA_TEST=1 to run"
-            )
-        if not shutil.which("ipfs") or not shutil.which("npx"):
-            self.skipTest("Requires ipfs and npx in PATH")
+    def test_external_ipfs_and_hardhat_stack(self) -> None:
+        self.assertIsNotNone(shutil.which("ipfs"), "Kubo 'ipfs' CLI is required")
+        self.assertIsNotNone(shutil.which("npx"), "Node.js 'npx' is required")
 
         from trustfl_blockchain.client import BlockchainClient
         from trustfl_storage.client import IPFSStorageClient
@@ -648,7 +650,9 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
             ipfs_repo = root / "ipfs_repo"
             ipfs_env = os.environ.copy()
             ipfs_env["IPFS_PATH"] = str(ipfs_repo)
-            subprocess.run(["ipfs", "init", "--profile=test"], env=ipfs_env, check=True, capture_output=True)
+            subprocess.run(
+                ["ipfs", "init", "--profile=test"], env=ipfs_env, check=True, capture_output=True
+            )
             ipfs_api_port = _get_free_port()
             ipfs_gw_port = _get_free_port()
             ipfs_swarm_port = _get_free_port()
@@ -665,7 +669,13 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
                 capture_output=True,
             )
             subprocess.run(
-                ["ipfs", "config", "--json", "Addresses.Swarm", json.dumps([f"/ip4/127.0.0.1/tcp/{ipfs_swarm_port}"])],
+                [
+                    "ipfs",
+                    "config",
+                    "--json",
+                    "Addresses.Swarm",
+                    json.dumps([f"/ip4/127.0.0.1/tcp/{ipfs_swarm_port}"]),
+                ],
                 env=ipfs_env,
                 check=True,
                 capture_output=True,
@@ -709,7 +719,12 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
                     try:
                         r = requests.post(
                             rpc_url,
-                            json={"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1},
+                            json={
+                                "jsonrpc": "2.0",
+                                "method": "eth_blockNumber",
+                                "params": [],
+                                "id": 1,
+                            },
                             timeout=1,
                         )
                         if r.status_code == 200:

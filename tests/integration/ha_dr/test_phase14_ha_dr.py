@@ -82,9 +82,9 @@ def _start_mock_ipfs():
 class TestPhase14HADR(unittest.TestCase):
     """Phase 14 HA, backup/restore, lease fencing, failover, and alerting tests."""
 
-    def test_encrypted_backup_restore_corrupted_db_and_rpo_rto(self) -> None:
-        if not shutil.which("openssl") or not shutil.which("sha256sum"):
-            self.skipTest("Requires openssl and sha256sum in PATH")
+    def test_authenticated_backup_envelope_rejects_tampering_and_wrong_key(self) -> None:
+        if not shutil.which("sha256sum"):
+            self.skipTest("Requires sha256sum in PATH")
 
         from apps.api.api.db.models import Base, Federation, FederationStatus, Round, RoundStatus
 
@@ -94,7 +94,7 @@ class TestPhase14HADR(unittest.TestCase):
             backup_path = root / "trustfl-backup.db.enc"
             manifest_path = Path(f"{backup_path}.sha256")
             key_file = root / "backup.key"
-            key_file.write_text("phase14-test-encryption-key-material", encoding="utf-8")
+            key_file.write_text("11" * 32, encoding="utf-8")
 
             engine = create_engine(f"sqlite:///{db_path}")
             Base.metadata.create_all(bind=engine)
@@ -121,21 +121,18 @@ class TestPhase14HADR(unittest.TestCase):
                 db.commit()
             engine.dispose()
 
-            # Encrypt + checksum backup
+            # This is an envelope unit/integration check, not a PostgreSQL RPO/RTO drill.
             subprocess.run(
                 [
-                    "openssl",
-                    "enc",
-                    "-aes-256-cbc",
-                    "-pbkdf2",
-                    "-iter",
-                    "200000",
-                    "-pass",
-                    f"file:{key_file}",
-                    "-in",
+                    "python3",
+                    "scripts/backup_crypto.py",
+                    "encrypt",
                     str(db_path),
-                    "-out",
                     str(backup_path),
+                    "--key-file",
+                    str(key_file),
+                    "--key-id",
+                    "test-key-1",
                 ],
                 check=True,
             )
@@ -145,30 +142,58 @@ class TestPhase14HADR(unittest.TestCase):
             # Simulate database corruption
             db_path.write_bytes(b"CORRUPTED-STORAGE-BYTES-0000")
 
-            # Measure RTO for verified restore
-            t0 = time.perf_counter()
-            subprocess.run(["sha256sum", "--check", str(manifest_path)], check=True, capture_output=True)
+            subprocess.run(
+                ["sha256sum", "--check", str(manifest_path)], check=True, capture_output=True
+            )
             restored_path = root / "trustfl.db"
             subprocess.run(
                 [
-                    "openssl",
-                    "enc",
-                    "-d",
-                    "-aes-256-cbc",
-                    "-pbkdf2",
-                    "-iter",
-                    "200000",
-                    "-pass",
-                    f"file:{key_file}",
-                    "-in",
+                    "python3",
+                    "scripts/backup_crypto.py",
+                    "decrypt",
                     str(backup_path),
-                    "-out",
                     str(restored_path),
+                    "--key-file",
+                    str(key_file),
                 ],
                 check=True,
             )
-            rto_seconds = time.perf_counter() - t0
-            self.assertLess(rto_seconds, 5.0)
+
+            wrong_key = root / "wrong.key"
+            wrong_key.write_text("22" * 32, encoding="utf-8")
+            self.assertNotEqual(
+                subprocess.run(
+                    [
+                        "python3",
+                        "scripts/backup_crypto.py",
+                        "decrypt",
+                        str(backup_path),
+                        str(root / "wrong.db"),
+                        "--key-file",
+                        str(wrong_key),
+                    ],
+                    check=False,
+                ).returncode,
+                0,
+            )
+            tampered = bytearray(backup_path.read_bytes())
+            tampered[-1] ^= 1
+            backup_path.write_bytes(tampered)
+            self.assertNotEqual(
+                subprocess.run(
+                    [
+                        "python3",
+                        "scripts/backup_crypto.py",
+                        "decrypt",
+                        str(backup_path),
+                        str(root / "tampered.db"),
+                        "--key-file",
+                        str(key_file),
+                    ],
+                    check=False,
+                ).returncode,
+                0,
+            )
 
             restored_engine = create_engine(f"sqlite:///{restored_path}")
             RestoredSession = sessionmaker(bind=restored_engine)
@@ -262,8 +287,12 @@ class TestPhase14HADR(unittest.TestCase):
                 length = int(self.headers.get("Content-Length", "0"))
                 req = json.loads(self.rfile.read(length))
                 method = req.get("method")
-                result = "0x1" if method in {"eth_blockNumber", "eth_chainId", "net_version"} else True
-                resp = json.dumps({"jsonrpc": "2.0", "id": req.get("id", 1), "result": result}).encode()
+                result = (
+                    "0x1" if method in {"eth_blockNumber", "eth_chainId", "net_version"} else True
+                )
+                resp = json.dumps(
+                    {"jsonrpc": "2.0", "id": req.get("id", 1), "result": result}
+                ).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(resp)))
@@ -280,9 +309,18 @@ class TestPhase14HADR(unittest.TestCase):
                     json.dumps(
                         {
                             "contracts": {
-                                "ClientRegistry": {"address": "0x0000000000000000000000000000000000000001", "abi": []},
-                                "TrainingRoundRegistry": {"address": "0x0000000000000000000000000000000000000002", "abi": []},
-                                "UpdateRegistry": {"address": "0x0000000000000000000000000000000000000003", "abi": []},
+                                "ClientRegistry": {
+                                    "address": "0x0000000000000000000000000000000000000001",
+                                    "abi": [],
+                                },
+                                "TrainingRoundRegistry": {
+                                    "address": "0x0000000000000000000000000000000000000002",
+                                    "abi": [],
+                                },
+                                "UpdateRegistry": {
+                                    "address": "0x0000000000000000000000000000000000000003",
+                                    "abi": [],
+                                },
                             }
                         }
                     ),
@@ -360,7 +398,13 @@ class TestPhase14HADR(unittest.TestCase):
                         out.append(msg["status"])
 
                 await mw(
-                    {"type": "http", "method": "GET", "path": "/api/v1/rounds", "headers": [], "client": ("10.0.0.5", 1234)},
+                    {
+                        "type": "http",
+                        "method": "GET",
+                        "path": "/api/v1/rounds",
+                        "headers": [],
+                        "client": ("10.0.0.5", 1234),
+                    },
                     _recv,
                     _send,
                 )
@@ -374,6 +418,8 @@ class TestPhase14HADR(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             bfile = Path(tmpdir) / "trustfl-20261127T000000Z.dump.enc"
             bfile.write_bytes(b"enc")
+            Path(f"{bfile}.sha256").write_text("digest  trustfl-20261127T000000Z.dump.enc\n")
+            Path(f"{bfile}.verified").write_text("2026-11-27T00:00:00Z digest\n")
             os.environ["TLS_CERT_EXPIRY_EPOCH"] = str(int(time.time()) + 3600)
             os.environ["BACKUP_DIR"] = tmpdir
             try:

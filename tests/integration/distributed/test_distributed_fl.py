@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
-import threading
 import time
 import unittest
 from pathlib import Path
@@ -33,16 +33,12 @@ from trustfl_crypto.keys import ClientIdentity
 # Helpers
 # ---------------------------------------------------------------------------
 
-_NEXT_PORT = 8200  # bump per test so ports don't collide
-_PORT_LOCK = threading.Lock()
-
 
 def _get_port() -> int:
-    global _NEXT_PORT
-    with _PORT_LOCK:
-        p = _NEXT_PORT
-        _NEXT_PORT += 1
-    return p
+    """Ask the OS for an available loopback port instead of assuming 8200+ is free."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def _dummy_train(round_id, global_params, _config):

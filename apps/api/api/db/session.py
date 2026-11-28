@@ -148,6 +148,13 @@ def check_config(_app: FastAPI) -> None:
             errors.append("CLIENT_KEY_STORE must be kms or secret_manager in production")
         if not os.getenv("REDIS_URL"):
             errors.append("Production requires REDIS_URL for distributed rate limiting")
+        if os.getenv("STORAGE_BACKEND", "local").lower() == "ipfs":
+            try:
+                replica_count = int(os.getenv("IPFS_MIN_REPLICAS", "1"))
+            except ValueError:
+                replica_count = 0
+            if replica_count < 2:
+                errors.append("Production IPFS requires IPFS_MIN_REPLICAS >= 2")
 
     # Check COORDINATOR_PRIVATE_KEY
     coord_key = os.getenv("COORDINATOR_PRIVATE_KEY", "")

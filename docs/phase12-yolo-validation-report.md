@@ -33,7 +33,7 @@ PYTHONPATH=.:packages/fl_core:packages/ml_core:packages/crypto:packages/schemas 
 Opt-in single-client VisDrone test:
 
 ```bash
-TRUSTFL_RUN_REAL_VISDRONE_TEST=1 .venv/bin/pytest tests/unit/ml/test_ml_core.py -k real_visdrone -v
+.venv/bin/pytest tests/unit/ml/test_ml_core.py -k real_visdrone -v
 ```
 
 ## 4. Observed Results (`tests/output/yolo_fl_evidence.json`)
