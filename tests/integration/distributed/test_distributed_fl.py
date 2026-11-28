@@ -19,7 +19,6 @@ import socket
 import sys
 import time
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Make sure the coordinator network package is importable
@@ -579,16 +578,16 @@ class TestDistributedFL(unittest.TestCase):
                 for ag in agents:
                     self.assertTrue(ag.register(), f"Registration failed for {ag.client_id}")
 
-                # Allow up to 420 s: 3 clients × ~60 s training + overhead per round on CI.
-                deadline = time.time() + 420.0
+                # Clients intentionally execute sequentially here to keep the
+                # real CPU YOLO workload within CI memory limits. Allow both
+                # rounds their worst-case budget (3 clients × 60 s × 2), plus
+                # proof generation and transport overhead.
+                deadline = time.time() + 900.0
                 while (
                     time.time() < deadline and server.state.current_round <= server.state.num_rounds
                 ):
-                    # Each agent trains/proves independently. Running the
-                    # client steps concurrently prevents a slow CI CPU from
-                    # exhausting a round while waiting on earlier clients.
-                    with ThreadPoolExecutor(max_workers=len(agents)) as pool:
-                        list(pool.map(lambda agent: agent.step(), agents))
+                    for ag in agents:
+                        ag.step()
                     time.sleep(0.05)
 
                 server.state.wait_until_done(timeout=30.0)
