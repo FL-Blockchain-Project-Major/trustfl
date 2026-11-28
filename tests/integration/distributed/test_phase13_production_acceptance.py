@@ -645,6 +645,16 @@ class TestPhase13ProductionAcceptance(unittest.TestCase):
         from trustfl_blockchain.client import BlockchainClient
         from trustfl_storage.client import IPFSStorageClient
 
+        # Artifacts are not source-controlled build inputs. Compile them in
+        # this test so a fresh CI checkout never deploys stale or missing bytecode.
+        subprocess.run(
+            ["npx", "hardhat", "compile"],
+            cwd=str(REPO_ROOT / "packages" / "contracts"),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             ipfs_repo = root / "ipfs_repo"
@@ -763,12 +773,18 @@ fs.writeFileSync("{contracts_json}", JSON.stringify({{
   }}
 }}));
 """
-                subprocess.run(
+                deployment = subprocess.run(
                     ["node", "--input-type=module", "-e", deploy_js],
                     cwd=str(REPO_ROOT / "packages" / "contracts"),
-                    check=True,
+                    check=False,
                     capture_output=True,
                     text=True,
+                )
+                self.assertEqual(
+                    deployment.returncode,
+                    0,
+                    "Hardhat contract deployment failed:\n"
+                    f"stdout:\n{deployment.stdout}\nstderr:\n{deployment.stderr}",
                 )
 
                 # Verify real IPFS storage + SHA-256 integrity
