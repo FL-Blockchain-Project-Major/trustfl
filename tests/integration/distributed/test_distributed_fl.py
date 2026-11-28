@@ -19,6 +19,7 @@ import socket
 import sys
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Make sure the coordinator network package is importable
@@ -583,8 +584,11 @@ class TestDistributedFL(unittest.TestCase):
                 while (
                     time.time() < deadline and server.state.current_round <= server.state.num_rounds
                 ):
-                    for ag in agents:
-                        ag.step()
+                    # Each agent trains/proves independently. Running the
+                    # client steps concurrently prevents a slow CI CPU from
+                    # exhausting a round while waiting on earlier clients.
+                    with ThreadPoolExecutor(max_workers=len(agents)) as pool:
+                        list(pool.map(lambda agent: agent.step(), agents))
                     time.sleep(0.05)
 
                 server.state.wait_until_done(timeout=30.0)

@@ -51,6 +51,15 @@ jobs:
           pip install -r requirements-dev.txt
           pip install --no-deps -e .
 
+      - name: Install local Kubo and contract runtime dependencies
+        run: |
+          docker create --name trustfl-kubo-cli ipfs/kubo:v0.32.1
+          docker cp trustfl-kubo-cli:/usr/local/bin/ipfs /usr/local/bin/ipfs
+          docker rm trustfl-kubo-cli
+          ipfs --version
+          npm --prefix packages/contracts ci
+          npm --prefix packages/zkp ci
+
       - name: Lint
         run: ruff check .
 

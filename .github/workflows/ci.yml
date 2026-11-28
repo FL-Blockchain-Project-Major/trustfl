@@ -39,6 +39,17 @@ jobs:
         working-directory: packages/zkp
         run: npm ci
 
+      - name: Install local Kubo CLI for required IPFS integration tests
+        run: |
+          docker create --name trustfl-kubo-cli ipfs/kubo:v0.32.1
+          docker cp trustfl-kubo-cli:/usr/local/bin/ipfs /usr/local/bin/ipfs
+          docker rm trustfl-kubo-cli
+          ipfs --version
+
+      - name: Install contract runtime dependencies
+        working-directory: packages/contracts
+        run: npm ci
+
       - name: Smoke-test Node ZKP runtime and circuit artifacts
         timeout-minutes: 5
         run: |
